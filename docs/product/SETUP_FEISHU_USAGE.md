@@ -1,4 +1,4 @@
-# Setup 后的飞书接入向导（a15）
+# Setup 后的飞书接入向导
 
 交互安装与接入可使用 [统一终端向导 setup-run](SETUP_RUN_USAGE.md)。以下独立命令继续保留用于分阶段操作。
 
@@ -6,7 +6,7 @@
 
 从 a25 起，`base_mode=create` 询问用途、位置及提交人，授权确认后自动创建、核验并保存实际 ID；`bind` 仍询问已有表及四个文本字段 ID。详见 [新建 Base](BASE_CREATION.md)。Setup 离线草稿不表示 Base 已创建。浏览器设备授权的 token 仅留在内存；下面的用户 token 文件方式是已有 token 操作者的备用路径，不是首次安装必需步骤。
 
-## 浏览器授权连接（a17 候选）
+## 浏览器授权连接
 
 完成 `configure` 后，管理员可直接开启授权向导，无需手动获取用户 access token：
 
@@ -17,11 +17,11 @@ vfctl setup-feishu connect --root /srv/private/runtime \
   --app-secret-file /srv/private/feishu-app-secret --port 8791 --seconds 360
 ```
 
-容器安装将 `--root` 换成 `--stack-root /srv/video-factory`，三个输入文件使用 `/work/...` 路径，对应 stack 的 `data/worker/`。文件需归容器用户 10001 所有且权限 0600；挂载仍为只读。管理员 token 与应用 secret 必须由客户自己保存在私有文件，不能放入 Git、命令参数或 Setup JSON。此版尚未统一管理员登录、应用 secret 录入和一键安装。
+容器安装将 `--root` 换成 `--stack-root /srv/video-factory`，三个输入文件使用 `/work/...` 路径，对应 stack 的 `data/worker/`。文件需归容器用户 10001 所有且权限 0600；挂载仍为只读。管理员 token 与应用 secret 必须由客户自己保存在私有文件，不能放入 Git、命令参数或 Setup JSON。这些是分阶段内部命令；统一操作优先使用 setup-run，由向导处理管理员登录和应用秘密输入。
 
 终端返回带一次性片段的私有链接；仅启动者可见，不分享或截图该链接。远程服务器通过同端口 SSH 隧道打开，例如 `ssh -N -L 8791:127.0.0.1:8791 user@customer-host`；浏览器访问终端给出的 127.0.0.1 链接。链接只可解锁一个浏览器会话，页面立即移除地址片段；关页、退出或过期后可重新运行命令。容器就绪日志也包含短时链接，仅服务器/Docker 管理员可读，精确临时容器退出后删除。窗口最长 360 秒，a18 在确认保存后自动关闭并返回终端；不是常驻公网管理页面。
 
-页面顺序：欢迎 → 客户飞书应用设备授权 → 读取指定 Base 字段 → 展示租户、Base、表、字段、提交人、分阶段审核人和计划摘要 → 确认保存。取消不保存；最终提交再次验证管理员、当前飞书用户和字段。租户错误、原 Setup 与安装配置不符、草稿中途改动、管理员过期/撤销或计划变化均阻断。飞书用户 token 仅在窗口内存；保存或退出清除，不写入数据库、浏览器存储或配置文件。官方应用必须具备设备授权能力和 `bitable:app:readonly`、`contact:user.base:readonly` 权限；实际客户应用兼容性仍待真实租户验证。
+页面顺序：欢迎 → 客户飞书应用设备授权 → 读取指定 Base 字段 → 展示租户、Base、表、字段、提交人、分阶段审核人和计划摘要 → 确认保存。取消不保存；最终提交再次验证管理员、当前飞书用户和字段。租户错误、原 Setup 与安装配置不符、草稿中途改动、管理员过期/撤销或计划变化均阻断。飞书用户 token 仅在窗口内存；保存或退出清除，不写入数据库、浏览器存储或配置文件。官方应用必须具备设备授权能力和 `bitable:app:readonly`、`contact:user.base:readonly` 权限；每个客户的应用和租户策略仍须实际验证。
 
 保存后页面引导运行 [review-ui / stack-review](REVIEW_UI_USAGE.md) 开启员工审核。它不会自动启动员工窗口或付费任务，也不共用管理员页面。员工以各自飞书身份登录。旧 `plan/apply` 路径保留，供已有私有用户 token 的 Agent/运维使用。
 
@@ -85,4 +85,4 @@ Setup 指定的脚本审核人只可审核脚本，视频审核人只可审核�
 
 连接成功后，使用 [飞书任务手册](FEISHU_BRIDGE.md) 的 `prepare-import/import`、`prepare-review/review` 演练任务。连接本身不创建任务、不写飞书、不提交模型，也不代表员工已看过视频。恢复/升级会暂停旧绑定；管理员重新检查名单、plan/apply 后才恢复。
 
-当前云端测试使用模拟飞书 HTTP、真实 SQLite/PostgreSQL 和独立 CLI 进程；真实飞书授权、员工界面和客户验收仍待完成。
+当前云端测试使用模拟飞书 HTTP、真实 SQLite/PostgreSQL 和独立 CLI 进程；真实飞书接入有历史实测；不同人员权限、非作者客户验收与完整业务仍须单独验证。

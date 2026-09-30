@@ -20,6 +20,8 @@ with images.open('rb') as stream:
     for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b''): h.update(chunk)
 # The export receipt/manifest format is authoritative, not a copied self-report.
 manifest = json.loads(image_manifest.read_text())
+assert h.hexdigest() == export['archive_sha256'] == manifest['archive']['sha256']
+assert images.stat().st_size == export['archive_bytes'] == manifest['archive']['size']
 for store in ('classic', 'containerd'):
     result = json.loads((root / f'images/result-{store}.json').read_text())
     assert result['status'] == 'PASS' and result['manifest_sha256'] == export['manifest_sha256']

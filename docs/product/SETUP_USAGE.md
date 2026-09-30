@@ -1,6 +1,6 @@
 # Setup P1 使用与验收边界
 
-版本：0.1.0a8（Setup 契约保持兼容）。实现了可恢复的**配置与计划阶段**，不是远程安装器。以下命令用于已经装好 CLI 的管理环境；客户一条命令安装整个服务仍属于 P2/P6。
+版本：0.1.0a8（Setup 契约保持兼容）。实现了可恢复的**配置与计划阶段**，不是远程安装器。以下命令仅描述内部规划层；用户从安装页面和 Skill 进入，由 start.py 与 setup-run 继续安装和接入。
 
 ## 终端
 
@@ -60,7 +60,7 @@ JSON 模式正常获取问题/计划退出码 0，非法输入或存储冲突退
 
 ## Setup 与实际执行的连接状态
 
-实际服务器预检、原生 SSH 安装、管理员/秘密存储、容器启动、迁移、升级及备份恢复已提供独立命令，见 [完整环境手册](STACK_USAGE.md) 和 [原生运行底座](RUNTIME_ALPHA.md)。a11 新增独立的 [setup-deploy 执行入口](SETUP_DEPLOY_USAGE.md)，将本会话连接安装和项目/SKU 持久化；飞书建表和通用模型接入仍未完成。离线 setup 的 plan_ready 仍只代表计划，真实状态使用 setup-deploy status 回读。
+实际服务器预检、原生 SSH 安装、管理员/秘密存储、容器启动、迁移、升级及备份恢复已提供独立命令，见 [完整环境手册](STACK_USAGE.md) 和 [原生运行底座](RUNTIME_ALPHA.md)。a11 新增独立的 [setup-deploy 执行入口](SETUP_DEPLOY_USAGE.md)，将本会话连接安装和项目/SKU 持久化；飞书建表现由后续 setup-run 接入步骤处理，通用模型完整路线仍需验收。离线 setup 的 plan_ready 仍只代表计划，真实状态使用 setup-deploy status 回读。
 
 ## 已验证范围
 

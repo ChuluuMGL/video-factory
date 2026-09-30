@@ -2,7 +2,7 @@
 
 交互安装与接入可使用 [统一终端向导 setup-run](SETUP_RUN_USAGE.md)。以下独立命令继续保留用于分阶段操作。
 
-0.1.0a11 开发版新增 `vfctl setup-deploy plan/apply/status`，将完成的 Setup 连接到真实容器安装和 PostgreSQL 项目/SKU 保存。飞书表创建、飞书人员身份、模型密钥解析和付费生成仍未连接；结果明确返回 `business_ready=false`。
+分阶段入口 `vfctl setup-deploy plan/apply/status`，将完成的 Setup 连接到真实容器安装和 PostgreSQL 项目/SKU 保存。本命令只负责服务和项目导入；飞书创建及身份由 setup-run 后续接入步骤处理，模型生成单独验收。本阶段返回 `business_ready=false`。
 
 ## 在哪台机器运行
 
