@@ -148,6 +148,7 @@ jobs:
             ci-results/*.json
             ci-results/*.txt
             ci-results/*.png
+            ci-results/delivery/
           retention-days: 14
 
   container-stack:

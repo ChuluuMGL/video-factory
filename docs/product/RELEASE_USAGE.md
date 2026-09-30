@@ -1,6 +1,6 @@
 # 获取固定发行版
 
-起点是安装指南页面和 [Setup Skill](../../skills/video-factory-setup/SKILL.md)。当前为私有受控测试版，安装者需要 ChuluuMGL/video-factory 读取权限，或由获授权同事安全交付已核验的包。
+起点是安装指南页面和 完整 Setup Skill（随包 skill/video-factory-setup/）。当前为私有受控测试版，安装者需要 ChuluuMGL/video-factory 读取权限，或由获授权同事安全交付已核验的包。
 
 全部云端检查通过后，流水线创建固定版本预发行版，包含 CLI 包、完整 Skill ZIP、release.json、SHA256SUMS、同版离线镜像与 handoff.json。大文件只在云端下载，不要求客户粘贴维护者 token。
 

@@ -74,4 +74,4 @@ vfctl runtime recover-admin --root /absolute/restored-data
 
 密码哈希与加密实现参考 [Python scrypt](https://docs.python.org/3/library/hashlib.html#hashlib.scrypt)、[cryptography Fernet](https://cryptography.io/en/latest/fernet/)。这些是实现依据，不是安全审计或业务验收证明。
 
-验证回执与范围见 [STATUS.md](STATUS.md)。112 项回归、云端原生安装、SSH 安装、重启和账本恢复已通过；测试未使用客户凭据或调用模型。
+验证回执与范围见 [STATUS.md](CUSTOMER_GUIDE.md)。112 项回归、云端原生安装、SSH 安装、重启和账本恢复已通过；测试未使用客户凭据或调用模型。

@@ -52,7 +52,7 @@ def main():
                   'next_command': shlex.join(command), 'private_tty_required': True,
                   'services_started': False, 'business_ready': False}))
             return 0
-        return subprocess.run(command).returncode
+        return subprocess.run(command, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}).returncode
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
         code = str(error) if type(error) is ValueError and str(error).replace('_', '').isalnum() else 'GUIDED_START_FAILED'
         print(json.dumps({'error': code, 'business_ready': False}))

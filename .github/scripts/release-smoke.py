@@ -3,6 +3,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -54,6 +55,11 @@ with tempfile.TemporaryDirectory(prefix='vf-release-', dir='/root') as tmp:
     assert second['reused'] and (prefix / 'installed.json').read_bytes() == original
     assert command([first['cli'], '--version']).strip() == receipt['version']
     assert 'setup-run' in command([first['cli'], '--help'])
+    # Every relative link must work inside the delivered archive, not just in Git.
+    for document in (bundle / 'docs').rglob('*.md'):
+        for target in re.findall(r'\]\(([^)]+)\)', document.read_text()):
+            if '://' not in target and not target.startswith('#'):
+                assert (document.parent / target.split('#')[0]).is_file(), (document.name, target)
     skill = Path(first['skill'])
     assert (skill / 'SKILL.md').is_file() and (skill / 'references/operations.md').is_file()
     products = json.loads((prefix / 'release/templates/products.json').read_text())
