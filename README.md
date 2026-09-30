@@ -6,6 +6,12 @@
 
 ## 从哪里开始
 
+**[打开安装指南页面](https://video-factory-install-guide.fresh-note-6263.chatgpt.site)** · 当前为所有者私有预览。
+
+**[下载经过云端验证的 0.1.0a27 候选版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a27)** · 需要本仓库读取权限。
+
+[本次交付验证记录](docs/product/DELIVERY_A27_RESULT.md)明确区分已通过与未完成范围。
+
 - **安装者**：[安装与交接指南](docs/product/CUSTOMER_GUIDE.md) → [完整 Setup Skill](skills/video-factory-setup/SKILL.md)。安装页面源文件在 `delivery/site/`，同版本网页与 Skill 包由云端检查后生成。
 - **已有客户新增项目**：调用同一 Skill，选择“新增项目”，复用已有服务；不重装 n8n，不默认复制旧项目的业务凭据。
 - **维护者**：[产品定义](docs/product/PRD.md)、[当前状态](docs/product/STATUS.md)、[交付验收](docs/product/DELIVERY_ACCEPTANCE.md)。
