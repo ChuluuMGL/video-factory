@@ -65,7 +65,12 @@ with tempfile.TemporaryDirectory(prefix='vf-release-', dir='/root') as tmp:
     guided = [sys.executable, str(bundle / 'start.py'), '--prefix', str(prefix),
               '--manifest-sha256', receipt['manifest_sha256'], '--session', str(root / 'private/setup.json'),
               '--root', str(root / 'stack'), '--prepare-only']
-    ready = json.loads(command(guided))
+    # Test normal Python without the test helper's bytecode suppression, too.
+    plain_env = dict(os.environ); plain_env.pop('PYTHONDONTWRITEBYTECODE', None)
+    normal = subprocess.run(guided, env=plain_env, capture_output=True, text=True, timeout=300)
+    assert normal.returncode == 0, normal.stdout
+    assert not (bundle / '__pycache__').exists()
+    ready = json.loads(normal.stdout)
     assert ready['status'] == 'cli_ready_setup_pending' and ready['cli_reused']
     assert ready['next_argv'][0] == first['cli'] and ready['next_argv'][1] == 'setup-run'
     assert not ready['business_ready'] and not (root / 'stack').exists()

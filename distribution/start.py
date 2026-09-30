@@ -7,6 +7,8 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+# Do not change the verified bundle by creating an import cache before verification.
+sys.dont_write_bytecode = True
 from install import install, require, safe_path
 
 
