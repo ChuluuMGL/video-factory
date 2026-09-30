@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接飞书 · Video Factory</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main><p class="eyebrow">VIDEO FACTORY / SETUP</p><h1>连接你的飞书项目</h1>
+<p>由本机管理员开启。登录飞书后核对表格、字段和审核人，确认保存项目绑定。</p>
+<p id="project"></p><p id="remaining"></p><p id="message" role="status">正在检查安装会话…</p>
+<section id="login" hidden><h2>1. 授权飞书</h2><p>只读取你的身份和指定表格。授权凭据仅在本次窗口内使用，不写入 Setup 文件。</p><button id="login-button">登录飞书</button><div id="device" hidden><p>授权码：<strong id="user-code"></strong></p><a id="authorization-link" target="_blank" rel="noopener noreferrer">打开飞书授权页面</a><p>完成授权后会自动继续。</p></div></section>
+<section id="workspace" hidden><h2>2. 核对连接</h2><p id="identity"></p><button id="prepare">读取表格并生成确认清单</button><div id="confirmation" hidden><pre id="plan"></pre><details><summary>查看本次计划校验值</summary><code id="plan-hash"></code></details><p>保存前会重新验证身份和字段；发生变化时需要重新核对。本次不会修改飞书记录，也不会生成视频。</p><button id="commit">确认保存这些配置</button><button id="cancel">取消本次确认</button></div><button id="logout">退出授权</button></section>
+<section id="done" hidden><h2>连接配置已保存</h2><p>下一步启动员工审核入口。员工需要各自登录飞书，按已配置的权限操作。</p><p id="handoff"></p><p>仍需验收真实任务、员工审核和修复流程；保存绑定不代表业务验收完成。确认保存后窗口服务自动关闭，请回到终端继续。</p></section>
+</main></body></html>

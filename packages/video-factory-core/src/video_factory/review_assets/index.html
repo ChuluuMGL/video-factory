@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Factory · 项目审核</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
+<body><main>
+<header><p class="eyebrow">VIDEO FACTORY / 客户项目</p><h1>审核工作台</h1><p id="project">正在连接…</p><p class="muted">本次入口限时开放。审核结果保存到项目记录，生成任务须另行批准。</p></header>
+<p id="message" role="status" aria-live="polite"></p>
+<section id="login"><h2>使用本人的飞书账号</h2><p>在飞书确认应用和权限后，回到此页面。只有项目授权成员可以查看任务。</p><button id="login-button">连接飞书</button><div id="authorization" hidden><p>授权码：<strong id="user-code"></strong></p><a id="authorization-link" target="_blank" rel="noopener noreferrer">打开飞书授权</a><p>请核对授权码与应用后确认。此页面会等待授权结果。</p></div></section>
+<section id="workspace" hidden>
+<div class="toolbar"><h2>项目任务</h2><button id="refresh" class="secondary">刷新任务</button><button id="logout" class="secondary">退出账号</button></div>
+<div id="tasks" class="task-list"></div><button id="more" hidden class="secondary">加载更多</button>
+<details><summary>导入或返工</summary><p>填写指定记录。返工须先关闭旧版本，并在飞书更新脚本和来源版本；这里不会修改飞书内容。</p><form id="import-form"><label>飞书记录 ID<input id="record" required maxlength="132" placeholder="rec…"></label><label>当前已存在的任务版本（首次填 0）<input id="expected-revision" type="number" min="0" value="0" required></label><button>核对导入</button></form></details>
+<article id="detail" hidden><h2 id="task-title"></h2><p id="task-state"></p><h3>本版本脚本</h3><pre id="script"></pre><video id="video" controls preload="metadata" hidden></video><p id="video-hash" class="muted"></p><h3>审核记录</h3><pre id="history"></pre>
+<form id="review-form"><label>审核阶段<select id="stage"><option value="script">脚本</option><option value="video">视频</option></select></label><label>审核决定<select id="decision"><option value="accept">通过</option><option value="reject">退回修改</option></select></label><label>具体意见（退回时必填）<textarea id="feedback" rows="4" maxlength="8000"></textarea></label><button id="prepare-review">核对审核</button></form></article>
+</section>
+<section id="confirmation" hidden><h2>确认本次操作</h2><p>核对任务版本、脚本和具体意见后再提交。内容或权限变化时，需要重新核对。</p><pre id="plan"></pre><button id="commit">确认提交</button><button id="cancel" class="secondary">取消</button></section>
+<footer>账号与数据由本客户管理 · 不会自动提交模型生成</footer>
+</main></body></html>

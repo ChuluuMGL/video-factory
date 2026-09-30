@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-factory-core"
+version = "0.1.0a19"
+description = "Installable, disabled-by-default project bootstrap for Video Factory"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["cryptography==46.0.5", "psycopg[binary]==3.3.6"]
+
+[project.scripts]
+vfctl = "video_factory.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+video_factory = ["deployment/*", "review_assets/*", "setup_assets/*"]
