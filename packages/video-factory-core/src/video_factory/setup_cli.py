@@ -4,11 +4,11 @@ import getpass
 import json
 import sys
 
-from .onboarding import (QUESTIONS, SessionStore, SetupError, describe,
+from .onboarding import (QUESTIONS, FIELDS, SessionStore, SetupError, describe,
                          read_input_file, read_json)
 
 
-def interactive(store, *, read=None, read_reference=None, write=None, next_step=None):
+def interactive(store, *, read=None, read_reference=None, write=None, next_step=None, existing_base_only=False):
     read = input if read is None else read
     read_reference = getpass.getpass if read_reference is None else read_reference
     write = print if write is None else write
@@ -20,11 +20,18 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
     while True:
         session = store.read()
         result = describe(session)
+        if (existing_base_only and override is None
+                and session['configuration']['project'].get('base_mode') == 'create'):
+            write('此安装入口只能连接已有 Base。请确认改为绑定，并重新填写已有 Base 标识；原草稿在确认前保留。')
+            override = FIELDS['project.base_mode'].public()
         if result["status"] == "plan_ready" and override is None:
             write("部署计划已生成。安装、连接、身份验证及任务验收均尚未执行。")
             write(next_step or "下一步在客户主机执行 setup-deploy plan/apply；安装后使用 setup-feishu configure 填连接问题，再用 setup-feishu connect 打开飞书授权与确认向导。")
             return result
         question = override or result["next_question"]
+        binding_question = existing_base_only and question['field'] == 'project.base_mode'
+        if binding_question:
+            question = {**question, 'choices': [('bind', '绑定已有飞书 Base（本入口暂不自动建表）')], 'default': 'bind'}
         write("\n[" + question["step"] + "] " + question["question"])
         if question["kind"] == "products":
             write("终端输入：填写包含该数组的 JSON 文件绝对路径；向导读取文件后提交数组。")
@@ -32,6 +39,8 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
             write(f"  {number}. {label} [{value}]")
         group, key = question["field"].split(".")
         default = session["configuration"][group].get(key, question["default"])
+        if binding_question:
+            default = 'bind'
         if default is not None and question["kind"] not in ("products", "reference"):
             write("回车使用：" + str(default))
         try:
@@ -42,6 +51,8 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
                 raise SetupError("SETUP_INPUT_TOO_LARGE")
             if answer == ":quit":
                 write("进度已保存；下次使用同一 session 文件继续。")
+                if existing_base_only:
+                    result['interrupted'] = True
                 return result
             if answer == ":back":
                 previous = []
@@ -64,6 +75,8 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
                 answer = question["choices"][index][0]
             elif question["kind"] == "products":
                 answer = read_input_file(answer)
+            if binding_question and answer != 'bind':
+                raise SetupError('SETUP_EXISTING_BASE_REQUIRED')
             result = store.answer({question["field"]: answer}, session["revision"])
             if result["invalidated_fields"]:
                 write("目标发生变化，相关配置需要重新填写：" + ", ".join(result["invalidated_fields"]))

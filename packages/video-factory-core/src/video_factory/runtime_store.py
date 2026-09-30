@@ -159,6 +159,14 @@ class RuntimeStore:
             value=json.loads(row['value']);value['expires_at']=0
             db.execute('UPDATE meta SET value=? WHERE key=?',(canonical(value),row['key']))
 
+        # A restored checkpoint may predate a successful external Base write.
+        # Fence every create project, even if the snapshot has no journal yet.
+        for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'setup:project:%'").fetchall():
+            value=json.loads(row['value'])
+            if value['configuration']['project']['base_mode']=='create':
+                key='setup:provision-recovery:'+value['configuration']['project']['id']
+                db.execute('INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,'{"required":true}'))
+
         for row in db.execute("SELECT key FROM meta WHERE key LIKE 'feishu:binding:%'").fetchall():
             key='feishu:reconfirm:'+row['key'][len('feishu:binding:'):]
             db.execute('INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,'{"required":true}'))

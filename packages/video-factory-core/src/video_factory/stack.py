@@ -93,11 +93,26 @@ def preflight(root,runtime_port=8787,n8n_port=5678):
 
 
 def validate_config(config):
-    if (not isinstance(config,dict) or set(config)!={'schema','deployment','instance','runtime_port','n8n_port','images','wheels','runtime_image'}
+    if (not isinstance(config,dict) or set(config)-{'image_bundle','resolved_images'}!={'schema','deployment','instance','runtime_port','n8n_port','images','wheels','runtime_image'}
             or type(config['schema']) is not int or config['schema'] not in (1,2) or config['images']!=images(config['schema'])
             or not re.fullmatch(r'[0-9a-f]{12}',str(config['instance']))
             or not re.fullmatch(r'[a-z][a-z0-9_-]{2,47}',str(config['deployment']))):
         raise RuntimeFault('STACK_CONFIG_UNSUPPORTED')
+    if 'image_bundle' in config:
+        from .image_bundle import validate_manifest
+        validate_manifest(config['image_bundle'], config['wheels'], config['images'])
+        bundle=config['image_bundle']
+        allowed={role:{image_id,bundle.get('oci_images',{}).get(role,image_id)} for role,image_id in bundle['images'].items()}
+        if 'resolved_images' in config:
+            resolved=config['resolved_images']
+            if (not isinstance(resolved,dict) or set(resolved)!=set(allowed)
+                    or any(not isinstance(v,str) or v not in allowed[k] for k,v in resolved.items())):
+                raise RuntimeFault('IMAGE_BUNDLE_RESOLVED_IDS_INVALID')
+            allowed['runtime']={resolved['runtime']}
+        if config['runtime_image'] is not None and config['runtime_image'] not in allowed['runtime']:
+            raise RuntimeFault('IMAGE_BUNDLE_RUNTIME_MISMATCH')
+    elif 'resolved_images' in config:
+        raise RuntimeFault('IMAGE_BUNDLE_RESOLVED_IDS_INVALID')
     ports=[config['runtime_port'],config['n8n_port']]
     if any(type(p) is not int or not 1024<=p<=65535 for p in ports) or len(set(ports))!=2:
         raise RuntimeFault('STACK_PORT_INVALID')
@@ -122,9 +137,11 @@ def write_json(path,value):
 
 def compose_document(config):
     validate_config(config)
+    service_images=config.get('resolved_images',config['image_bundle']['images']) if 'image_bundle' in config else config['images']
     common={'platform':'linux/amd64','restart':'unless-stopped','security_opt':['no-new-privileges:true'],
             'networks':['private'],'logging':{'driver':'json-file','options':{'max-size':'10m','max-file':'3'}}}
-    pg={**common,'image':config['images']['postgres'],
+    if 'image_bundle' in config:common['pull_policy']='never'
+    pg={**common,'image':service_images['postgres'],
         'environment':{'POSTGRES_USER':'postgres','POSTGRES_PASSWORD_FILE':'/run/secrets/postgres_password'},
         'secrets':['postgres_password','product_db_password','n8n_db_password'],
         'volumes':['./data/postgres:/var/lib/postgresql/data','./release/init-databases.sh:/docker-entrypoint-initdb.d/10-vf.sh:ro'],
@@ -144,7 +161,7 @@ def compose_document(config):
                'secrets':runtime['secrets']+['bootstrap_password'],
                'entrypoint':['python','-m','video_factory.container_entry'],'command':[],
                'healthcheck':{'disable':True}}
-    n8n={**common,'image':config['images']['n8n'],'user':'1000:1000',
+    n8n={**common,'image':service_images['n8n'],'user':'1000:1000',
          'depends_on':{'postgres':{'condition':'service_healthy'},'runtime':{'condition':'service_healthy'}},
 
          'volumes':['./data/n8n:/home/node/.n8n'], 'secrets':['n8n_db_password','n8n_encryption'],
@@ -160,7 +177,7 @@ def compose_document(config):
                         'GENERIC_TIMEZONE':'Asia/Shanghai','TZ':'Asia/Shanghai'},
          'healthcheck':{'test':['CMD','node','-e',"fetch('http://127.0.0.1:5678/healthz/readiness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"],
                         'interval':'5s','timeout':'5s','retries':48},'stop_grace_period':'60s'}
-    gateway={**common,'image':config['images']['gateway'],'user':'101:101','read_only':True,
+    gateway={**common,'image':service_images['gateway'],'user':'101:101','read_only':True,
              'cap_drop':['ALL'],'tmpfs':['/tmp:rw,noexec,nosuid,size=64m'],
              'networks':['private','management'],
              'entrypoint':['nginx','-g','daemon off;'],
@@ -306,6 +323,13 @@ class Stack:
     def build(self):
         local_engine()
         with self.lock():
+            if 'image_bundle' in self.config:
+                from .image_bundle import verify_loaded
+                self.config['resolved_images']=verify_loaded(self.config['image_bundle'])
+                self.config['runtime_image']=self.config['resolved_images']['runtime']
+                write_json(self.root/'stack.json',self.config)
+                write_json(self.root/'compose.json',compose_document(self.config))
+                return {'built':False,'offline_image_reused':True,'runtime_image':self.config['runtime_image']}
             tag='vf-runtime:'+digest(canonical(self.config['wheels']).encode())[:24]
             args=['docker','build','--network=none','--build-arg','PYTHON_IMAGE='+self.config['images']['python']]
             if self.config['schema']==2:args+=['--build-arg','FFMPEG_IMAGE='+self.config['images']['ffmpeg']]
@@ -402,7 +426,7 @@ class Stack:
                 'backup_key_included':False,'portability':'same_pinned_images_linux_amd64'}
 
 
-    def upgrade(self,candidate_root,wheelhouse,checkpoint,key):
+    def upgrade(self,candidate_root,wheelhouse,checkpoint,key,*,image_bundle=None):
         """Stage a product-wheel upgrade on a cold clone; recover original on failure.
 
         Component digests and DB schema remain fixed. The original data directory
@@ -412,6 +436,13 @@ class Stack:
         if (any(candidate_root.iterdir()) or candidate_root.is_relative_to(self.root)
                 or self.root.is_relative_to(candidate_root)):
             raise RuntimeFault('UPGRADE_REQUIRES_SEPARATE_EMPTY_DIRECTORY')
+        if 'image_bundle' in self.config and image_bundle is None:
+            raise RuntimeFault('OFFLINE_UPGRADE_REQUIRES_CANDIDATE_IMAGE_BUNDLE')
+        if image_bundle is not None:
+            from .image_bundle import validate_manifest, verify_loaded
+            from .setup_deploy import release_manifest
+            validate_manifest(image_bundle,release_manifest(wheelhouse),images())
+            verify_loaded(image_bundle)
         Fernet(key)
         candidate=None
         with self.lock():
@@ -430,13 +461,17 @@ class Stack:
                 candidate.config['images']=images(2)
                 work=candidate_root/'data/worker'
                 if not work.exists():work.mkdir(mode=0o700);os.chown(work,10001,10001)
+                candidate.config.pop('image_bundle',None)
+                candidate.config.pop('resolved_images',None)
+                if image_bundle is not None:candidate.config['image_bundle']=image_bundle
                 candidate.config['wheels']=hashes
                 candidate.config['runtime_image']=None
                 validate_config(candidate.config)
                 write_json(candidate_root/'stack.json',candidate.config)
                 write_json(candidate_root/'compose.json',compose_document(candidate.config))
                 candidate=Stack(candidate_root)
-                run(['docker','pull','--platform','linux/amd64',candidate.config['images']['ffmpeg']],timeout=600)
+                if image_bundle is None:
+                    run(['docker','pull','--platform','linux/amd64',candidate.config['images']['ffmpeg']],timeout=600)
                 candidate.build()
                 status=candidate.up()
                 if not status['infrastructure_ready']:

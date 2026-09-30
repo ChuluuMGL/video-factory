@@ -5,14 +5,15 @@ from pathlib import Path
 import secrets
 import threading
 
-from .feishu_oauth import DeviceOAuth
+from .feishu_oauth import DeviceOAuth, SCOPES, CREATE_SCOPES
 from .onboarding import SetupError
 from .postgres_store import selected_store
 from .review_http import ReviewServer, ReviewHandler
 from .review_cli import validate, run_window, app_secret, emit_json
 from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault
-from .setup_feishu import ConnectionSession, SetupFeishu, draft_binding, fingerprint
+from .setup_feishu import ConnectionSession, SetupFeishu, describe, fingerprint
+from .feishu_provision import is_create
 
 
 class ConnectionService:
@@ -25,7 +26,8 @@ class ConnectionService:
         draft = self.session.snapshot()
         if fingerprint(draft) != self.digest:
             raise RuntimeFault('SETUP_FEISHU_DRAFT_CHANGED_REOPEN_WINDOW')
-        draft_binding(draft)
+        if describe(draft)['status'] != 'connection_draft_ready':
+            raise RuntimeFault('SETUP_FEISHU_QUESTIONS_INCOMPLETE')
         with self.service.store.connect() as db:
             context = self.service.context(db, self.admin, draft)
         if context['project'] != self.project:
@@ -34,8 +36,9 @@ class ConnectionService:
 
     def identity(self, user):
         draft = self.context()
-        identity = self.service.client_factory(user).identity()
-        if identity['tenant_key'] != draft_binding(draft)['tenant_key']:
+        factory = self.service.provision_client_factory if is_create(draft) else self.service.client_factory
+        identity = factory(user).identity()
+        if identity['tenant_key'] != draft['setup']['configuration']['deployment']['feishu_tenant']:
             raise RuntimeFault('FEISHU_TENANT_OR_ROLE_DENIED')
         return identity
 
@@ -78,6 +81,9 @@ class ConnectionServer(ReviewServer):
             raise RuntimeFault('AUTH_SETUP_UNLOCK_REQUIRED')
         try:
             draft = self.service.context()
+            if action == '/api/mode':
+                if body: raise RuntimeFault('FIELDS_INVALID')
+                return {'create': is_create(draft), 'scopes': list(CREATE_SCOPES if is_create(draft) else SCOPES)}
             if action in ('/api/login', '/api/poll', '/api/logout'):
                 result = super().operation(session, action, body)
                 if action == '/api/logout': session['unlocked'] = False
@@ -124,7 +130,7 @@ def run_connect(args, *, emit=emit_json):
             raise RuntimeFault('CONTAINER_MODE_REQUIRED')
         service = ConnectionService(SetupFeishu(selected_store()(args.root)), secret_input(args.token_file, ''),
                                     ConnectionSession(args.session), args.project)
-        oauth = DeviceOAuth(args.app_id, app_secret(args))
+        oauth = DeviceOAuth(args.app_id, app_secret(args), scopes=CREATE_SCOPES if is_create(service.context()) else SCOPES)
         server = ConnectionServer(('0.0.0.0' if args.container_network else '127.0.0.1', args.port), service, oauth,
                                   seconds=args.seconds, container_network=args.container_network)
         server.timeout = 1

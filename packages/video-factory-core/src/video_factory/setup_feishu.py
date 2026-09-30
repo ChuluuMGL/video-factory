@@ -10,6 +10,7 @@ from .setup_project import session_plan
 from .feishu_bridge import FeishuBridge, configuration, meta, save, target
 from .feishu_client import FeishuClient, resource
 from .runtime_store import RuntimeFault, fingerprint
+from .feishu_provision import ProvisionClient, Provisioner, is_create, journal_key
 
 
 QUESTIONS = (
@@ -25,9 +26,8 @@ QUESTIONS = (
 def source_plan(setup):
     plan = session_plan(setup)
     config = plan['configuration']
-    if config['project']['base_mode'] != 'bind':
-        raise RuntimeFault('SETUP_FEISHU_REQUIRES_EXISTING_BASE_PLAN')
-    resource(config['project']['base_target'])
+    if config['project']['base_mode'] == 'bind':
+        resource(config['project']['base_target'])
     resource(config['deployment']['feishu_tenant'])
     for key in ('script_reviewer', 'video_reviewer'):
         resource(config['project'][key].removeprefix('feishu:'), 'ou_')
@@ -35,6 +35,12 @@ def source_plan(setup):
 
 
 def answer_value(field, value):
+    if field == 'workspace_kind':
+        if value not in ('test', 'production'): raise SetupError('SETUP_WORKSPACE_KIND_INVALID')
+        return value
+    if field == 'folder_token':
+        if value != '': resource(value)
+        return value
     prefix = next((prefix for name, _, prefix in QUESTIONS if name == field), None)
     if prefix is None:
         raise SetupError('SETUP_FEISHU_UNKNOWN_FIELD')
@@ -57,9 +63,11 @@ def validate_draft(draft):
         raise SetupError('SETUP_FEISHU_SESSION_INVALID')
     validate_session(draft['setup'])
     source_plan(draft['setup'])
+    allowed = {'workspace_kind', 'folder_token', 'submitters'} if is_create(draft) else {q[0] for q in QUESTIONS}
+    if set(draft['answers']) - allowed: raise SetupError('SETUP_FEISHU_UNKNOWN_FIELD')
     for field, value in draft['answers'].items():
         answer_value(field, value)
-    fields = [v for k, v in draft['answers'].items() if k not in ('table_id', 'submitters')]
+    fields = [v for k, v in draft['answers'].items() if k in ('task', 'sku_id', 'script', 'source_revision')]
     if len(set(fields)) != len(fields):
         raise SetupError('SETUP_FEISHU_DUPLICATE_FIELD_MAPPING')
 
@@ -67,12 +75,17 @@ def validate_draft(draft):
 def describe(draft):
     validate_draft(draft)
     plan = source_plan(draft['setup'])
-    missing = [(key, label, prefix) for key, label, prefix in QUESTIONS if key not in draft['answers']]
+    questions = ((('workspace_kind', '新工作区用途：test 测试（两条测试任务） / production 正式（不放测试任务）', ''),
+                  ('folder_token', '存放位置：输入飞书文件夹 Token，回车使用当前用户云空间根目录', ''),
+                  QUESTIONS[-1]) if is_create(draft) else QUESTIONS)
+    missing = [(key, label, prefix) for key, label, prefix in questions if key not in draft['answers']]
     question = None
     if missing:
         key, label, prefix = missing[0]
         item = {'type': 'string', 'pattern': '^' + prefix + '[A-Za-z0-9_-]{4,128}$'}
         schema = {'type': 'array', 'minItems': 1, 'maxItems': 100, 'uniqueItems': True, 'items': item} if key == 'submitters' else item
+        if key == 'workspace_kind': schema = {'type': 'string', 'enum': ['test', 'production']}
+        if key == 'folder_token': schema = {'type': 'string', 'pattern': '^([A-Za-z0-9_-]{4,128})?$'}
         question = {'field': key, 'question': label, 'input_schema': schema, 'accepts_secret_value': False}
     return {'status': 'needs_input' if missing else 'connection_draft_ready',
             'revision': draft['revision'], 'next_question': question,
@@ -120,6 +133,7 @@ class ConnectionSession(SessionStore):
 
 
 def draft_binding(draft):
+    if is_create(draft): raise RuntimeFault('SETUP_FEISHU_CREATION_RECEIPT_REQUIRED')
     if describe(draft)['status'] != 'connection_draft_ready':
         raise RuntimeFault('SETUP_FEISHU_QUESTIONS_INCOMPLETE')
     config = source_plan(draft['setup'])['configuration']
@@ -134,9 +148,10 @@ def draft_binding(draft):
 
 
 class SetupFeishu:
-    def __init__(self, store, *, client_factory=FeishuClient):
+    def __init__(self, store, *, client_factory=FeishuClient, provision_client_factory=ProvisionClient):
         self.store = store
         self.client_factory = client_factory
+        self.provision_client_factory = provision_client_factory
 
     def context(self, db, admin, draft):
         actor = self.store.authorize(db, admin, 'admin')
@@ -157,6 +172,7 @@ class SetupFeishu:
                 'previous_binding': current, 'requires_reconfirmation': bool(meta(db, 'feishu:reconfirm:' + project))}
 
     def prepare(self, admin, draft, user):
+        if is_create(draft): return Provisioner(self).prepare(admin, draft, user)
         binding = draft_binding(draft)
         with self.store.connect() as db:
             context = self.context(db, admin, draft)
@@ -176,6 +192,7 @@ class SetupFeishu:
                 'reviewer_identity_acceptance': 'not_run', 'feishu_writes': 0, 'model_calls': 0}
 
     def apply(self, admin, draft, user, expected_plan):
+        if is_create(draft): return Provisioner(self).apply(admin, draft, user, expected_plan)
         prepared = self.prepare(admin, draft, user)
         if expected_plan != prepared['plan_sha256']:
             raise RuntimeFault('SETUP_FEISHU_PLAN_CHANGED')
@@ -195,6 +212,16 @@ class SetupFeishu:
                 'feishu_writes': 0, 'model_calls': 0}
 
     def status(self, admin, draft):
+        if is_create(draft):
+            with self.store.connect() as db:
+                context = self.context(db, admin, draft)
+                journal = meta(db, journal_key(draft))
+                recovery = bool(meta(db, 'setup:provision-recovery:'+context['project']))
+            binding = journal.get('binding') if journal else None
+            return {'project': context['project'], 'binding_matches_draft': bool(binding) and binding == context['previous_binding'] and journal['draft_sha256'] == fingerprint(draft),
+                    'requires_reconfirmation': context['requires_reconfirmation'] or recovery,
+                    'provisioning': journal, 'remote_verification': 'not_run_in_status',
+                    'business_ready': False, 'model_calls': 0, 'feishu_writes': 0}
         binding = draft_binding(draft)
         with self.store.connect() as db:
             context = self.context(db, admin, draft)

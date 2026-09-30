@@ -13,10 +13,12 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, ProxyHandler, build_opener
 
 from .h3_provider import NoRedirect, TunnelHandler
+from .feishu_client import MAX_USER_TOKEN_LENGTH
 from .runtime_store import RuntimeFault
 
 HOSTS = {'accounts.feishu.cn', 'open.feishu.cn'}
 SCOPES = ('bitable:app:readonly', 'contact:user.base:readonly')
+CREATE_SCOPES = SCOPES + ('base:app:create', 'base:table:create', 'base:record:create')
 
 
 class OAuthTunnel(HTTPSConnection):
@@ -51,13 +53,15 @@ class DeviceOAuth:
     accounts_origin = 'https://accounts.feishu.cn'
     token_origin = 'https://open.feishu.cn'
 
-    def __init__(self, app_id, app_secret):
+    def __init__(self, app_id, app_secret, *, scopes=SCOPES):
         if not isinstance(app_id, str) or not re.fullmatch(r'cli_[A-Za-z0-9_-]{4,128}', app_id):
             raise RuntimeFault('FEISHU_APP_ID_INVALID')
         text_value(app_secret)
         if ':' in app_secret:
             raise RuntimeFault('FEISHU_APP_SECRET_INVALID')
-        self.app_id, self.app_secret = app_id, app_secret
+        if tuple(scopes) not in (SCOPES, CREATE_SCOPES):
+            raise RuntimeFault('FEISHU_OAUTH_SCOPE_INVALID')
+        self.app_id, self.app_secret, self.scopes = app_id, app_secret, tuple(scopes)
 
     def post(self, origin, path, body, *, basic=False):
         handlers = [ProxyHandler({}), NoRedirect()]
@@ -89,7 +93,7 @@ class DeviceOAuth:
 
     def start(self):
         value = self.post(self.accounts_origin, '/oauth/v1/device_authorization',
-                          {'client_id': self.app_id, 'scope': ' '.join(SCOPES)}, basic=True)
+                          {'client_id': self.app_id, 'scope': ' '.join(self.scopes)}, basic=True)
         if value.get('error') or value.get('code', 0) != 0:
             raise RuntimeFault('FEISHU_OAUTH_START_DENIED')
         value = value.get('data', value)
@@ -118,6 +122,6 @@ class DeviceOAuth:
         expires = value.get('expires_in')
         if type(expires) is not int or not 30 <= expires <= 86400:
             raise RuntimeFault('FEISHU_OAUTH_RESPONSE_INVALID')
-        if 'scope' in value and (not isinstance(value['scope'], str) or not set(SCOPES) <= set(value['scope'].split())):
+        if 'scope' in value and (not isinstance(value['scope'], str) or not set(self.scopes) <= set(value['scope'].split())):
             raise RuntimeFault('FEISHU_OAUTH_SCOPE_MISSING')
-        return {'status': 'authorized', 'access_token': text_value(value.get('access_token')), 'expires_in': expires}
+        return {'status': 'authorized', 'access_token': text_value(value.get('access_token'), MAX_USER_TOKEN_LENGTH), 'expires_in': expires}

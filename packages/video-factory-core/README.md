@@ -1,6 +1,6 @@
-# Video Factory Core 0.1.0a19
+# Video Factory Core 0.1.0a20
 
-Product direction and current gaps: [self-hosted PRD](../../docs/product/PRD.md), [implementation status](../../docs/product/STATUS.md), and [planned Setup contract](../../docs/product/SETUP_CONTRACT.md). The four-task real H3 canary lives separately in `isolated/`; its acceptance does not enable this bootstrap or its general worker routes.
+Product direction and current gaps: [self-hosted PRD](../../docs/product/PRD.md), [implementation status](../../docs/product/STATUS.md), and [planned Setup contract](../../docs/product/SETUP_CONTRACT.md). Historical client-specific canaries are retained only in the private legacy repository; they are not customer installers.
 
 ## Candidate distribution
 

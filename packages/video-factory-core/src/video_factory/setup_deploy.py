@@ -15,6 +15,7 @@ from .onboarding import SessionStore, SetupError
 from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault, canonical, fingerprint, private_directory
 from .setup_project import session_plan
+from . import image_bundle
 from .stack import Stack, admin_host, local_engine, images, digest, read_stack_config
 from .stack_cli import install_stack
 
@@ -25,6 +26,7 @@ def register_setup_deploy(commands):
     p.add_argument('--session', type=Path, required=True)
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--host', required=True, help='explicit Setup host label; run on that host via trusted SSH')
+    image_bundle.add_arguments(p)
     p.add_argument('--wheelhouse', type=Path)
     p.add_argument('--expect-plan', help='execution_sha256 returned by setup-deploy plan')
     p.add_argument('--password-file', type=Path)
@@ -93,6 +95,10 @@ def execution_plan(args, session):
               'declared_host': args.host, 'local_machine': local_machine(), 'root': str(root),
               'deployment': plan['configuration']['deployment']['id'], 'project': plan['configuration']['project']['id'],
               'wheels': manifest, 'images': deployment_images, 'runtime_port': runtime_port, 'n8n_port': n8n_port}
+    bundle=image_bundle.requested(args,manifest,deployment_images)
+    if bundle is not None:
+        if args.image_bundle.is_relative_to(root):raise RuntimeFault('SETUP_INPUTS_MUST_BE_OUTSIDE_DESTINATION')
+        target['image_bundle_manifest_sha256']=args.image_manifest_sha256
     return {'execution_sha256': fingerprint(target), 'target': target,
             'execution_mode': 'on_customer_host', 'host_identity': 'local_machine_bound_dns_not_verified',
             'actions': ['install_or_resume_stack', 'authenticate_local_admin', 'import_disabled_project_and_skus', 'read_back'],
@@ -113,6 +119,7 @@ def project_operation(stack, session, password, action):
 def apply_setup(args, session, reviewed, password):
     options = SimpleNamespace(root=args.root, deployment=reviewed['target']['deployment'],
                               wheelhouse=args.wheelhouse, password_file=None,
+                              image_bundle=getattr(args,'image_bundle',None),image_manifest_sha256=getattr(args,'image_manifest_sha256',None),
                               runtime_port=reviewed['target']['runtime_port'], n8n_port=reviewed['target']['n8n_port'])
     infrastructure = install_stack(options, password=password, expected_wheels=reviewed['target']['wheels'])
     if not infrastructure['infrastructure_ready']:

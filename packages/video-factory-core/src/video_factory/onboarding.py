@@ -88,7 +88,7 @@ QUESTIONS = (
     Question("project.business_goal", "project", "内容目标"),
     Question("project.category_rule_source", "project", "商品事实及品类规则的资料来源"),
     Question("project.base_mode", "project", "飞书 Base 设置", "choice",
-             (("create", "在客户租户内规划新 Base"), ("bind", "规划绑定明确的已有 Base")), "create"),
+             (("create", "新建 Base（授权确认后创建）"), ("bind", "绑定已有 Base（授权后核验）")), "create"),
     Question("project.base_target", "project", "新 Base 名称或已有 Base 标识（稍后需实际验证）"),
     Question("project.script_reviewer", "project", "脚本审核人飞书身份引用（feishu:用户ID）", "identity"),
     Question("project.video_reviewer", "project", "视频审核人飞书身份引用（feishu:用户ID）", "identity"),

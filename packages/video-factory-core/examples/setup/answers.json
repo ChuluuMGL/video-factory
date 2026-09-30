@@ -1,0 +1,30 @@
+{
+  "organization.id": "example_org",
+  "organization.name": "Example customer — synthetic only",
+  "organization.admin_ref": "feishu:ou_example_owner",
+  "deployment.id": "example_test",
+  "deployment.host": "customer.example.invalid",
+  "deployment.ssh_user": "ubuntu",
+  "deployment.ssh_identity_ref": "secret:example_ssh",
+  "deployment.feishu_tenant": "example_tenant",
+  "deployment.feishu_credential_ref": "env:EXAMPLE_FEISHU_CREDENTIAL",
+  "deployment.n8n_mode": "bundled",
+  "project.id": "new_brand",
+  "project.name": "Synthetic new brand",
+  "project.product_category": "home care",
+  "project.target_market": "United States",
+  "project.language": "English",
+  "project.business_goal": "Demonstrate an offline setup plan",
+  "project.category_rule_source": "Synthetic product sheet; not approved for production",
+  "project.base_mode": "create",
+  "project.base_target": "Example customer test Base",
+  "project.script_reviewer": "feishu:ou_example_script",
+  "project.video_reviewer": "feishu:ou_example_video",
+  "project.products": [
+    {"sku_id": "EXAMPLE-001", "name": "Example product", "variant": "single unit", "truth_source": "Synthetic packaging specification"}
+  ],
+  "project.video_route": "minimax_h3_canary",
+  "project.video_credential_ref": "env:EXAMPLE_VIDEO_CREDENTIAL",
+  "project.billing_owner": "example_customer_account",
+  "project.spend_policy": "manual_per_run"
+}

@@ -9,6 +9,9 @@ from .h3_provider import NoRedirect, TunnelHandler
 from .runtime_store import RuntimeFault
 
 HOST='open.feishu.cn'
+# Real device-flow tokens can exceed 4 KiB. Keep the same bounded limit at
+# OAuth receipt and API use; the token remains opaque and memory-only.
+MAX_USER_TOKEN_LENGTH = 16384
 
 
 def resource(value,prefix=''):
@@ -30,7 +33,7 @@ class FeishuHandler(TunnelHandler):
 class FeishuClient:
     origin='https://'+HOST
     def __init__(self,user_token):
-        if not isinstance(user_token,str) or not user_token or len(user_token)>4096 or any(c.isspace() for c in user_token):
+        if not isinstance(user_token,str) or not user_token or len(user_token)>MAX_USER_TOKEN_LENGTH or any(c.isspace() for c in user_token):
             raise RuntimeFault('FEISHU_USER_TOKEN_REQUIRED')
         self.token=user_token
 

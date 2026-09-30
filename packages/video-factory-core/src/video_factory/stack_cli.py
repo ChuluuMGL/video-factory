@@ -8,13 +8,15 @@ from cryptography.fernet import Fernet
 
 from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault, exclusive_write, private_directory
-from .stack import Stack, images, run, preflight, admin_host, local_engine
+from . import image_bundle
+from .stack import Stack, images, run, preflight, admin_host, local_engine, write_json, compose_document
 
 
 def register_stack(commands):
     p=commands.add_parser('stack',help='pinned runtime + n8n + PostgreSQL container deployment')
-    p.add_argument('action',choices=('install','preflight','prepare','fetch','build','up','status','stop','down','keygen','backup','restore','upgrade'))
+    p.add_argument('action',choices=('export-images','install','preflight','prepare','fetch','build','up','status','stop','down','keygen','backup','restore','upgrade'))
     p.add_argument('--root',type=Path,required=True)
+    image_bundle.add_arguments(p)
     p.add_argument('--deployment')
     p.add_argument('--wheelhouse',type=Path)
     p.add_argument('--password-file',type=Path)
@@ -31,6 +33,9 @@ def install_stack(args, *, password=None, expected_wheels=None):
     local_engine()
     if not args.deployment or not args.wheelhouse:
         raise RuntimeFault('DEPLOYMENT_AND_RELEASE_REQUIRED')
+    from .setup_deploy import release_manifest
+    incoming=release_manifest(args.wheelhouse)
+    bundle=image_bundle.requested(args,incoming,images())
     if not args.root.exists():
         if not args.root.is_absolute() or args.root.parent.resolve()!=args.root.parent:
             raise RuntimeFault('STACK_ABSOLUTE_DIRECTORY_REQUIRED')
@@ -51,8 +56,22 @@ def install_stack(args, *, password=None, expected_wheels=None):
                             args.runtime_port or 8787,args.n8n_port or 5678)
     if expected_wheels is not None and stack.config['wheels'] != expected_wheels:
         raise RuntimeFault('SETUP_RELEASE_CHANGED_BEFORE_EXECUTION')
-    for name in ('python','postgres','n8n','gateway') + (('ffmpeg',) if stack.config['schema']==2 else ()):
-        run(['docker','pull','--platform','linux/amd64',stack.config['images'][name]],timeout=600)
+    if bundle is not None:
+        with stack.lock():
+            if 'image_bundle' in stack.config and stack.config['image_bundle']!=bundle:
+                raise RuntimeFault('INSTALL_RESUME_IMAGE_BUNDLE_CHANGED')
+            if stack.config['runtime_image'] and 'image_bundle' not in stack.config:
+                raise RuntimeFault('EXISTING_ONLINE_STACK_USE_UPGRADE')
+            image_bundle.import_bundle(args.image_bundle,args.image_manifest_sha256,stack.config['wheels'],stack.config['images'])
+            stack.config['image_bundle']=bundle
+            write_json(stack.root/'stack.json',stack.config)
+            write_json(stack.root/'compose.json',compose_document(stack.config))
+    if 'image_bundle' in stack.config:
+        image_bundle.verify_loaded(stack.config['image_bundle'])
+    else:
+        for name in ('python','postgres','n8n','gateway') + (('ffmpeg',) if stack.config['schema']==2 else ()):
+            try:run(['docker','pull','--platform','linux/amd64',stack.config['images'][name]],timeout=600)
+            except RuntimeFault:raise RuntimeFault('REGISTRY_IMAGE_FETCH_FAILED_USE_TRUSTED_IMAGE_BUNDLE') from None
     if not stack.config['runtime_image']:
         stack.build()
     return stack.up()
@@ -60,7 +79,9 @@ def install_stack(args, *, password=None, expected_wheels=None):
 
 def run_stack(args):
     try:
-        if args.action=='install':
+        if args.action=='export-images':
+            result=image_bundle.export_bundle(args.root,args.wheelhouse)
+        elif args.action=='install':
             result=install_stack(args)
         elif args.action=='preflight':
             result=preflight(args.root,args.runtime_port or 8787,args.n8n_port or 5678)
@@ -80,9 +101,18 @@ def run_stack(args):
             stack=Stack(args.root)
             if args.action=='fetch':
                 local_engine()
-                for name in ('python','postgres','n8n','gateway') + (('ffmpeg',) if stack.config['schema']==2 else ()):
-                    run(['docker','pull','--platform','linux/amd64',stack.config['images'][name]],timeout=600)
-                result={'pinned_images_fetched':True}
+                bundle=image_bundle.requested(args,stack.config['wheels'],stack.config['images'])
+                if 'image_bundle' in stack.config:
+                    if bundle!=stack.config['image_bundle']:
+                        raise RuntimeFault('RESTORE_REQUIRES_ORIGINAL_IMAGE_BUNDLE')
+                    image_bundle.import_bundle(args.image_bundle,args.image_manifest_sha256,stack.config['wheels'],stack.config['images'])
+                    result={'offline_images_loaded':True}
+                elif bundle is not None:
+                    raise RuntimeFault('ONLINE_STACK_CANNOT_REBIND_IMAGES_USE_UPGRADE')
+                else:
+                    for name in ('python','postgres','n8n','gateway') + (('ffmpeg',) if stack.config['schema']==2 else ()):
+                        run(['docker','pull','--platform','linux/amd64',stack.config['images'][name]],timeout=600)
+                    result={'pinned_images_fetched':True}
             elif args.action=='build':result=stack.build()
             elif args.action=='up':result=stack.up()
             elif args.action=='status':result=stack.status()
@@ -98,7 +128,11 @@ def run_stack(args):
             elif args.action=='upgrade':
                 if not args.candidate_root or not args.wheelhouse or not args.output or not args.backup_key_file:
                     raise RuntimeFault('CANDIDATE_RELEASE_CHECKPOINT_AND_KEY_REQUIRED')
-                result=stack.upgrade(args.candidate_root,args.wheelhouse,args.output,secret_input(args.backup_key_file,''))
+                from .setup_deploy import release_manifest
+                bundle=image_bundle.requested(args,release_manifest(args.wheelhouse),images())
+                if bundle is not None:
+                    image_bundle.import_bundle(args.image_bundle,args.image_manifest_sha256,bundle['wheels'],images())
+                result=stack.upgrade(args.candidate_root,args.wheelhouse,args.output,secret_input(args.backup_key_file,''),image_bundle=bundle)
             elif args.action=='backup':
                 if not args.output or not args.backup_key_file:
                     raise RuntimeFault('BACKUP_OUTPUT_AND_KEY_REQUIRED')

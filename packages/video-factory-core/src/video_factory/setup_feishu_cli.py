@@ -101,7 +101,7 @@ def run(args):
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 130 if result.get('interrupted') else (2 if 'error' in result else 0)
     except (SetupError, RuntimeFault) as error:
-        print(json.dumps({'error': str(error), 'business_ready': False, 'feishu_writes': 0, 'model_calls': 0})); return 2
+        print(json.dumps({'error': str(error), 'business_ready': False, 'feishu_writes': 'unknown_read_status', 'model_calls': 0})); return 2
     except Exception:
         print(json.dumps({'error': 'SETUP_FEISHU_OPERATION_FAILED_READ_STATUS', 'business_ready': False,
-                          'feishu_writes': 0, 'model_calls': 0})); return 2
+                          'feishu_writes': 'unknown_read_status', 'model_calls': 0})); return 2

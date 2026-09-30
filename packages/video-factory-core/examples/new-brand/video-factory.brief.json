@@ -1,0 +1,21 @@
+{
+  "project_id": "example_homecare",
+  "product_category": "home care",
+  "target_market": "United States",
+  "business_goal": "increase qualified product-page visits and sales",
+  "feishu_target": "new Base in an approved test space",
+  "n8n_target": "isolated test instance",
+  "script_reviewer": "named content reviewer",
+  "video_reviewer": "named video QA reviewer",
+  "model_route": "script API and video local; endpoint configuration pending",
+  "spend_policy": "per-item cap and retry count require approval before activation",
+  "category_rule_source": "approved product sheet and current platform policy",
+  "products": [
+    {
+      "sku_id": "EXAMPLE-001",
+      "name": "Example Homecare Product",
+      "variant": "single unit",
+      "truth_source": "approved package and product sheet, verification pending"
+    }
+  ]
+}

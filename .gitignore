@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.egg-info/
+packages/*/build/
+.DS_Store
+evidence/
+ci-*/
+.delivery-preview/
+.vf-setup/

@@ -1,0 +1,18 @@
+{
+  "schema": "vf.mock.v1",
+  "provider": "mock",
+  "projects": {
+    "fixture_alpha": {
+      "label": "示例 A · 文具",
+      "fields": {"direction": "创作要求", "sku": "文具编号"},
+      "rules": ["仅使用虚构文具信息", "不作功效承诺"],
+      "assets": ["fixture_alpha:pencil_mock"]
+    },
+    "fixture_beta": {
+      "label": "示例 B · 家居",
+      "fields": {"direction": "内容方向", "sku": "家居型号"},
+      "rules": ["仅使用虚构家居信息", "不宣称真实材质认证"],
+      "assets": ["fixture_beta:cup_mock"]
+    }
+  }
+}

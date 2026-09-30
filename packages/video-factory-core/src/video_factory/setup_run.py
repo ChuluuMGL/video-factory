@@ -19,6 +19,7 @@ from .setup_deploy import execution_plan, apply_setup, project_operation
 from .setup_admin import rpc
 from .setup_connect import run_connect
 from .review_cli import run_window
+from . import image_bundle
 from .stack import Stack, admin_host, local_engine
 
 
@@ -26,6 +27,7 @@ def register(commands):
     p = commands.add_parser('setup-run', help='interactive customer-host installation, login and Feishu connection')
     p.add_argument('--session', type=Path, required=True)
     p.add_argument('--root', type=Path, required=True)
+    image_bundle.add_arguments(p)
     p.add_argument('--wheelhouse', type=Path, required=True)
     p.add_argument('--from-session', type=Path)
     p.add_argument('--runtime-port', type=int)
@@ -89,16 +91,15 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
     write('欢迎使用 Video Factory 安装与接入向导')
     write('请在客户目标服务器运行。每个阶段先核对再执行；输入 :quit 可保存退出。')
     write('配置会自动保存；密码和应用密钥使用隐藏输入，不能交给 Agent 对话记录。')
-    write('本入口目前连接已有 Base；配置时请选择绑定已有表格。自动建表尚未提供。')
+    write('可新建测试/正式 Base，或连接已有 Base。新建需本人授权并确认后执行。')
     store = SessionStore(args.session)
     source = SessionStore(args.from_session).read() if args.from_session else None
     store.start(source)
-    result = setup_questions(store, read=read, read_reference=hidden, write=write, next_step='接下来在本向导核对安装计划，再决定是否执行。')
+    result = setup_questions(store, read=read, read_reference=hidden, write=write,
+                            next_step='接下来在本向导核对安装计划，再决定是否执行。', existing_base_only=False)
     if result.get('interrupted') or result['status'] != 'plan_ready':
         return {'status': 'configuration_saved', 'business_ready': False}
     session = store.read()
-    # This unified path only binds an explicit existing Base. Never claim that
-    # the earlier planner's create option has actually provisioned one.
     plan = source_plan(session)
     args.host = plan['configuration']['deployment']['host']
     reviewed = execution_plan(args, session)
@@ -111,6 +112,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
     write('安装目录：'+target['root']+'；项目：'+target['project']+'；SKU 数量：'+str(reviewed['sku_count']))
     write('产品端口：'+str(target['runtime_port'])+'；n8n 端口：'+str(target['n8n_port']))
     write('发行文件及校验值：'+canonical(target['wheels']))
+    write('镜像来源：'+('已核验离线包 '+target['image_bundle_manifest_sha256'] if 'image_bundle_manifest_sha256' in target else '固定摘要在线镜像；已有离线部署续接会复用本地镜像'))
     write('计划校验值：'+reviewed['execution_sha256'])
     if not choice('确认在这台机器安装或继续', read, write):
         return {'status': 'installation_not_started', 'business_ready': False}
@@ -120,7 +122,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
     if fresh and hidden('再次输入管理员密码: ') != password:
         raise RuntimeFault('SETUP_PASSWORD_CONFIRMATION_MISMATCH')
     installed = install(args, store, session, reviewed, password)
-    write('基础服务和项目配置已回读。下一步连接已有飞书表格。')
+    write('基础服务和项目配置已回读。下一步配置飞书工作区。')
     connection = ConnectionSession(args.session.with_name(args.session.name+'.feishu.json'))
     connection.start(session)
     result = connection_questions(connection, read=read, write=write, next_step='连接草稿已保存。接下来登录管理员，配置本项目的飞书应用。')
