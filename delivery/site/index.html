@@ -2,35 +2,125 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Video Factory 安装与项目指南。把完整 Skill 交给 Agent，在自己的服务器上部署，按步骤连接飞书和建立项目。">
+  <meta name="description" content="Video Factory 帮助团队从商品资料生成脚本和视频，并完成审核与下载。了解如何通过 AI 助手，在自己的服务器上安装和配置视频工作区。">
   <meta name="robots" content="noindex,nofollow">
-  <title>Video Factory · 安装与项目指南</title>
+  <title>Video Factory · 产品介绍与安装指南</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%2302040a'/%3E%3Cpath d='M16 12v24l21-12z' fill='%233b82f6'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <script src="delivery-config.js" defer></script><script src="app.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#start">跳到安装指南</a>
-  <header><a class="brand" href="#">▸ <span>Video Factory</span></a><nav aria-label="主要导航"><a href="#how">产品形态</a><a href="#start">安装指南</a><a href="#projects">新增项目</a><a href="#status">版本状态</a></nav><span class="edition">受控测试版</span></header>
+  <header>
+    <a class="brand" href="#">▸ <span>Video Factory</span></a>
+    <nav aria-label="主要导航"><a href="#how">安装后有什么</a><a href="#start">怎样安装</a><a href="#projects">新增项目</a><a href="#status">测试进展</a></nav>
+    <span class="edition">受邀测试中</span>
+  </header>
   <main>
     <section class="hero">
-      <div class="hero-copy"><a class="brand-home" href="https://www.yueyu.tech/zh/solutions/ai-workflow-models">月瑀科技 / AI 工作流与模型服务 ↗</a><p class="eyebrow">YOUR SERVER. YOUR PROJECTS.</p><h1>把安装交给 Agent。<br><em>项目留在自己手里。</em></h1><p class="lead">一个可重复使用的 Skill，帮助你部署 Video Factory、连接飞书，并在自己的服务器上管理多个视频项目。</p><a class="button primary" href="#start">开始安装准备 <span>↗</span></a><p class="small">适合公司内部实施、同事代装与受邀客户测试。</p></div>
-      <aside class="map" aria-label="部署结构"><p class="map-title">一套服务，多个项目</p><div class="map-row"><span class="number">01</span><div><strong>你的电脑</strong><p>Agent ＋ Setup Skill</p></div><span class="tag">安装一次</span></div><div class="map-line">连接与配置 ↓</div><div class="map-row server"><span class="number">02</span><div><strong>你的服务器</strong><p>Video Factory · n8n · 数据库</p></div></div><div class="project-rows"><span>项目 A <small>商品 · 人员 · 任务</small></span><span>项目 B <small>独立配置与记录</small></span><span class="muted">＋ 后续继续新增项目</span></div><p class="map-foot">不同客户独立部署。日常工作从飞书与审核入口进入。</p></aside>
+      <div class="hero-copy">
+        <a class="brand-home" href="https://www.yueyu.tech/zh/solutions/ai-workflow-models">月瑀科技 / AI 工作流与模型服务 ↗</a>
+        <p class="eyebrow">团队的视频制作工作区</p>
+        <h1>从商品资料，<br><em>到可审核的视频。</em></h1>
+        <p class="lead">在一个工作区里生成脚本、修改内容、确认视频生成，再审核和下载结果。服务安装在你自己的服务器上，由你的团队管理项目和账号。</p>
+        <a class="button primary" href="#start">查看安装步骤 <span>↓</span></a>
+        <p class="small">管理员或实施同事负责安装。安装完成后，员工打开网页即可使用。</p>
+      </div>
+      <aside class="map" aria-label="电脑和服务器各做什么">
+        <p class="map-title">电脑负责安装操作，服务器负责运行</p>
+        <div class="map-row"><div><strong>管理员的电脑</strong><p>通过 AI 助手连接和配置服务器</p></div><span class="tag">安装与维护</span></div>
+        <div class="map-line">按引导完成安装 ↓</div>
+        <div class="map-row server"><div><strong>客户自己的服务器</strong><p>保存项目资料，执行已确认的生成任务</p></div></div>
+        <div class="project-rows"><span>夏季新品项目 <small>自己的商品、人员与任务</small></span><span>秋季上新项目 <small>另外配置，保留原有项目</small></span></div>
+        <p class="map-foot">同一客户可复用服务器添加项目。不同客户分别安装和管理。</p>
+      </aside>
     </section>
-    <section class="notice" aria-label="当前交付范围"><strong>先了解这次能测试什么</strong><p>当前为受控候选：a27 已验证安装、飞书接入与脚本审核；a28 补齐环境准备、私有输入、常驻员工页面及 SKU 到视频的逐条授权流程，以同版检查结果为准。真实模型、域名和独立客户验收仍需完成，暂不作为生产交付。</p></section>
-    <section id="how" class="section"><div class="section-heading"><p class="eyebrow">01 / 安装后得到什么</p><h2>从一份 Skill，到你的项目空间。</h2></div><div class="outcomes"><article><span class="index">A</span><h3>可复用的管理入口</h3><p>Skill 留在操作者的 Agent 中。以后添加项目、续接安装或检查问题，继续使用它。</p></article><article><span class="index">B</span><h3>自己的云端服务</h3><p>产品、n8n 和数据库部署在你的服务器。电脑用于操作，业务数据保留在客户环境。</p></article><article><span class="index">C</span><h3>项目与交接记录</h3><p>每个项目有商品、飞书工作区和人员配置。安装结束交付实际入口、检查结果与后续步骤。</p></article></div></section>
-    <section id="start" class="section install"><div class="section-heading"><p class="eyebrow">02 / 从这里开始</p><h2>选好场景，把这段话交给 Agent。</h2><p>不需要先学习服务器内部命令。Agent 会按阶段询问信息并引导操作。</p></div>
-      <div class="install-grid"><div>
-        <div class="scenarios" role="group" aria-label="选择操作场景"><button type="button" data-mode="install" aria-pressed="true">首次部署</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续安装</button><button type="button" data-mode="repair" aria-pressed="false">检查修复</button></div>
-        <label class="prompt-label" for="agent-prompt">复制给你的 Agent</label><textarea id="agent-prompt" readonly rows="7">正在读取交付信息……</textarea>
-        <div class="actions"><button type="button" class="button primary" id="copy-prompt">复制安装指引 <span>↗</span></button><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill</a></div><p id="copy-feedback" role="status" aria-live="polite"></p>
-        <p class="small">下载 ZIP 后可以作为附件交给 Agent。包内包含 SKILL.md 和配套说明，不能只保留一个文件。已有 Skill 可直接调用。</p>
-        <details><summary>查看 Skill 与固定版本来源</summary><dl class="source-list"><dt>Skill 阅读入口</dt><dd><a href="skill/SKILL.md" id="skill-source">查看 SKILL.md</a></dd><dt>安装包来源</dt><dd><a id="release-link">读取中</a></dd><dt>版本</dt><dd id="version">读取中</dd><dt>交付校验</dt><dd><a href="release.json">查看版本与校验信息</a></dd></dl><p class="small">安装包当前在私有仓库。操作者需要自己的读取权限，或由获授权同事传输已校验的包。不要分享维护者的 GitHub token。此页面是私有预览；跨设备 Agent 无法打开时，使用下载附件。</p></details>
-      </div><aside class="preparation"><h3>准备这几样就好</h3><ol><li><strong>一个支持 Skill 的 Agent</strong><span>能够读取文件，并在授权后连接服务器。</span></li><li><strong>一台自己的 Linux 服务器</strong><span>Ubuntu 24.04 x86_64，至少 4 GiB 内存；a28 安装器可准备 Python、Docker 和 Compose。Agent 核对空间、网络和现有服务。</span></li><li><strong>飞书与项目信息</strong><span>应用、组织、项目、商品和审核人员。新建测试表时不用提前找表 ID。</span></li><li><strong>你来完成的安全输入</strong><span>管理员密码、App Secret 和模型 Key 在私有输入界面填写；不发进聊天。常驻员工入口另需域名和 HTTPS 证书。</span></li></ol></aside></div>
+    <section class="notice" aria-label="当前测试范围">
+      <strong>目前仅限受邀测试</strong>
+      <p>安装和任务流程已有自动化测试，真实模型生成、正式访问网址，以及新用户独立安装仍待验收。当前版本还不能作为已完成验收的生产系统交付。</p>
     </section>
-    <section id="setup" class="section"><div class="section-heading"><p class="eyebrow">03 / Agent 会怎样带你完成</p><h2>每一步都知道在做什么。</h2></div><ol class="steps"><li><span>01</span><div><h3>确认目标</h3><p>选择首次部署或已有项目，确认组织和服务器。只问当前阶段需要的信息。</p></div></li><li><span>02</span><div><h3>检查并准备环境</h3><p>Agent 读取固定版本，核验文件，检查服务器环境；存在缺项时说明解决方式。</p></div></li><li><span>03</span><div><h3>配置项目并部署</h3><p>整理商品资料、人员和模型意图。你核对计划并设置管理员密码，安装器部署服务。</p></div></li><li><span>04</span><div><h3>授权飞书并创建工作区</h3><p>选择新建测试 Base 或绑定已有表，完成应用凭据输入和本人授权，回读实际资源。</p></div></li><li><span>05</span><div><h3>配置员工入口与模型</h3><p>Agent 配置 HTTPS 员工工作区、SKU 素材和项目 n8n 调度。你核对模型账户与授权范围，密钥保存在自己的服务器。</p></div></li><li><span>06</span><div><h3>走完首个任务并交接</h3><p>从 SKU 创建脚本，退回修订并审核，再逐条授权视频生成。审核成片后下载；分别交接入口、真实结果和剩余事项。</p></div></li></ol><p class="inline-note">a28 当前支持 DeepSeek Flash 脚本和 MiniMax H3 视频，其他模型尚未接入。每次生成需单独确认，安装配置本身不会花费模型额度。</p></section>
-    <section id="projects" class="section projects"><div><p class="eyebrow">04 / 项目增加以后</p><h2>新增项目，<br>不用重装整套服务。</h2><p>同一客户复用服务和 n8n，为新项目配置独立商品、Base、人员和模型。新客户或新服务器才需要部署另一套服务。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></div><div class="example"><p class="eyebrow">你可以这样说</p><blockquote>“在我们现有的服务器上新增一个项目，保留已有项目。先检查当前环境，再引导我配置。”</blockquote><p>Agent 先核对原部署，使用独立项目配置继续；不会默认复制上个项目的密钥。</p><div class="rule"></div><p><strong>日常员工不需要装 Skill。</strong><br>员工处理飞书任务和审核；管理员或实施同事使用 Skill 管理安装与维护。</p></div></section>
-    <section id="status" class="section"><div class="section-heading"><p class="eyebrow">05 / 版本与验收范围</p><h2>明确可用范围，再开始测试。</h2></div><div class="status-table"><div><strong>安装、真实飞书建表、脚本审核</strong><span class="pill">a26 云端实测通过</span></div><div><strong>本页面、Skill 下载与指引</strong><span id="delivery-status" class="pill neutral">等待本版检查</span></div><div><strong>同事仅按页面独立安装</strong><span class="pill neutral">待真人验收</span></div><div><strong>SKU、脚本、视频审核与下载</strong><span class="pill neutral">a28 候选 · 待真实模型验收</span></div><div><strong>常驻 HTTPS 员工页面</strong><span class="pill neutral">a28 候选 · 待实际域名验收</span></div></div><p class="small">历史实测与本版验证分开记录。网页上线本身不代表产品已经生产就绪。</p></section>
-    <section id="help" class="section"><div class="section-heading"><p class="eyebrow">06 / 使用与维护</p><h2>安装之后，也有清楚的路可走。</h2></div><div class="faq"><details><summary>官网 AI 页面、安装指南和员工入口有什么区别？</summary><p>官网 AI 页面介绍方案；这里提供产品安装指南和 Skill；安装完成后，员工使用客户自己服务器上的 HTTPS 工作区。安装指南不保存项目账户或模型密钥。一个客户可复用服务管理多个项目，不需要每增加项目就购买一个域名。</p></details><details><summary>我是同事，能帮多个客户安装吗？</summary><p>可以。同一份 Skill 可重复使用，每次确认客户和目标服务器。不同客户单独部署和授权，业务密钥不集中存到实施人员电脑。</p></details><details><summary>安装被打断，是否需要从头开始？</summary><p>不用。告诉 Agent“继续上次安装”，读取原配置和真实状态后续接。不要重新建表或清空数据来掩盖未知结果。</p></details><details><summary>安装后从哪里进入？</summary><p>a28 完成部署后，Agent 交付真实 Base 链接和常驻 HTTPS 员工入口。员工用自己的飞书身份登录；新生成任务与审核记录目前保存在工作区，不会自动回写 Base。a27 仍使用短时 SSH 窗口。</p></details><details><summary>服务器服务和 Skill 如何升级？</summary><p>分别升级。更新 Skill 不会自动改变服务器。服务升级按固定发行版进行，需要兼容检查、备份、回读和回退方案。</p></details><details><summary>出了问题应该给谁什么信息？</summary><p>先让 Agent 检查具体项目。需要支持时提供版本、阶段、错误码和脱敏复现步骤，不提供密码、API Key、私钥或完整敏感日志。</p></details></div></section>
-  <section class="section"><h2>本版能力与下一步验收</h2><p>a28 候选增加 Ubuntu 24.04 环境准备、用户私有浏览器输入和常驻 HTTPS 员工入口。页面所示固定版本由同版云端检查通过后发布。同时补齐 SKU 脚本生成、逐条授权的视频调度、返工审核和下载；真实模型、正式域名与独立真人验收仍单独记录。</p></section></main><footer><span class="brand">▸ Video Factory</span><p>安装入口 · 项目配置 · 客户自己的服务器</p><a href="customer-guide.md">阅读完整安装与交接指南 ↗</a></footer>
-</body></html>
+
+    <section id="how" class="section">
+      <div class="section-heading"><p class="eyebrow">先了解产品</p><h2>安装完成后，你会得到什么？</h2></div>
+      <div class="outcomes">
+        <article><h3>员工使用的网页工作区</h3><p>员工用飞书身份登录，为商品建立任务，审核脚本和视频。需要修改时退回处理，通过审核后下载视频。</p></article>
+        <article><h3>可重复使用的安装说明</h3><p>我们提供一份 Skill，也就是给 AI 助手执行的安装与维护说明。以后新增项目、继续安装或排查问题，都可以继续使用。</p></article>
+        <article><h3>一份安装交接清单</h3><p>写清工作区和飞书表格的地址、账号由谁管理、备份在哪里，以及哪些步骤已完成、哪些还需要处理。</p></article>
+      </div>
+      <p class="inline-note">这里的 AI 助手也叫 Agent：它需要能读取 Skill 文件，并在你授权后连接服务器。Skill 留在安装人员的电脑上，产品服务运行在服务器上。</p>
+    </section>
+
+    <section id="start" class="section install">
+      <div class="section-heading"><p class="eyebrow">开始安装</p><h2>把安装说明和这段话，一起交给 AI 助手。</h2><p>第一次使用时，按下面三步操作。已有这份 Skill 的人，可以直接复制所需操作的指引。</p></div>
+      <ol class="getting-started"><li>下载下方的完整 Skill 压缩包。</li><li>选择要做的事，复制对应指引。</li><li>把压缩包和指引交给 AI 助手，跟随它的提问完成配置。</li></ol>
+      <div class="install-grid">
+        <div>
+          <div class="scenarios" role="group" aria-label="选择要做的事"><button type="button" data-mode="install" aria-pressed="true">第一次安装</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续上次安装</button><button type="button" data-mode="repair" aria-pressed="false">排查问题</button></div>
+          <p id="scenario-description" class="scenario-description" aria-live="polite">第一次安装：连接你的服务器，安装服务，并配置第一个测试项目。</p>
+          <label class="prompt-label" for="agent-prompt">发送给 AI 助手的指引</label><textarea id="agent-prompt" readonly rows="9">正在读取安装包信息……</textarea>
+          <div class="actions"><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill</a><button type="button" class="button primary" id="copy-prompt">复制这段指引 <span>↗</span></button></div>
+          <p id="copy-feedback" role="status" aria-live="polite"></p>
+          <p class="small">保留压缩包内的全部文件。如果助手不能接收压缩包，解压后让它读取整个文件夹。没有合适的 AI 助手时，可由实施同事按相同步骤代装。</p>
+          <details><summary>安装包在哪里？需要什么下载权限？</summary>
+            <p class="small">当前安装包只向受邀人员开放。安装者需要自己的 GitHub 仓库读取权限；没有权限时，由获授权的实施同事提供安装包。不要借用或分享别人的访问凭证。</p>
+            <dl class="source-list"><dt>安装说明</dt><dd><a href="skill/SKILL.md" id="skill-source">阅读 Skill 主文件</a></dd><dt>服务器安装包</dt><dd><a id="release-link">读取中</a></dd><dt>当前版本</dt><dd id="version">读取中</dd><dt>文件校验信息</dt><dd><a href="release.json">供 AI 助手核对安装包</a></dd></dl>
+            <p class="small">这是私有预览页。AI 助手无法打开页面链接时，使用你下载的完整 Skill 文件。</p>
+          </details>
+        </div>
+        <aside class="preparation"><h3>开始前准备什么？</h3><ol>
+          <li><strong>能操作服务器的 AI 助手</strong><span>能读取文件、使用 Skill，并在你授权后连接目标服务器。</span></li>
+          <li><strong>一台 Linux 服务器</strong><span>准备服务器登录方式。实施同事可以协助准备，助手会先检查是否满足安装要求。</span></li>
+          <li><strong>第一个项目的资料</strong><span>项目名称、商品资料、参考图片，以及谁负责提交和审核。飞书应用如何配置，按安装引导完成。</span></li>
+          <li><strong>模型账户和员工访问网址</strong><span>准备模型调用密钥（API Key）；员工网页需要域名和 HTTPS 证书。这些可以由管理员或实施同事协助配置。</span></li>
+        </ol><p class="small">密码和密钥按引导在专用输入窗口填写，不发送到聊天里。</p>
+        <details><summary>给实施同事的服务器要求</summary><p class="small">自动环境准备支持 Ubuntu 24.04、x86_64 架构、至少 4 GiB 内存。安装器可准备 Python、Docker 和 Compose；磁盘空间、网络与已有服务由助手先检查。</p></details></aside>
+      </div>
+    </section>
+
+    <section id="setup" class="section">
+      <div class="section-heading"><p class="eyebrow">安装过程</p><h2>AI 助手会带你完成这六步。</h2><p>你提供信息、确认设置；助手检查环境并执行安装。遇到需要你操作的地方，它会说明下一步。</p></div>
+      <ol class="steps">
+        <li><span>01</span><div><h3>确认安装到哪里</h3><p>你选择客户、服务器和第一个项目。助手核对目标，避免影响已有项目。</p></div></li>
+        <li><span>02</span><div><h3>检查服务器并安装</h3><p>助手检查系统、空间和网络，核验安装包，再准备运行环境和服务。</p></div></li>
+        <li><span>03</span><div><h3>设置管理员和商品资料</h3><p>你设置管理员密码，提供商品资料和参考图片。助手整理配置，交给你确认。</p></div></li>
+        <li><span>04</span><div><h3>连接飞书</h3><p>你完成飞书授权，选择新建测试表或连接已有表，并确认提交人和审核人。</p></div></li>
+        <li><span>05</span><div><h3>配置生成模型和员工网址</h3><p>你填写模型密钥、确认费用账户。助手配置网页访问地址，并检查是否能正常登录。</p></div></li>
+        <li><span>06</span><div><h3>试做一个任务并交接</h3><p>从商品资料生成脚本，修改并审核，再确认视频生成。完成后检查结果，并记录入口、备份和剩余问题。</p></div></li>
+      </ol>
+      <p class="inline-note">当前接入 DeepSeek Flash 生成脚本、MiniMax H3 生成视频。安装本身不会调用模型；实际生成前需要你确认，模型费用计入你配置的模型账户。生成结果仍需人工审核。</p>
+    </section>
+
+    <section id="projects" class="section projects">
+      <div><p class="eyebrow">后续新增项目</p><h2>同一客户的新项目，<br>继续用已有服务。</h2><p>不用重新安装 Skill，也不用重装数据库和任务调度服务。为新项目另行配置商品、飞书表格、人员和模型账户。</p><p>当前员工网页按项目配置。新增时还需要检查各项目的网址和端口，尚未提供一个首页切换所有项目的功能。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></div>
+      <div class="example"><p class="eyebrow">例如，已有夏季新品项目，现在要做秋季上新</p><blockquote>“在我们现有的服务器上新增秋季上新项目，保留夏季新品项目。先检查已有服务，再引导我配置。”</blockquote><p>助手会检查已有安装，保留原项目，再询问新项目所需的信息。</p><div class="rule"></div><p><strong>谁需要使用 Skill？</strong><br>负责安装和维护的管理员或实施同事。日常员工打开对应项目的网页即可工作，不需要安装 Skill。</p></div>
+    </section>
+
+    <section id="status" class="section">
+      <div class="section-heading"><p class="eyebrow">测试进展</p><h2>哪些已经检查，哪些还要实际验证？</h2><p>程序通过测试后，还需要有人在真实环境里走完安装和使用过程。两者分开记录。</p></div>
+      <div class="status-table">
+        <div><strong>本页操作、复制指引与 Skill 下载</strong><span id="delivery-status" class="pill neutral">尚无本页通过检查的记录</span></div>
+        <div><strong>安装、配置和任务流程的自动化测试</strong><span class="pill">已发布测试版已通过</span></div>
+        <div><strong>本版使用真实模型完成视频任务</strong><span class="pill neutral">待实际验证</span></div>
+        <div><strong>员工通过实际网址登录和使用</strong><span class="pill neutral">待实际验证</span></div>
+        <div><strong>新用户只按指南完成安装和使用</strong><span class="pill neutral">待独立用户验证</span></div>
+      </div>
+      <details><summary>查看已发布版本与历史测试说明</summary><p class="small">当前已发布的 a28 测试版通过五组云端检查，包含 245 项回归测试、页面交互、安装与恢复；其中模型和身份接口使用测试数据。更早的 a26 曾完成真实飞书建表和脚本审核，这项历史结果不代表本版已完成真实客户验收。当前下载版本以安装包信息为准。</p></details>
+    </section>
+
+    <section id="help" class="section">
+      <div class="section-heading"><p class="eyebrow">使用与维护</p><h2>安装之后，怎么使用和处理问题？</h2></div>
+      <div class="faq">
+        <details><summary>安装后，从哪里进入？</summary><p>安装完成后，你会收到员工工作区的网址和飞书表格链接。员工打开工作区，用自己的飞书身份登录。项目管理员负责授予成员权限；不要把安装指南页当作员工登录页。</p></details>
+        <details><summary>飞书表格和工作区分别做什么？</summary><p>可以新建飞书多维表格（Base），也可以连接已有表，把表里的任务导入工作区处理。当前新生成的任务、审核记录和视频保存在服务器工作区，不会自动写回飞书表格。</p></details>
+        <details><summary>需要自己安装 n8n 吗？</summary><p>n8n 是在后台安排任务执行的工具，安装流程会部署它。员工日常使用 Video Factory 网页即可；n8n 的管理账号由客户管理员保管。</p></details>
+        <details><summary>实施同事能帮多个客户安装吗？</summary><p>可以复用同一份 Skill。每次先确认客户和目标服务器，不同客户分别安装；客户自行保管账号、密码和模型密钥。</p></details>
+        <details><summary>安装中断了，怎么办？</summary><p>选择“继续上次安装”，把已有的安装交接记录交给助手。它会检查已经完成的步骤，再从中断处继续。如果找不到记录，先定位原安装，不直接重装。</p></details>
+        <details><summary>以后怎样更新？</summary><p>管理员让助手检查当前版本，再安排升级、备份和必要的恢复准备。更新电脑里的 Skill 不会自动升级服务器，正在使用的项目也不会因为新增项目而自动升级。</p></details>
+        <details><summary>任务失败了，怎样排查？</summary><p>选择“排查问题”，说明哪个项目、做到了哪一步、页面显示什么错误。助手先检查原因，再提出处理办法。需要联系实施同事时，提供已去除敏感信息的报错与操作步骤，不提供密码或模型密钥。</p></details>
+        <details><summary>官网 AI 页面和这个页面有什么关系？</summary><p>官网 AI 页面介绍整体方案；这里介绍 Video Factory，并提供安装说明。日常任务由客户自己服务器上的员工工作区处理。</p></details>
+      </div>
+    </section>
+  </main>
+  <footer><span class="brand">▸ Video Factory</span><p>客户自己的服务器 · 团队自己的视频工作区</p><a href="customer-guide.md">阅读完整安装与使用指南 ↗</a></footer>
+</body>
+</html>

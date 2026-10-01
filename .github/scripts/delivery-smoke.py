@@ -66,7 +66,9 @@ try:
             assert download.suggested_filename == 'video-factory-setup.zip'
             download.save_as(evidence / f'{label}-skill.zip')
             assert (evidence / f'{label}-skill.zip').read_bytes() == (root / 'video-factory-setup.zip').read_bytes()
+            page.locator('[data-mode="install"]').click()
             page.evaluate('window.scrollTo(0,0)')
+            page.screenshot(path=str(evidence / f'{label}-first-screen.png'))
             page.screenshot(path=str(evidence / f'{label}.png'), full_page=True)
         # All relative resource and anchor links must resolve, including docs.
         for href in page.locator('a[href]').evaluate_all('(links) => links.map(a => a.getAttribute("href"))'):
