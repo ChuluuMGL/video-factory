@@ -28,7 +28,7 @@ def styles(page, selector):
 
 def fonts(page):
     page.evaluate('''() => { const e=document.createElement('span');e.id='brand-font-probe';
-      e.textContent='商品资料生成视频审核下载';e.style.fontWeight='500';document.body.append(e); }''')
+      e.textContent='商品资料生成视频审核下载';e.style.fontWeight='500';document.body.append(e); e.getBoundingClientRect(); }''')
     cdp = page.context.new_cdp_session(page)
     cdp.send('DOM.enable'); cdp.send('CSS.enable')
     doc = cdp.send('DOM.getDocument')
@@ -70,8 +70,9 @@ try:
             page.add_style_tag(content=css)
             assert styles(page,'h1')['fontFamily']==a['fontFamily']
             assert styles(page,'h1')['fontWeight']=='500'
-            assert fonts(page)==af
-            report[surface]={'heading':styles(page,'h1'),'actual_chinese_fonts':fonts(page)}
+            actual=fonts(page)
+            report[surface]={'heading':styles(page,'h1'),'actual_chinese_fonts':actual}
+            assert actual==af, (surface,actual,af)
             page.close()
         report['status']='PASS'; browser.close()
 finally:
