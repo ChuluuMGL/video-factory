@@ -10,7 +10,7 @@
 
 浏览器输入解决安全输入通道，不代表 Agent 可以接管用户身份。常驻员工入口也不意味着已经连接完整自动视频生产。
 
-视频调度只使用 approved_execution 项目凭据和 dispatch-template。每任务的已审脚本、素材哈希及管理员单次生成授权均是执行前提；不要将 queue_read 凭据换成管理员 Token，也不要给 n8n 提供通用管理凭据。未知提交保持待核对。
+视频调度只使用 approved_execution 项目凭据和 dispatch-template。每任务的已审脚本、素材哈希及获授权人员的单次生成确认均是执行前提；不要将 queue_read 凭据换成管理员 Token，也不要给 n8n 提供通用管理凭据。未知提交保持待核对。
 
 完成工作区后，使用同版 `production-setup --stack-root … --session … --browser-input` 引导用户在私有页面填写脚本/视频 API Key。Agent 先上传本项目实际 SKU 参考图到客户 stack 的 data/worker，使用10001所有者与私有权限，计算真实 SHA256 并准备素材映射，通过 production-setup 的 --video-assets 私有文件参数交给向导，让用户只核对 SKU 而不粘贴 JSON。用户不必自行编写JSON或记CLI；素材路径与规格是非秘密配置，可由Agent准备，Key必须用户本人输入。
 
