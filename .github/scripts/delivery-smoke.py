@@ -68,11 +68,11 @@ try:
             assert (evidence / f'{label}-skill.zip').read_bytes() == (root / 'video-factory-setup.zip').read_bytes()
             page.locator('[data-mode="install"]').click()
             # A denied clipboard must reveal and select the otherwise collapsed text.
-            page.evaluate("window.savedWriteText = navigator.clipboard.writeText; navigator.clipboard.writeText = async () => { throw new Error('denied'); }")
+            page.evaluate("() => { window.savedWriteText = navigator.clipboard.writeText; navigator.clipboard.writeText = async () => { throw new Error('denied'); }; }")
             page.locator('#copy-prompt').click()
             assert page.locator('#agent-prompt').is_visible()
             assert page.locator('#agent-prompt').evaluate('(el) => el.selectionStart === 0 && el.selectionEnd === el.value.length')
-            page.evaluate('navigator.clipboard.writeText = window.savedWriteText')
+            page.evaluate('() => { navigator.clipboard.writeText = window.savedWriteText; }')
             page.locator('.prompt-preview summary').click()
             page.locator('[data-mode="install"]').click()
             page.evaluate("window.scrollTo({top:0,behavior:'instant'})")
@@ -95,6 +95,13 @@ try:
         assert not errors, errors
         for href in markdown_links:
             assert context.request.get(origin + '/' + href).status == 200, href
+        # If config cannot load, the error must be visible outside collapsed details.
+        page.route('**/delivery-config.js', lambda route: route.abort())
+        page.goto(origin)
+        assert page.locator('#copy-prompt').is_disabled()
+        assert '未能加载' in page.locator('#copy-feedback').inner_text()
+        assert page.locator('#copy-feedback').is_visible()
+        assert not errors, errors
         browser.close()
 finally:
     server.shutdown(); server.server_close()

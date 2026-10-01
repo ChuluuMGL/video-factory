@@ -5,6 +5,7 @@
   const feedback = document.getElementById('copy-feedback');
   if (!config) {
     prompt.value = '安装包信息未能加载。请刷新页面重试；仍有问题时联系实施同事。';
+    feedback.textContent = prompt.value;
     document.getElementById('copy-prompt').disabled = true;
     return;
   }
