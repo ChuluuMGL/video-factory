@@ -23,6 +23,8 @@ def main():
     parser.add_argument('--image-bundle', type=Path)
     parser.add_argument('--image-manifest-sha256')
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--browser-input', action='store_true')
+    parser.add_argument('--input-port', type=int, default=8792)
     args = parser.parse_args()
     os.umask(0o077)
     try:
@@ -36,20 +38,21 @@ def main():
             require(not args.session.exists(), 'NEW_PROJECT_SESSION_EXISTS_USE_RESUME')
             require((args.root / 'stack.json').is_file(), 'NEW_PROJECT_EXISTING_STACK_REQUIRED')
         if args.mode == 'resume': require(args.session.is_file(), 'RESUME_SESSION_REQUIRED')
-        if not args.prepare_only:
+        if not args.prepare_only and not args.browser_input:
             require(sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty(), 'PRIVATE_TTY_REQUIRED')
         result = install(Path(__file__).absolute().parent, args.prefix, args.manifest_sha256)
         args.session.parent.mkdir(mode=0o700, exist_ok=True)
         require(args.session.parent.stat().st_mode & 0o077 == 0, 'SESSION_DIRECTORY_MUST_BE_PRIVATE')
         command = [result['cli'], 'setup-run', '--session', str(args.session), '--root', str(args.root),
                    '--wheelhouse', str(args.prefix / 'release/wheels')]
+        if args.browser_input: command += ['--browser-input', '--input-port', str(args.input_port)]
         if args.from_session: command += ['--from-session', str(args.from_session)]
         if args.image_bundle:
             command += ['--image-bundle', str(args.image_bundle), '--image-manifest-sha256', args.image_manifest_sha256]
         if args.prepare_only:
             print(json.dumps({'status': 'cli_ready_setup_pending', 'mode': args.mode,
                   'version': result['version'], 'cli_reused': result['reused'], 'next_argv': command,
-                  'next_command': shlex.join(command), 'private_tty_required': True,
+                  'next_command': shlex.join(command), 'private_tty_required': not args.browser_input, 'human_browser_input': args.browser_input,
                   'services_started': False, 'business_ready': False}))
             return 0
         return subprocess.run(command, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}).returncode

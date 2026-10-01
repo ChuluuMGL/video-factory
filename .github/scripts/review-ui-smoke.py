@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='vf-browser-') as temporary:
             assert fixture.service.task('synthetic-user-token', 'task_one', 1)['state'] == 'awaiting_script_review'
             page.click('#commit'); expect(page.locator('#task-state')).to_contain_text('已退回')
             fixture.fields.update(script='Corrected product script', source_revision='source_two')
-            page.locator('summary').click(); page.fill('#record', 'recFixture'); page.fill('#expected-revision', '1')
+            page.locator('summary').filter(has_text='导入或返工').click(); page.fill('#record', 'recFixture'); page.fill('#expected-revision', '1')
             page.locator('#import-form button').click(); expect(page.locator('#plan')).to_contain_text('第 2 版')
             page.click('#commit'); expect(page.locator('#task-title')).to_contain_text('第 2 版')
             expect(page.locator('#history')).to_contain_text('Correct product name')

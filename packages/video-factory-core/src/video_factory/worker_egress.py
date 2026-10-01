@@ -13,7 +13,7 @@ import time
 from .h3_provider import MEDIA_HOSTS, ORIGINS
 from urllib.parse import urlsplit
 
-HOSTS = frozenset({'open.feishu.cn', 'accounts.feishu.cn'} | MEDIA_HOSTS | {urlsplit(v).hostname for v in ORIGINS.values()})
+HOSTS = frozenset({'open.feishu.cn', 'accounts.feishu.cn', 'api.deepseek.com'} | MEDIA_HOSTS | {urlsplit(v).hostname for v in ORIGINS.values()})
 MAX_TRANSFER = 400 * 1024 * 1024
 
 
@@ -99,9 +99,13 @@ class RelayServer(socketserver.ThreadingTCPServer):
 
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--persistent', action='store_true')
+    args=parser.parse_args()
     with RelayServer(('0.0.0.0',8443),Relay) as server:
         server.timeout=2
-        deadline=time.monotonic()+600
+        deadline=float('inf') if args.persistent else time.monotonic()+600
         while time.monotonic()<deadline:server.handle_request()
 
 

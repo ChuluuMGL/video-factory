@@ -72,6 +72,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise RuntimeFault("AUTH_REQUIRED")
                 token=token[7:]
                 routes={
+                    "/v1/automation/execution-keys":(lambda token,**kw:automation.issue_execution(store,token,**kw),{"project","ttl_hours"}),
                     "/v1/automation/keys":(lambda token,**kw:automation.issue(store,token,**kw),{"project","ttl_hours"}),
                     "/v1/automation/revoke":(lambda token,**kw:automation.revoke(store,token,**kw),{"key_id"}),
                     "/v1/automation/queue":(lambda token,**kw:automation.queue(store,token,**kw),{"project","after"}),

@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import stat
 
-from .feishu_bridge import FeishuBridge
+from .script_jobs import GeneratedReviewBridge
+from .feishu_bridge import FeishuBridge, meta
 from .feishu_client import FeishuClient
 from .runtime_store import RuntimeFault, identifier, private_directory
 
@@ -15,7 +16,7 @@ class ReviewService:
         identifier(project)
         self.store, self.project = store, project
         self.media_root = private_directory(media_root)
-        self.bridge = FeishuBridge(store, client_factory=client_factory)
+        self.bridge = GeneratedReviewBridge(store, client_factory=client_factory)
         with store.connect() as db:
             self.bridge._binding(db, project)
 
@@ -40,7 +41,10 @@ class ReviewService:
             rows = db.execute('''SELECT t.id,t.revision,t.state FROM tasks t WHERE project=? AND id>?
                 AND revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id)
                 ORDER BY id LIMIT 101''', (self.project, after)).fetchall()
-        return {'items': [dict(row) for row in rows[:100]], 'has_more': len(rows) > 100,
+            setup = meta(db, 'setup:project:'+self.project)
+            configured = meta(db, 'script:profile:'+self.project) is not None
+        return {'can_create_script': configured and identity['open_id'] in binding['submitters'],
+                'skus': setup['configuration']['project']['products'] if setup else [], 'items': [dict(row) for row in rows[:100]], 'has_more': len(rows) > 100,
                 'next_after': rows[99]['id'] if len(rows) > 100 else None, 'project': self.project,
                 'can_import': identity['open_id'] in binding['submitters']}
 
@@ -55,10 +59,16 @@ class ReviewService:
                                   (pattern('project', self.project), pattern('task', task))).fetchall()
             history = [json.loads(item[0]) for item in receipts[:500]]
             artifact = json.loads(row['artifact']) if row['artifact'] else None
+            video_profile = meta(db, 'video:profile:'+self.project)
+            from .script_jobs import key as script_key
+            generated = meta(db, script_key(self.project,task,revision))
             result = {'task': task, 'revision': revision, 'state': row['state'], 'input': json.loads(row['input']),
+                      'can_revise_script': bool(generated) and row['state'] in ('rejected','accepted','failed') and identity['open_id'] in binding['submitters'],
+                      'generation_brief': generated['plan']['brief'] if generated else None,
                       'history': sorted(history, key=lambda item: item['revision']), 'history_truncated': len(receipts)>500,
                       'artifact_sha256': artifact['sha256'] if artifact else None,
                       'can_import': identity['open_id'] in binding['submitters'],
+                      'can_generate_video': row['state']=='ready' and bool(video_profile) and json.loads(row['input'])['sku_id'] in video_profile['assets'] and identity['open_id'] in binding['submitters'],
                       'review_stages': [stage for stage in ('script', 'video')
                                         if identity['open_id'] in binding.get(stage+'_reviewers', binding['reviewers'])]}
         if artifact:

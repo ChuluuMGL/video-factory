@@ -46,6 +46,7 @@ def build(out, wheel_dirs, source):
     (root / 'requirements.lock').write_text('\n'.join(sorted(locks)) + '\n')
     shutil.copyfile('distribution/install.py', root / 'install.py')
     shutil.copyfile('distribution/start.py', root / 'start.py')
+    shutil.copyfile('distribution/bootstrap.sh', root / 'bootstrap.sh')
     shutil.copytree('skills/video-factory-setup', root / 'skill/video-factory-setup')
     # Deliver operator documentation only, never internal cloud receipts or
     # historical customer/test configuration through a blanket directory copy.

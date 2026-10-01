@@ -33,6 +33,8 @@ class ReviewServer(ThreadingHTTPServer):
         self.deadline = clock() + seconds
         self.sessions, self.session_lock = {}, threading.Lock()
         self.capacity = threading.BoundedSemaphore(32)
+        self.cookie_seconds = 360
+        self.persistent = False
         self.login_count = 0
         super().__init__(address, handler or ReviewHandler)
         self.origin = 'http://127.0.0.1:' + str(self.server_port)
@@ -115,6 +117,24 @@ class ReviewServer(ThreadingHTTPServer):
                 raise
         user = self.authorize(session)
         service, bridge, project = self.service, self.service.bridge, self.service.project
+        if action == '/api/video/prepare':
+            if set(body) != {'task','revision'}: raise RuntimeFault('FIELDS_INVALID')
+            from .video_jobs import prepare
+            _,_,prepared=prepare(service,user,**body)
+            plan=prepared['plan'];session['pending']={'kind':'video_job','hash':prepared['request_plan_sha256'],'args':body.copy()}
+            detail=service.task(user,**body)
+            return {'kind':'video_job','plan_sha256':prepared['request_plan_sha256'],'task':plan['task'],'revision':plan['revision'],
+                    'script':detail['input']['script'],'source_record':'SKU '+detail['input']['sku_id'],'model':plan['model'],
+                    'billing_owner':plan['billing_owner'],'duration':plan['specification']['duration'],'max_submissions':1}
+        if action == '/api/script/prepare':
+            if set(body) != {'task','sku_id','brief','expected_revision'}: raise RuntimeFault('FIELDS_INVALID')
+            from .script_jobs import ScriptJobs
+            prepared = ScriptJobs(service.store, client_factory=bridge.client_factory).prepare(user, project, **body)
+            plan = prepared['plan']
+            session['pending'] = {'kind':'script_job','hash':prepared['plan_sha256'],'args':body.copy()}
+            return {'kind':'script_job','plan_sha256':prepared['plan_sha256'],'task':plan['task'],'revision':plan['revision'],
+                    'script':plan['brief'],'source_record':'SKU '+plan['sku']['sku_id'],'model':plan['profile']['model'],
+                    'billing_owner':plan['profile']['billing_owner'],'max_submissions':1}
         if action == '/api/task':
             if set(body) != {'task', 'revision'}: raise RuntimeFault('FIELDS_INVALID')
             return service.task(user, **body)
@@ -130,7 +150,15 @@ class ReviewServer(ThreadingHTTPServer):
             pending = session['pending']
             if set(body) != {'plan_sha256'} or not pending or body['plan_sha256'] != pending['hash']:
                 raise RuntimeFault('REVIEW_PLAN_REQUIRED')
-            if pending['kind'] == 'import':
+            if pending['kind'] == 'video_job':
+                from .video_jobs import prepare
+                worker,values,_=prepare(service,user,**pending['args'])
+                worker.approve('member-verified',pending['hash'],**values)
+                result={'project':project,**pending['args'],'state':'ready','video_submission_approved':True}
+            elif pending['kind'] == 'script_job':
+                from .script_jobs import ScriptJobs
+                result = ScriptJobs(service.store, client_factory=bridge.client_factory).submit(user, pending['hash'], project=project, **pending['args'])
+            elif pending['kind'] == 'import':
                 result = bridge.import_task(user, project, expected_plan=pending['hash'], **pending['args'])
             else:
                 result = bridge.review(user, project, event=pending['event'], expected_plan=pending['hash'], **pending['args'])
@@ -198,7 +226,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             elif path.path in ('/', '/api/session'):
                 if path.query: raise RuntimeFault('REQUEST_INVALID')
                 sid, session = self.server.session(sid, create=True)
-                cookie = [('Set-Cookie', self.cookie_name+'='+sid+'; Path=/; HttpOnly; SameSite=Strict; Max-Age=360')]
+                cookie = [('Set-Cookie', self.cookie_name+'='+sid+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+str(self.server.cookie_seconds)+('; Secure' if self.server.origin.startswith('https://') else ''))]
                 if path.path == '/':
                     data = (self.assets/'index.html').read_bytes()
                     self.headers_out(200, 'text/html; charset=utf-8', len(data), cookie); self.wfile.write(data)
@@ -207,7 +235,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                         authenticated = bool(session['token']) and self.server.clock() < session.get('expires', 0)
                         self.reply(200, {'csrf': session['csrf'], 'project': self.server.service.project,
                                          'app_id': self.server.oauth.app_id, 'authenticated': authenticated,
-                                         'remaining_seconds': max(0, int(self.server.deadline-self.server.clock()))}, cookie)
+                                         'persistent': self.server.persistent,
+                                         'remaining_seconds': self.server.cookie_seconds if self.server.persistent else max(0, int(self.server.deadline-self.server.clock()))}, cookie)
             elif self.path in ('/app.js', '/style.css'):
                 name, mime = ('app.js', 'text/javascript') if self.path == '/app.js' else ('style.css', 'text/css')
                 data = (self.assets/name).read_bytes(); self.headers_out(200, mime, len(data)); self.wfile.write(data)
