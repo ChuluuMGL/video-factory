@@ -117,6 +117,24 @@ class ReviewServer(ThreadingHTTPServer):
                 raise
         user = self.authorize(session)
         service, bridge, project = self.service, self.service.bridge, self.service.project
+        if action == '/api/video/prepare':
+            if set(body) != {'task','revision'}: raise RuntimeFault('FIELDS_INVALID')
+            from .video_jobs import prepare
+            _,_,prepared=prepare(service,user,**body)
+            plan=prepared['plan'];session['pending']={'kind':'video_job','hash':prepared['request_plan_sha256'],'args':body.copy()}
+            detail=service.task(user,**body)
+            return {'kind':'video_job','plan_sha256':prepared['request_plan_sha256'],'task':plan['task'],'revision':plan['revision'],
+                    'script':detail['input']['script'],'source_record':'SKU '+detail['input']['sku_id'],'model':plan['model'],
+                    'billing_owner':plan['billing_owner'],'duration':plan['specification']['duration'],'max_submissions':1}
+        if action == '/api/script/prepare':
+            if set(body) != {'task','sku_id','brief','expected_revision'}: raise RuntimeFault('FIELDS_INVALID')
+            from .script_jobs import ScriptJobs
+            prepared = ScriptJobs(service.store, client_factory=bridge.client_factory).prepare(user, project, **body)
+            plan = prepared['plan']
+            session['pending'] = {'kind':'script_job','hash':prepared['plan_sha256'],'args':body.copy()}
+            return {'kind':'script_job','plan_sha256':prepared['plan_sha256'],'task':plan['task'],'revision':plan['revision'],
+                    'script':plan['brief'],'source_record':'SKU '+plan['sku']['sku_id'],'model':plan['profile']['model'],
+                    'billing_owner':plan['profile']['billing_owner'],'max_submissions':1}
         if action == '/api/task':
             if set(body) != {'task', 'revision'}: raise RuntimeFault('FIELDS_INVALID')
             return service.task(user, **body)
@@ -132,7 +150,15 @@ class ReviewServer(ThreadingHTTPServer):
             pending = session['pending']
             if set(body) != {'plan_sha256'} or not pending or body['plan_sha256'] != pending['hash']:
                 raise RuntimeFault('REVIEW_PLAN_REQUIRED')
-            if pending['kind'] == 'import':
+            if pending['kind'] == 'video_job':
+                from .video_jobs import prepare
+                worker,values,_=prepare(service,user,**pending['args'])
+                worker.approve('member-verified',pending['hash'],**values)
+                result={'project':project,**pending['args'],'state':'ready','video_submission_approved':True}
+            elif pending['kind'] == 'script_job':
+                from .script_jobs import ScriptJobs
+                result = ScriptJobs(service.store, client_factory=bridge.client_factory).submit(user, pending['hash'], project=project, **pending['args'])
+            elif pending['kind'] == 'import':
                 result = bridge.import_task(user, project, expected_plan=pending['hash'], **pending['args'])
             else:
                 result = bridge.review(user, project, event=pending['event'], expected_plan=pending['hash'], **pending['args'])

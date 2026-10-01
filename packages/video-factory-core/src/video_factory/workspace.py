@@ -78,7 +78,7 @@ def document(stack, value):
     workspace={**common,'image':stack.config['runtime_image'],'user':'10001:10001','networks':['ledger','review'],
                'environment':runtime['environment']|{'VF_WORKER_EGRESS':'1'},'secrets':['runtime_dsn','runtime_master'],
                'entrypoint':['python','-m','video_factory.workspace_http'], 'command':['--project',project,'--origin',value['origin']],
-               'volumes':[mount('data/runtime')+':/state',mount('data/media')+':/media:ro'],
+               'volumes':[mount('data/runtime')+':/state',mount('data/media')+':/media:ro',mount('data/worker')+':/work:ro'],
                'healthcheck':{'test':['CMD','python','-c',"from urllib.request import Request,urlopen; import sys; r=urlopen(Request('http://127.0.0.1:8790/healthz',headers={'Host':sys.argv[1]}),timeout=3); assert r.status==200",urlsplit(value['origin']).netloc],'interval':'5s','timeout':'5s','retries':12}}
     edge={**common,'image':gateway['image'],'user':'10001:10001','networks':['review','public'],
           'ports':[str(urlsplit(value['origin']).port or 443)+':8443'],

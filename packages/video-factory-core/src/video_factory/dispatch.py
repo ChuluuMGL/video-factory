@@ -43,11 +43,20 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
         authorize(db,token,project)
         # Task selection comes from the customer's ledger, not caller-supplied
         # asset paths, credentials, provider IDs, plans or arbitrary job payloads.
-        rows=db.execute("SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.state IN ('ready','submitted','submission_unknown') AND t.revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id) ORDER BY t.id LIMIT 1001",(project,)).fetchall()
+        rows=db.execute("SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.state IN ('ready','submitted','submission_unknown','script_queued','script_submission_unknown') AND t.revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id) ORDER BY t.id LIMIT 1001",(project,)).fetchall()
         if len(rows)>1000:raise RuntimeFault('EXECUTION_QUEUE_REQUIRES_PAGINATION')
         from .worker import job_key
         selected=None;blocked=[]
         for row in rows:
+            if row['state'].startswith('script_'):
+                from .script_jobs import key as script_key
+                saved=db.execute('SELECT value FROM meta WHERE key=?',(script_key(project,row['id'],row['revision']),)).fetchone()
+                if not saved:continue
+                value=json.loads(saved[0])
+                if value['state']=='submission_unknown':
+                    blocked.append({'task':row['id'],'revision':row['revision'],'reason':'script_submission_unknown'});continue
+                if value['state']=='queued' and value['expires_at']<time.time():continue
+                selected=dict(row);break
             saved=db.execute('SELECT value FROM meta WHERE key=?',(job_key(project,row['id'],row['revision']),)).fetchone()
             if not saved:continue
             value=json.loads(saved[0])
@@ -58,6 +67,10 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
     if selected is None:return {'project':project,'status':'idle','blocked':blocked,'provider_requests':0}
     # Worker rechecks capability, approval, revision, credential version and
     # content hashes inside its durable intent transaction immediately before POST.
+    if selected['state'].startswith('script_'):
+        from .script_jobs import ScriptJobs
+        result=ScriptJobs(store).step(token,project,selected['id'],selected['revision'],master_key)
+        return {'project':project,'task':selected['id'],'revision':selected['revision'],'result':result,'automatic_resubmit':False}
     worker=worker_factory(ExecutionStore(store,project))
     result=worker.step(token,project,selected['id'],selected['revision'],master_key,media_root,allow_paid=True)
     return {'project':project,'task':selected['id'],'revision':selected['revision'],'result':result,'automatic_resubmit':False}

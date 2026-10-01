@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let csrf = '', current = null, pending = null, next = null, polling = null, expiry = null;
-const stateNames = {awaiting_script_review:'等待脚本审核', ready:'脚本已通过，等待生成', submitted:'生成中', submission_unknown:'生成状态待核对', awaiting_video_review:'等待视频审核', rejected:'已退回，请修改后导入新版本', accepted:'审核通过', failed:'执行失败，待处理'};
+const stateNames = {script_queued:'脚本生成已排队',script_submission_unknown:'脚本生成结果待核对，禁止自动重发',awaiting_script_review:'等待脚本审核', ready:'脚本已通过，等待生成', submitted:'生成中', submission_unknown:'生成状态待核对', awaiting_video_review:'等待视频审核', rejected:'已退回，请修改后导入新版本', accepted:'审核通过', failed:'执行失败，待处理'};
 function message(text) { $('message').textContent = text; }
 function cancelPlan() { pending = null; $('confirmation').hidden = true; }
 async function request(path, body) {
@@ -41,6 +41,8 @@ $('login-button').onclick = () => act($('login-button'), async () => {
 async function tasks(after='') {
   const result = await request('/api/tasks'+(after?'?after='+encodeURIComponent(after):''));
   $('import-form').closest('details').hidden=!result.can_import;
+  $('create-script').hidden=!result.can_create_script;
+  if(!after){$('script-sku').replaceChildren();for(const sku of result.skus || []){const option=document.createElement('option');option.value=sku.sku_id;option.textContent=sku.sku_id+' · '+sku.name;$('script-sku').append(option);}}
   if (!after) $('tasks').replaceChildren();
   for (const task of result.items) {
     const button=document.createElement('button');
@@ -57,6 +59,9 @@ async function detail(task) {
   $('script').textContent=current.input.script;
   $('history').textContent=current.history.length ? current.history.map(r=>'第 '+r.revision+' 版 · '+(stateNames[r.state] || r.state)+'\n'+r.actor+'\n'+(r.feedback || '无补充意见')).join('\n\n') : '暂无审核记录';
   if (current.history_truncated) $('history').textContent+='\n记录较多，当前仅展示部分。';
+  $('generate-video').hidden=!current.can_generate_video;
+  $('download-video').hidden=current.state!=='accepted' || !current.media_url;
+  if(current.state==='accepted' && current.media_url)$('download-video').href=current.media_url;
   $('video').hidden=!current.media_url;
   if (current.media_url) $('video').src=current.media_url; else { $('video').removeAttribute('src'); $('video').load(); }
   $('video-hash').textContent=current.artifact_sha256?'本版本视频 SHA256：'+current.artifact_sha256:'';
@@ -67,16 +72,19 @@ async function detail(task) {
 }
 function showPlan(result) {
   pending=result.plan_sha256;
-  $('plan').textContent='任务：'+result.task+' · 第 '+result.revision+' 版\n操作：'+(result.kind==='import'?'导入版本':(result.stage==='video'?'视频':'脚本')+' / '+(result.decision==='accept'?'通过':'退回'))+'\n来源：'+result.source_record+'\n\n脚本：\n'+result.script+'\n\n意见：'+(result.feedback || '无')+(result.artifact_sha256?'\n视频 SHA256：'+result.artifact_sha256:'');
+  $('plan').textContent='任务：'+result.task+' · 第 '+result.revision+' 版\n操作：'+(result.kind==='video_job'?'生成视频（一次模型调用）':result.kind==='script_job'?'生成脚本（一次模型调用）':result.kind==='import'?'导入版本':(result.stage==='video'?'视频':'脚本')+' / '+(result.decision==='accept'?'通过':'退回'))+'\n来源：'+result.source_record+'\n\n脚本：\n'+result.script+'\n\n意见：'+(result.feedback || '无')+(result.artifact_sha256?'\n视频 SHA256：'+result.artifact_sha256:'');
+  if(['script_job','video_job'].includes(result.kind))$('plan').textContent+='\n模型：'+result.model+'\n费用账户：'+result.billing_owner+'\n本次最多提交：1 次；超时不会自动重发。';
   $('confirmation').hidden=false; $('confirmation').scrollIntoView({block:'start'});
 }
+$('generate-video').onclick=()=>act($('generate-video'),async()=>{cancelPlan();showPlan(await request('/api/video/prepare',{task:current.task,revision:current.revision}));});
+$('script-form').onsubmit=event=>{event.preventDefault();act(event.submitter,async()=>{cancelPlan();showPlan(await request('/api/script/prepare',{task:$('script-task').value.trim(),sku_id:$('script-sku').value,brief:$('script-brief').value,expected_revision:Number($('script-revision').value)}));});};
 $('import-form').onsubmit=event=>{event.preventDefault(); const button=event.submitter; act(button,async()=>{cancelPlan();showPlan(await request('/api/import/prepare',{record:$('record').value.trim(),expected_revision:Number($('expected-revision').value)}));});};
 $('review-form').onsubmit=event=>{event.preventDefault(); act(event.submitter,async()=>{
   cancelPlan(); const feedback=$('feedback').value;
   if ($('decision').value==='reject' && !feedback.trim()) throw new Error('退回时请填写具体意见');
   showPlan(await request('/api/review/prepare',{task:current.task,revision:current.revision,stage:$('stage').value,decision:$('decision').value,feedback}));
 });};
-$('commit').onclick=()=>act($('commit'),async()=>{ const result=await request('/api/commit',{plan_sha256:pending}); cancelPlan(); message('已保存：'+(stateNames[result.receipt.state] || result.receipt.state)); await tasks(); await detail(result.receipt); });
+$('commit').onclick=()=>act($('commit'),async()=>{ const result=await request('/api/commit',{plan_sha256:pending}); cancelPlan(); message(result.receipt.video_submission_approved?'已批准本次视频生成，等待调度。':'已保存：'+(stateNames[result.receipt.state] || result.receipt.state)); await tasks(); await detail(result.receipt); });
 $('cancel').onclick=cancelPlan;
 $('video').addEventListener('error',()=>{cancelPlan();message('视频未能播放，请核对文件是否可读，并使用支持该视频格式的浏览器；不要在未检查视频时通过审核。');});
 $('refresh').onclick=()=>act($('refresh'),()=>tasks());

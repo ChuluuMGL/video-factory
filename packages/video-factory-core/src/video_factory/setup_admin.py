@@ -73,13 +73,42 @@ class SetupAdmin:
             with self.store.connect() as db: db.execute('DELETE FROM vault WHERE alias=?', (alias,))
             raise
 
+    def script(self, token, session, secret, billing_owner):
+        from .script_jobs import profile
+        from .runtime_store import identifier
+        project = inspect_project(self.store, token, session)['project']
+        identifier(billing_owner)
+        if not isinstance(secret,str) or not 16<=len(secret)<=512 or any(c.isspace() for c in secret):
+            raise RuntimeFault('SCRIPT_KEY_INVALID')
+        alias='script_'+secrets.token_hex(16)
+        self.store.put_secret(token,alias,secret,self.master_key)
+        return profile(self.store,token,project,'secret:'+alias,billing_owner)
+
+    def video(self,token,session,secret,billing_owner,region,assets):
+        from .video_jobs import configure
+        project=inspect_project(self.store,token,session)['project']
+        if not isinstance(secret,str) or not 16<=len(secret)<=512 or any(c.isspace() for c in secret):raise RuntimeFault('VIDEO_KEY_INVALID')
+        alias='video_'+secrets.token_hex(16)
+        self.store.put_secret(token,alias,secret,self.master_key)
+        return configure(self.store,token,project,'secret:'+alias,billing_owner,region,assets)
+
     def dispatch(self, payload):
         fields = {'open': {'action','session','password'}, 'close': {'action','token'},
                   'configure': {'action','token','session','app_id','app_secret','expected_profile'},
-                  'status': {'action','token','draft'}}
+                  'status': {'action','token','draft'}, 'video': {'action','token','session','secret','billing_owner','region','assets'}, 'script': {'action','token','session','secret','billing_owner'},
+                  'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
         if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
         action = payload['action']
+        if action == 'video':return self.video(payload['token'],payload['session'],payload['secret'],payload['billing_owner'],payload['region'],payload['assets'])
+        if action == 'script':return self.script(payload['token'],payload['session'],payload['secret'],payload['billing_owner'])
+        if action == 'execution_key':
+            from .automation import issue_execution
+            project=inspect_project(self.store,payload['token'],payload['session'])['project']
+            return issue_execution(self.store,payload['token'],project,168)
+        if action == 'revoke_execution':
+            from .automation import revoke
+            return revoke(self.store,payload['token'],payload['key_id'])
         if action == 'open': return self.open(payload['session'], payload['password'])
         if action == 'close': return self.close(payload['token'])
         if action == 'configure':
