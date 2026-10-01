@@ -1,6 +1,6 @@
 # a28 补齐与验收记录
 
-候选版本 0.1.0a28。工作保存在私有产品仓库的 [PR #1](https://github.com/ChuluuMGL/video-factory/pull/1)，a27 发行保留；a28 只有发行流水线完成后才更新指南下载。
+候选版本 0.1.0a28。工作保存在私有产品仓库的 [PR #1](https://github.com/ChuluuMGL/video-factory/pull/1)，a27 发行保留；a28 固定私有预发行与原址指南已于 2026-10-01 完成交付。
 
 ## 本次实现
 
@@ -33,3 +33,19 @@
 - 公开发行、跨账户访问验收与开源许可审查。仓库保持私有。
 
 本轮未启动 ECS、未修改生产 Base、未提交真实付费模型请求。Mac 仅编辑、静态解析、Git 和小型证据读取；运行测试、浏览器和容器均在云端。
+
+## 固定发行与网页回执
+
+- [a28 私有预发行](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a28)，发行来源 `8bfc2795a35d4771ebf7d7758bf30275b617202f`。
+- [发行检查 36815039753](https://github.com/ChuluuMGL/video-factory/actions/runs/36815039753)：五组检查及私有发布全部成功，含新增 Markdown 指南链接检查。
+- [安装指南](https://video-factory-install-guide.fresh-note-6263.chatgpt.site)：保持所有者私有访问；完整 Skill、两份补充指南、页面和固定包版本一致，14 个静态文件摘要回读通过。
+- 网页源码提交 `0cb274630c06a5dcbef353dd92343428ba4d6dd7`；部署 `appgdep_6abde56b80608191ae717af118724ad3` 于 `2026-10-01T04:45:37.730902+00:00` 返回 succeeded。网页发布不是实际客户服务部署。
+
+固定摘要：
+
+- archive_sha256: `3f4b002777d92ea747e01c4c095a2863df79ab91227ee9ad25c26f3612684f03`
+- manifest_sha256: `edb0a9d8416f80f7bb8d5f50f9009062df55ecc6ea08e1db6c222fe44850bf3e`
+- image_archive_sha256: `620ea7b8665e40f16265b4b992ce8e194488fd8008171b5d6fd5b0453d068cdc`
+- image_manifest_sha256: `9930e0e3b92aeb504908b9264f96f140810f80aef556100d797acc53caea73d4`
+
+本记录是发行后的文档回执，不改变固定归档。真实域名、真人、真实供应商验收及本页列出的未实现能力仍保持未完成。
