@@ -60,7 +60,11 @@ class ReviewService:
             history = [json.loads(item[0]) for item in receipts[:500]]
             artifact = json.loads(row['artifact']) if row['artifact'] else None
             video_profile = meta(db, 'video:profile:'+self.project)
+            from .script_jobs import key as script_key
+            generated = meta(db, script_key(self.project,task,revision))
             result = {'task': task, 'revision': revision, 'state': row['state'], 'input': json.loads(row['input']),
+                      'can_revise_script': bool(generated) and row['state'] in ('rejected','accepted','failed') and identity['open_id'] in binding['submitters'],
+                      'generation_brief': generated['plan']['brief'] if generated else None,
                       'history': sorted(history, key=lambda item: item['revision']), 'history_truncated': len(receipts)>500,
                       'artifact_sha256': artifact['sha256'] if artifact else None,
                       'can_import': identity['open_id'] in binding['submitters'],

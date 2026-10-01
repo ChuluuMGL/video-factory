@@ -52,8 +52,8 @@ def smoke(stack,root,session):
         cap=post('/v1/automation/execution-keys',{'project':'fs_brand','ttl_hours':1},admin)
         draft=template('fs_brand','vfApprovedExecution');draft['id']='VfApprovedDispatch001'
         draft['nodes'][0].update(type='n8n-nodes-base.manualTrigger',typeVersion=1,parameters={})
-        credentials=[{'id':'vfApprovedExecution','name':'CI approved execution','type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+cap['token']}}]
-        for name,data,kind in [('dispatch-workflow',draft,'workflow'),('dispatch-credentials',credentials,'credentials')]:
+        credentials=[{'id':'vfApprovedExecution','name':draft['nodes'][1]['credentials']['httpHeaderAuth']['name'],'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+cap['token']}}]
+        for name,data,kind in [('dispatch-credentials',credentials,'credentials'),('dispatch-workflow',draft,'workflow')]:
             path=root/(name+'.json');path.write_text(json.dumps(data));path.chmod(0o644)
             stack.compose('cp',str(path),'n8n:/tmp/'+name+'.json')
             stack.compose('exec','-T','n8n','n8n','import:'+kind,'--input=/tmp/'+name+'.json')

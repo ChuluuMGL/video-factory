@@ -81,6 +81,9 @@ def template(project,credential_id):
     value=queue_template(project,credential_id)
     name='Dispatch approved task';value['name']='Video Factory approved execution '+project
     node=value['nodes'][1];node['name']=name
+    # n8n import can reconcile credentials by name. Never reuse the read-only
+    # queue name or another project's credential name for an execution key.
+    node['credentials']['httpHeaderAuth']['name']='Video Factory execution '+credential_id
     node['parameters']['url']='http://vf-executor-'+hashlib.sha256(project.encode()).hexdigest()[:12]+':8793/v1/dispatch'
     node['parameters']['options']['timeout']=240000
     value['connections']['Read schedule']['main'][0][0]['node']=name

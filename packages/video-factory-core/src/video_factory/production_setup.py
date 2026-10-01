@@ -49,9 +49,9 @@ def schedule(stack,session,token,*,activate=False):
     write_json(path,receipt)
     cap=rpc(stack,{'action':'execution_key','token':token,'session':session})
     try:
-        credentials=[{'id':receipt['credential_id'],'name':'Video Factory '+project+' execution','type':'httpHeaderAuth',
-                      'data':{'name':'Authorization','value':'Bearer '+cap['token']}}]
         value=template(project,receipt['credential_id']);value['id']=receipt['workflow_id']
+        credentials=[{'id':receipt['credential_id'],'name':value['nodes'][1]['credentials']['httpHeaderAuth']['name'],'type':'httpHeaderAuth',
+                      'data':{'name':'Authorization','value':'Bearer '+cap['token']}}]
         import_json(stack,credentials,nonce+'-key','credentials')
         import_json(stack,value,nonce+'-workflow','workflow')
         stack.compose('exec','-T','n8n','n8n','publish:workflow' if activate else 'unpublish:workflow','--id='+receipt['workflow_id'])

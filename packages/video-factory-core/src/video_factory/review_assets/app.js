@@ -1,7 +1,8 @@
 'use strict';
 const $ = id => document.getElementById(id);
+let scriptRevision = 0;
 let csrf = '', current = null, pending = null, next = null, polling = null, expiry = null;
-const stateNames = {script_queued:'脚本生成已排队',script_submission_unknown:'脚本生成结果待核对，禁止自动重发',awaiting_script_review:'等待脚本审核', ready:'脚本已通过，等待生成', submitted:'生成中', submission_unknown:'生成状态待核对', awaiting_video_review:'等待视频审核', rejected:'已退回，请修改后导入新版本', accepted:'审核通过', failed:'执行失败，待处理'};
+const stateNames = {script_queued:'脚本生成已排队',script_submission_unknown:'脚本生成结果待核对，禁止自动重发',awaiting_script_review:'等待脚本审核', ready:'脚本已通过，等待生成', submitted:'生成中', submission_unknown:'生成状态待核对', awaiting_video_review:'等待视频审核', rejected:'已退回，待修订', accepted:'审核通过', failed:'执行失败，待处理'};
 function message(text) { $('message').textContent = text; }
 function cancelPlan() { pending = null; $('confirmation').hidden = true; }
 async function request(path, body) {
@@ -60,6 +61,7 @@ async function detail(task) {
   $('history').textContent=current.history.length ? current.history.map(r=>'第 '+r.revision+' 版 · '+(stateNames[r.state] || r.state)+'\n'+r.actor+'\n'+(r.feedback || '无补充意见')).join('\n\n') : '暂无审核记录';
   if (current.history_truncated) $('history').textContent+='\n记录较多，当前仅展示部分。';
   $('generate-video').hidden=!current.can_generate_video;
+  $('revise-script').hidden=!current.can_revise_script;
   $('download-video').hidden=current.state!=='accepted' || !current.media_url;
   if(current.state==='accepted' && current.media_url)$('download-video').href=current.media_url;
   $('video').hidden=!current.media_url;
@@ -77,7 +79,9 @@ function showPlan(result) {
   $('confirmation').hidden=false; $('confirmation').scrollIntoView({block:'start'});
 }
 $('generate-video').onclick=()=>act($('generate-video'),async()=>{cancelPlan();showPlan(await request('/api/video/prepare',{task:current.task,revision:current.revision}));});
-$('script-form').onsubmit=event=>{event.preventDefault();if(!$('script-task').value.trim())$('script-task').value='task_'+crypto.randomUUID().replaceAll('-','');act(event.submitter,async()=>{cancelPlan();showPlan(await request('/api/script/prepare',{task:$('script-task').value.trim(),sku_id:$('script-sku').value,brief:$('script-brief').value,expected_revision:Number($('script-revision').value)}));});};
+$('revise-script').onclick=()=>{cancelPlan();scriptRevision=current.revision;$('script-task').value=current.task;$('script-task').readOnly=true;$('script-sku').value=current.input.sku_id;$('script-brief').value=current.generation_brief;$('script-context').textContent='修订当前任务 · 将生成第 '+(current.revision+1)+' 版，自动带入退回意见';$('create-script').open=true;$('script-brief').focus();};
+$('new-script').onclick=()=>{cancelPlan();scriptRevision=0;$('script-form').reset();$('script-task').readOnly=false;$('script-context').textContent='创建新任务';};
+$('script-form').onsubmit=event=>{event.preventDefault();if(!$('script-task').value.trim())$('script-task').value='task_'+crypto.randomUUID().replaceAll('-','');act(event.submitter,async()=>{cancelPlan();showPlan(await request('/api/script/prepare',{task:$('script-task').value.trim(),sku_id:$('script-sku').value,brief:$('script-brief').value,expected_revision:scriptRevision}));});};
 $('import-form').onsubmit=event=>{event.preventDefault(); const button=event.submitter; act(button,async()=>{cancelPlan();showPlan(await request('/api/import/prepare',{record:$('record').value.trim(),expected_revision:Number($('expected-revision').value)}));});};
 $('review-form').onsubmit=event=>{event.preventDefault(); act(event.submitter,async()=>{
   cancelPlan(); const feedback=$('feedback').value;

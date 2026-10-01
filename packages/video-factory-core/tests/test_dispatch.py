@@ -64,3 +64,4 @@ class DispatchTests(unittest.TestCase):
         result=template('brand','approved-job-key');self.assertFalse(result['active'])
         self.assertIn('/v1/dispatch',result['nodes'][1]['parameters']['url'])
         self.assertEqual(result['connections']['Read schedule']['main'][0][0]['node'],'Dispatch approved task')
+        self.assertEqual(result['nodes'][1]['credentials']['httpHeaderAuth'],{'id':'approved-job-key','name':'Video Factory execution approved-job-key'})
