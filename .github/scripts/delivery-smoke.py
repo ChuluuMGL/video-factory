@@ -69,6 +69,7 @@ try:
             for mode in ('install', 'project', 'resume', 'repair'):
                 button = page.locator(f'[data-mode="{mode}"]'); button.click()
                 assert button.get_attribute('aria-pressed') == 'true'
+                assert page.locator('#agent-prompt').evaluate('(el) => el.scrollTop === 0')
                 text = page.locator('#agent-prompt').input_value()
                 assert 'Skill 阅读地址' in text and '密码与密钥' in text
                 assert 'TRUSTED_' not in text and '<我们的' not in text

@@ -145,6 +145,7 @@ footer .brand { font-size: 20px; }
 .demo-pane { display:grid; grid-template-columns: minmax(0,.7fr) minmax(0,1.7fr); gap:40px; align-items:center; padding-top:36px; min-height:375px; }
 .demo-caption h3 { font-size:28px; line-height:1.5; }
 .demo-caption p { color:var(--muted); font-size:17px; }
+.demo-caption .demo-link { display:block; width:fit-content; margin-top:8px; }
 .table-demo,.flow-demo { border:1px solid var(--line); border-radius:14px; background:#0b111c; overflow:hidden; min-width:0; }
 .table-toolbar { padding:18px 20px; border-bottom:1px solid var(--line); }
 .table-toolbar strong { color:#fff; font-weight:500; }

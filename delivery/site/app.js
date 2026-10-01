@@ -28,6 +28,8 @@
     document.getElementById('scenario-description').textContent = descriptions[mode];
     const source = new URL('skill/SKILL.md', window.location.href).href;
     prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n若该私有页面无法访问，请读取我附上的完整 video-factory-setup.zip（保留包内全部文件）。\n安装包版本：${config.version}；来源：${config.release_url}\n\n请先说明这次要做什么、完成后如何检查结果，再逐步询问必要的服务器、项目和飞书信息。请帮我整理配置并执行安装，不要求我先学习内部命令。密码与密钥只在私有输入界面填写，不在聊天中收集。完成后给出实际网址、检查结果、未完成事项，以及下次如何继续。新增项目优先使用服务器已安装的兼容版本，不能自动升级旧服务。`;
+    prompt.setSelectionRange(0, 0);
+    prompt.scrollTop = 0;
     document.querySelector('#copy-prompt span').textContent = '复制';
     feedback.textContent = '';
   }
