@@ -29,6 +29,9 @@ try:
         thread.join(3);assert answers==['浏览器测试项目','synthetic-hidden-browser-password']
         assert 'synthetic-hidden-browser-password' not in '\n'.join(responses)+page.locator('body').inner_text()
         assert not errors
-        page.screenshot(path=str(out/'setup-browser.png'));browser.close()
+        page.screenshot(path=str(out/'setup-browser.png'))
+        page.set_viewport_size({'width':390,'height':844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.screenshot(path=str(out/'setup-browser-mobile.png'));browser.close()
     (out/'setup-browser.json').write_text(json.dumps({'status':'PASS','human_secret_input':'synthetic_browser_only','response_and_ui_secret_echo':False,'real_human':'not_run'}))
 finally:ui.close()
