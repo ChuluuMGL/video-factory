@@ -28,6 +28,8 @@ concurrency:
 jobs:
   page:
     name: Installation guide desktop and mobile
+    permissions:
+      contents: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -75,7 +77,7 @@ jobs:
       - name: Compare typography with the live official AI page
         run: python .github/scripts/brand-parity-smoke.py ci-page/site ci-page/evidence
       - name: Preserve screenshots and page checks
-        if: always()
+        if: always() && github.event_name != 'workflow_dispatch'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: installation-page-${{ github.run_id }}-${{ github.run_attempt }}
@@ -83,10 +85,25 @@ jobs:
           retention-days: 14
       - name: Preserve exact reviewed guide
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: github.event_name != 'workflow_dispatch'
         with:
           name: reviewed-installation-guide
           path: ci-page/site/
           retention-days: 90
+      - name: Preserve private page review outside temporary artifact storage
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PRIVATE
+          python - <<'PY'
+          import shutil
+          from pathlib import Path
+          shutil.make_archive('reviewed-installation-guide','zip','ci-page/site')
+          shutil.make_archive('page-review-evidence','zip','ci-page/evidence')
+          Path('page-review-notes.md').write_text('Installation page review only. Server installer and Skill remain at the selected fixed release. Includes the exact reviewed page and synthetic browser screenshots; no customer data or credentials.\n')
+          PY
+          gh release create "guide-review-$GITHUB_RUN_ID" --target "$GITHUB_SHA" --prerelease --title "Installation guide review $GITHUB_RUN_ID" --notes-file page-review-notes.md reviewed-installation-guide.zip page-review-evidence.zip
       - name: Record review scope
         if: always()
         run: |
