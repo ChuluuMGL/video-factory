@@ -32,7 +32,7 @@
   }
   async function copy() {
     try { await navigator.clipboard.writeText(prompt.value); feedback.textContent = '已复制。请粘贴给 AI 助手；第一次使用时，同时附上完整 Skill 文件。'; }
-    catch { prompt.focus(); prompt.select(); feedback.textContent = '已选中指引，请按 Ctrl+C 或 ⌘C 复制。'; }
+    catch { const preview = prompt.closest('details'); if (preview) preview.open = true; prompt.focus(); prompt.select(); feedback.textContent = '已选中指引，请按 Ctrl+C 或 ⌘C 复制。'; }
   }
   document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => select(button.dataset.mode)));
   document.getElementById('copy-prompt').addEventListener('click', copy);
