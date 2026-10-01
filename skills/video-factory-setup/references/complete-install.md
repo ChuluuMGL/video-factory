@@ -1,4 +1,4 @@
-# a28 安装补齐路径
+# 完整安装路径（a28 及以后）
 
 仅当固定发行包包含 bootstrap.sh、CLI 支持 --browser-input/workspace 时使用本页；旧版本不可照搬命令。读取同版客户文档 NEW_INSTALL_CAPABILITIES.md。
 

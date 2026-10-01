@@ -25,13 +25,13 @@
 
 版本来源：https://github.com/ChuluuMGL/video-factory/releases 。首次部署读取页面固定标签；已有服务先核对安装版本，不盲选 latest。
 
-start.py 参数为 --manifest-sha256、--prefix、--session、--root；新增项目用 --mode new-project --from-session 原会话，恢复用 --mode resume。a28 没有私有 TTY 时优先使用 --browser-input，由用户在 SSH 隧道中的私有页面输入。--prepare-only 仅准备工具，不表示配置完成。镜像网络受限时选匹配版本的离线镜像包，不混用 wheels 和镜像。大包只在云端流转。
+start.py 参数为 --manifest-sha256、--prefix、--session、--root；新增项目用 --mode new-project --from-session 原会话，恢复用 --mode resume。a28 及以后没有私有 TTY 时优先使用 --browser-input，由用户在 SSH 隧道中的私有页面输入。--prepare-only 仅准备工具，不表示配置完成。镜像网络受限时选匹配版本的离线镜像包，不混用 wheels 和镜像。大包只在云端流转。
 
 ## 4. 引导而不是转交命令
 
 Agent 负责整理非秘密的配置和 SKU、读取 JSON 问题 schema、核对目标并执行已授权操作。一次问一个阶段的必要信息，不向客户堆内部命令。
 
-服务器环境未就绪时列出准确缺项及可执行的准备方案。a28 的环境准备流程支持在 Ubuntu 24.04 x86_64 上准备 Python、Docker 和 Compose，但不会安装操作系统；必须检查实际执行结果，再报告环境准备完成。根据用户已有授权执行环境准备，不能把不受支持的系统强行当作已支持。
+服务器环境未就绪时列出准确缺项及可执行的准备方案。a28 及以后的环境准备流程支持在 Ubuntu 24.04 x86_64 上准备 Python、Docker 和 Compose，但不会安装操作系统；必须检查实际执行结果，再报告环境准备完成。根据用户已有授权执行环境准备，不能把不受支持的系统强行当作已支持。
 
 首次主机内交互用 setup-run；无私有 TTY 时按 operations.md 的 JSON 分阶段接口完成非秘密步骤。密码和 App Secret 必须由用户直接在安全输入界面录入。不能录屏、回显或自动读取用户输入的秘密到模型上下文。
 
