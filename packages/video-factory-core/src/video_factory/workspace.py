@@ -88,8 +88,12 @@ def document(stack, value):
     egress={**common,'image':relay['image'],'user':'10001:10001','networks':['review','outbound'],
             'entrypoint':['python','-m','video_factory.worker_egress'],'command':['--persistent'],
             'healthcheck':relay['healthcheck'],'pids_limit':64,'mem_limit':'128m'}
+    executor={**workspace,'entrypoint':['python','-m','video_factory.dispatch'],'command':['--project',project],
+              'networks':{'ledger':{'aliases':['vf-executor-'+hashlib.sha256(project.encode()).hexdigest()[:12]]},'review':{}},
+              'volumes':[mount('data/runtime')+':/state',mount('data/media')+':/media',mount('data/worker')+':/work:ro'],
+              'healthcheck':{'test':['CMD','python','-c',"from urllib.request import urlopen; assert urlopen('http://127.0.0.1:8793/healthz',timeout=3).status==200"],'interval':'5s','timeout':'5s','retries':12}}
     return {'name':prefix+'-ws-'+hashlib.sha256(project.encode()).hexdigest()[:12],
-            'services':{'workspace':workspace,'edge':edge,'egress':egress},
+            'services':{'workspace':workspace,'edge':edge,'egress':egress,'executor':executor},
             'networks':{'ledger':{'external':True,'name':prefix+'_private'},'review':{'internal':True},'public':{},'outbound':{}},
             'secrets':{name:{'file':mount('secrets/'+name)} for name in ('runtime_dsn','runtime_master')}}
 
@@ -170,7 +174,7 @@ def status(stack, project):
     value=json.loads((root/'workspace.json').read_text())
     raw=compose(stack,project,'ps','--all','--format','json').decode()
     rows=json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(row) for row in raw.splitlines() if row]
-    ready=len(rows)==3 and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
+    ready=len(rows)==4 and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
     return {'status':'running' if ready else 'incomplete', 'project':project,'url':value['origin'],
             'components':[{k:row.get(k) for k in ('Service','State','Health')} for row in rows],
             'https_external_readback':'required', 'human_acceptance':'not_run'}

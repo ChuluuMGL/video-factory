@@ -18,7 +18,7 @@ def origin(value):
     p = urlsplit(value)
     if (p.scheme != 'https' or p.username or p.password or p.path or p.query or p.fragment
             or not p.hostname or not re.fullmatch(r'[a-z0-9.-]+', p.hostname)
-            or not 1 <= (p.port or 443) <= 65535 or value != 'https://'+p.netloc):
+            or not 1 <= (443 if p.port is None else p.port) <= 65535 or value != 'https://'+p.netloc):
         raise RuntimeFault('WORKSPACE_HTTPS_ORIGIN_REQUIRED')
     return value
 
@@ -45,7 +45,7 @@ class WorkspaceServer(ReviewServer):
         with self.session_lock:
             now = self.clock()
             for key, value in list(self.sessions.items()):
-                if now >= value['absolute_expiry'] or now >= value['idle_expiry']:
+                if now >= value.get('absolute_expiry', now+1) or now >= value.get('idle_expiry', now+1):
                     self.sessions.pop(key)
             if now >= self.login_reset:
                 self.login_count = 0; self.login_reset = now+60

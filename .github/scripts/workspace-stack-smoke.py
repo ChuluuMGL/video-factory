@@ -37,6 +37,27 @@ def smoke(stack,root):
         compose(stack,'fs_brand','restart','workspace')
         compose(stack,'fs_brand','up','-d','--wait','--wait-timeout','90')
         assert request('/api/session')[0]==200
+        # Exercise the actual installed n8n HTTP node against the persistent
+        # executor. The fixture has no newly approved paid tasks.
+        from video_factory.dispatch import template
+        from urllib.request import Request,urlopen
+        def post(path,body,token=None):
+            headers={'Content-Type':'application/json'}
+            if token:headers['Authorization']='Bearer '+token
+            req=Request('http://127.0.0.1:'+str(stack.config['runtime_port'])+path,data=json.dumps(body).encode(),headers=headers)
+            with urlopen(req,timeout=10) as response:return json.load(response)
+        admin=post('/v1/login',{'name':'admin','password':'cloud-stack-fixture-password'})['token']
+        cap=post('/v1/automation/execution-keys',{'project':'fs_brand','ttl_hours':1},admin)
+        draft=template('fs_brand','vfApprovedExecution');draft['id']='VfApprovedDispatch001'
+        draft['nodes'][0].update(type='n8n-nodes-base.manualTrigger',typeVersion=1,parameters={})
+        credentials=[{'id':'vfApprovedExecution','name':'CI approved execution','type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+cap['token']}}]
+        for name,data,kind in [('dispatch-workflow',draft,'workflow'),('dispatch-credentials',credentials,'credentials')]:
+            path=root/(name+'.json');path.write_text(json.dumps(data));path.chmod(0o644)
+            stack.compose('cp',str(path),'n8n:/tmp/'+name+'.json')
+            stack.compose('exec','-T','n8n','n8n','import:'+kind,'--input=/tmp/'+name+'.json')
+        output=stack.compose('run','--rm','--no-deps','-e','N8N_RUNNERS_BROKER_PORT=5689','n8n','execute','--id=VfApprovedDispatch001','--rawOutput',timeout=180).decode()
+        assert '"idle"' in output and '"provider_requests": 0' in output, 'N8N_APPROVED_DISPATCH_FAILED'
+        post('/v1/automation/revoke',{'key_id':cap['key_id']},admin)
         # A real cold backup stops both public ingress and the DB consumers.
         from cryptography.fernet import Fernet
         backup=root/'workspace-complete.vfb';backup_key=Fernet.generate_key();stack.backup(backup,backup_key)
@@ -47,5 +68,5 @@ def smoke(stack,root):
         try:status(recovered,'fs_brand')
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
-        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','human_acceptance':'not_run'}
+        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','human_acceptance':'not_run'}
     finally:stop_all(stack)

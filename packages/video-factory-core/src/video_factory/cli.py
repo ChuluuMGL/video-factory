@@ -55,6 +55,9 @@ def main(argv=None):
     queue_parser=commands.add_parser("queue-template",help="disabled n8n project queue reader; no paid dispatch")
     queue_parser.add_argument("--project",required=True)
     queue_parser.add_argument("--credential-id",required=True)
+    dispatch_template=commands.add_parser('dispatch-template',help='disabled n8n schedule for exact approved tasks only')
+    dispatch_template.add_argument('--project',required=True)
+    dispatch_template.add_argument('--credential-id',required=True)
     setup = commands.add_parser("setup", help="resume an offline customer Setup plan; does not deploy")
     setup.add_argument("--session", type=Path, required=True, help="absolute session file in an existing private directory")
     view = setup.add_mutually_exclusive_group()
@@ -98,6 +101,10 @@ def main(argv=None):
         return run_setup_feishu(args)
     if args.command == "setup-deploy":
         return run_setup_deploy(args)
+    if args.command == 'dispatch-template':
+        from .dispatch import template
+        try: _print(template(args.project,args.credential_id)); return 0
+        except ValueError as error: _print({'error':str(error)}); return 2
     if args.command == "queue-template":
         try:
             _print(queue_template(args.project,args.credential_id));return 0
