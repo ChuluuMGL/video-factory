@@ -66,12 +66,14 @@ class ScriptJobs:
         return {'plan':value,'plan_sha256':fingerprint(value),'provider_requests':0,'approval_required':True}
 
     def submit(self,user,expected_plan,**values):
+        if type(values.get('expected_revision',0)) is not int or values.get('expected_revision',0)<0:raise RuntimeFault('REVISION_INVALID')
         _,identity,binding,actor,config,_=self.bridge._session(user,values['project'],'submitters')
         with self.store.connect() as db:
             self.bridge._fence(db,values['project'],binding,identity,'submitters',config)
             old=meta(db,key(values['project'],values['task'],values.get('expected_revision',0)+1))
             if old:
-                if old['plan_sha256']!=expected_plan or old['plan']['actor']!=actor:raise RuntimeFault('SCRIPT_SUBMIT_CONFLICT')
+                if (old['plan_sha256']!=expected_plan or old['plan']['actor']!=actor or old['plan']['brief']!=values['brief']
+                        or old['plan']['sku']['sku_id']!=values['sku_id']):raise RuntimeFault('SCRIPT_SUBMIT_CONFLICT')
                 row=self.store._current(db,values['project'],values['task'],values.get('expected_revision',0)+1)
                 return {'project':values['project'],'task':values['task'],'revision':row['revision'],'state':row['state'],'replayed':True}
         value=self.prepare(user,**values)

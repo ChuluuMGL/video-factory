@@ -383,7 +383,7 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         except HTTPError as error:assert error.code==401
         else:raise AssertionError('REVOKED_QUEUE_TOKEN_ACCEPTED')
         import runpy
-        workspace_proof=runpy.run_path('.github/scripts/workspace-stack-smoke.py')['smoke'](fourth,root)
+        workspace_proof=runpy.run_path('.github/scripts/workspace-stack-smoke.py')['smoke'](fourth,root,json.loads(employee_session.read_text()))
         proof={'workspace_https':workspace_proof,'status':'PASS','scope':'isolated_cloud_three_component_stack','backend':'postgresql',
                'feishu_bridge':feishu_proof,'n8n_project_queue':'PASS','queue_cross_project_denied':True,'queue_revoke_and_upgrade_invalidation':'PASS','container_worker_full_decode':'PASS','controlled_egress':egress_proof,'worker_relay_stopped_after_rejection':True,'deployment_schema_upgrade':'2_preserved','migrated_worker_permissions_revoked':'PASS','restored_worker_permissions_revoked':'PASS','postgres_generic_worker_concurrency':'PASS','setup_to_fresh_install_and_two_projects':'PASS','setup_import_resume':'PASS','execution_digest_change_rejected':True,'single_command_install_and_resume':'PASS','target_change_rejected':True,'environment':environment,'roles_isolated':True,'postgres_ledger_concurrency_and_migration':'PASS','real_n8n_health_workflow_runs':3,'product_upgrade':{'from':old_version,'to':new_version},'failed_upgrade_rollback':'PASS',
                'n8n_credential_decryption_after_restore':True,'restart':'PASS','full_cold_restore_new_directory':'PASS',

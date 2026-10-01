@@ -54,10 +54,11 @@ def schedule(stack,session,token,*,activate=False):
         value=template(project,receipt['credential_id']);value['id']=receipt['workflow_id']
         import_json(stack,credentials,nonce+'-key','credentials')
         import_json(stack,value,nonce+'-workflow','workflow')
-        if activate:
-            stack.compose('exec','-T','n8n','n8n','publish:workflow','--id='+receipt['workflow_id'])
-            stack.compose('restart','n8n')
-            stack.compose('up','-d','--pull','never','--wait','--wait-timeout','120','n8n','gateway')
+        stack.compose('exec','-T','n8n','n8n','publish:workflow' if activate else 'unpublish:workflow','--id='+receipt['workflow_id'])
+        # CLI database changes are not reflected by a running n8n scheduler
+        # until restart, including disabling a previously active workflow.
+        stack.compose('restart','n8n')
+        stack.compose('up','-d','--pull','never','--wait','--wait-timeout','120','n8n','gateway')
         check='/tmp/vf-'+nonce+'-readback.json'
         try:
             stack.compose('exec','-T','n8n','n8n','export:workflow','--id='+receipt['workflow_id'],'--output='+check)
@@ -113,9 +114,9 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
             return {'status':'script_configuration_saved_dispatch_pending','project':project,'business_ready':False}
         write('调度只执行明确授权的脚本请求和已批准的视频任务；每次最多推进一个任务。')
         write('授权有效期 90 天，届满停止执行；再次运行本向导可以续期。恢复备份后旧授权无效。')
-        if not choice('配置本项目 n8n 调度凭据和流程',read,write):
+        if not choice('配置本项目调度（会短暂重启本客户 n8n）',read,write):
             return {'status':'credentials_saved_schedule_not_changed','project':project}
-        activate=choice('现在启用调度（会短暂重启本客户 n8n）',read,write)
+        activate=choice('配置完成后启用调度（选 n 则保持停用）',read,write)
         with stack.lock():receipt=schedule(stack,session,token,activate=activate)
         write('调度状态：'+receipt['status'])
         return {'status':receipt['status'],'project':project,'expires_at':receipt['expires_at'],

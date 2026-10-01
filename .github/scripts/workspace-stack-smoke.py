@@ -13,7 +13,7 @@ from video_factory.stack import Stack
 from video_factory.runtime_store import RuntimeFault
 
 
-def smoke(stack,root):
+def smoke(stack,root,session):
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
     key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
     name=x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME,'localhost')]);now=datetime.now(timezone.utc)
@@ -58,6 +58,12 @@ def smoke(stack,root):
         output=stack.compose('run','--rm','--no-deps','-e','N8N_RUNNERS_BROKER_PORT=5689','n8n','execute','--id=VfApprovedDispatch001','--rawOutput',timeout=180).decode()
         assert '"idle"' in output and '"provider_requests": 0' in output, 'N8N_APPROVED_DISPATCH_FAILED'
         post('/v1/automation/revoke',{'key_id':cap['key_id']},admin)
+        from video_factory.production_setup import schedule
+        scheduled=schedule(stack,session,admin,activate=True)
+        assert scheduled['status']=='published_restart_verified'
+        renewed=schedule(stack,session,admin,activate=False)
+        assert renewed['workflow_id']==scheduled['workflow_id'] and renewed['status']=='imported_disabled'
+        assert renewed['key_id']!=scheduled['key_id']
         # A real cold backup stops both public ingress and the DB consumers.
         from cryptography.fernet import Fernet
         backup=root/'workspace-complete.vfb';backup_key=Fernet.generate_key();stack.backup(backup,backup_key)
@@ -68,7 +74,7 @@ def smoke(stack,root):
         try:status(recovered,'fs_brand')
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
-        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','human_acceptance':'not_run'}
+        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
     except Exception:
         try:print(compose(stack,'fs_brand','logs','--no-color','--tail','20').decode(),file=__import__('sys').stderr)
         except Exception:pass

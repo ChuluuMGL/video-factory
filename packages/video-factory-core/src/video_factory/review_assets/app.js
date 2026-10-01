@@ -77,7 +77,7 @@ function showPlan(result) {
   $('confirmation').hidden=false; $('confirmation').scrollIntoView({block:'start'});
 }
 $('generate-video').onclick=()=>act($('generate-video'),async()=>{cancelPlan();showPlan(await request('/api/video/prepare',{task:current.task,revision:current.revision}));});
-$('script-form').onsubmit=event=>{event.preventDefault();act(event.submitter,async()=>{cancelPlan();showPlan(await request('/api/script/prepare',{task:$('script-task').value.trim(),sku_id:$('script-sku').value,brief:$('script-brief').value,expected_revision:Number($('script-revision').value)}));});};
+$('script-form').onsubmit=event=>{event.preventDefault();if(!$('script-task').value.trim())$('script-task').value='task_'+crypto.randomUUID().replaceAll('-','');act(event.submitter,async()=>{cancelPlan();showPlan(await request('/api/script/prepare',{task:$('script-task').value.trim(),sku_id:$('script-sku').value,brief:$('script-brief').value,expected_revision:Number($('script-revision').value)}));});};
 $('import-form').onsubmit=event=>{event.preventDefault(); const button=event.submitter; act(button,async()=>{cancelPlan();showPlan(await request('/api/import/prepare',{record:$('record').value.trim(),expected_revision:Number($('expected-revision').value)}));});};
 $('review-form').onsubmit=event=>{event.preventDefault(); act(event.submitter,async()=>{
   cancelPlan(); const feedback=$('feedback').value;

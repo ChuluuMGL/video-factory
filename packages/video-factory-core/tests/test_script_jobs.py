@@ -70,6 +70,13 @@ class ScriptTests(unittest.TestCase):
             except RuntimeFault:return None
         with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(run,range(4)))
         self.assertEqual(self.provider.calls,1)
+    def test_receipt_replay_cannot_change_request(self):
+        plan=self.jobs.prepare('synthetic-user-token',**self.args)
+        self.jobs.submit('synthetic-user-token',plan['plan_sha256'],**self.args)
+        self.assertTrue(self.jobs.submit('synthetic-user-token',plan['plan_sha256'],**self.args)['replayed'])
+        with self.assertRaisesRegex(RuntimeFault,'SUBMIT_CONFLICT'):
+            self.jobs.submit('synthetic-user-token',plan['plan_sha256'],**(self.args|{'brief':'changed'}))
+
     def test_stale_capability_after_restore_blocks_script(self):
         self.queue()
         with self.f.store.connect() as db:self.f.store.invalidate_worker_approvals(db)
