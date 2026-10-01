@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import zipfile
 
 
@@ -31,14 +32,15 @@ def build(destination, receipt_file, repository, checked=False):
                 info = zipfile.ZipInfo('video-factory-setup/' + path.relative_to(destination / 'skill').as_posix(), (2026, 1, 1, 0, 0, 0))
                 info.external_attr = 0o100644 << 16
                 archive.writestr(info, path.read_bytes())
-    config = {'version': receipt['version'], 'source_commit': receipt['source_commit'],
+    page_source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    config = {'version': receipt['version'], 'source_commit': receipt['source_commit'], 'page_source_commit': page_source,
               'release_url': f'https://github.com/{repository}/releases/tag/v{receipt["version"]}',
               'delivery_checks_passed': checked, 'public_download': False, 'business_ready': False}
     (destination / 'delivery-config.js').write_text('window.VF_DELIVERY = ' + json.dumps(config, ensure_ascii=False) + ';\n')
     hashes = {p.relative_to(destination).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in sorted(destination.rglob('*')) if p.is_file()}
     (destination / 'delivery-manifest.json').write_text(json.dumps({'schema': 1, 'source_commit': receipt['source_commit'],
-          'version': receipt['version'], 'files': hashes}, indent=2) + '\n')
+          'version': receipt['version'], 'page_source_commit': page_source, 'files': hashes}, indent=2) + '\n')
     print(json.dumps({'status': 'assembled', 'version': receipt['version'], 'files': len(hashes), 'business_ready': False}))
 
 

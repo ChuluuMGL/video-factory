@@ -50,6 +50,22 @@ try:
             assert page.goto(origin).status == 200
             page.wait_for_function('window.VF_DELIVERY && document.querySelector("#agent-prompt").value.includes("Skill")')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), label
+            assert page.locator('#agent-prompt').is_visible()
+            assert page.locator('#agent-prompt').evaluate('(el) => !el.closest("details")')
+            assert page.locator('#status').count() == 0
+            assert page.locator('#copy-prompt').bounding_box()['width'] <= 100
+            for scene in ('base', 'flow', 'review'):
+                page.locator(f'[data-demo="{scene}"]').click()
+                assert page.locator(f'#demo-{scene}').is_visible()
+                assert page.locator('[role="tabpanel"]:visible').count() == 1
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), label + scene
+                page.locator('#demo').screenshot(path=str(evidence / f'{label}-demo-{scene}.png'))
+            page.wait_for_function('document.querySelector("#demo-review img").complete && document.querySelector("#demo-review img").naturalWidth > 0')
+            page.locator('[data-demo="base"]').click()
+            page.locator('[data-demo="base"]').press('ArrowRight')
+            assert page.locator('#demo-flow').is_visible()
+            page.locator('[data-demo="flow"]').press('Home')
+            assert page.locator('#demo-base').is_visible()
             for mode in ('install', 'project', 'resume', 'repair'):
                 button = page.locator(f'[data-mode="{mode}"]'); button.click()
                 assert button.get_attribute('aria-pressed') == 'true'
@@ -67,20 +83,18 @@ try:
             download.save_as(evidence / f'{label}-skill.zip')
             assert (evidence / f'{label}-skill.zip').read_bytes() == (root / 'video-factory-setup.zip').read_bytes()
             page.locator('[data-mode="install"]').click()
-            # A denied clipboard must reveal and select the otherwise collapsed text.
+            # Instructions remain visible; denied clipboard selects them for manual copy.
             page.evaluate("() => { window.savedWriteText = navigator.clipboard.writeText; navigator.clipboard.writeText = async () => { throw new Error('denied'); }; }")
             page.locator('#copy-prompt').click()
             assert page.locator('#agent-prompt').is_visible()
             assert page.locator('#agent-prompt').evaluate('(el) => el.selectionStart === 0 && el.selectionEnd === el.value.length')
             page.evaluate('() => { navigator.clipboard.writeText = window.savedWriteText; }')
-            page.locator('.prompt-preview summary').click()
             page.locator('[data-mode="install"]').click()
             page.evaluate("window.scrollTo({top:0,behavior:'instant'})")
             page.screenshot(path=str(evidence / f'{label}-first-screen.png'))
             page.screenshot(path=str(evidence / f'{label}.png'), full_page=True)
             page.locator('#start').screenshot(path=str(evidence / f'{label}-install.png'))
-            # Hidden technical instructions must remain accessible on demand.
-            page.locator('.prompt-preview summary').click()
+            # Instructions never collapse; optional setup detail remains available.
             assert page.locator('#agent-prompt').is_visible()
             page.locator('#setup summary').click()
             assert page.locator('#setup .steps').is_visible()
@@ -107,6 +121,7 @@ finally:
     server.shutdown(); server.server_close()
 result = {'status': 'PASS', 'version': manifest['version'], 'source_commit': manifest['source_commit'],
           'desktop_mobile': 'PASS', 'four_agent_entry_points': 'PASS', 'clipboard': 'PASS',
+          'always_visible_instructions': 'PASS', 'compact_copy': 'PASS', 'three_demo_scenes': 'PASS',
           'complete_skill_download': 'PASS', 'relative_links': 'PASS', 'markdown_links': 'PASS', 'page_errors': errors,
           'customer_installation': 'not_run', 'business_ready': False}
 (evidence / 'delivery-result.json').write_text(json.dumps(result, indent=2) + '\n')

@@ -2,6 +2,11 @@ name: Installation page review
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional existing fixed release to keep while updating only the page'
+        type: string
+        default: ''
   pull_request:
     paths:
       - 'delivery/site/**'
@@ -38,13 +43,34 @@ jobs:
           python -m pip install "playwright==1.55.0" "PyYAML==6.0.2"
           sudo "$(command -v python)" -m playwright install --with-deps chrome
           sudo apt-get install -y fonts-noto-cjk
-          python -m pip wheel --no-deps --wheel-dir ci-page/wheels ./packages/video-factory-core
-          python -m pip download --only-binary=:all: --dest ci-page/wheels "cryptography==46.0.5" "psycopg[binary]==3.3.6"
+      - name: Assemble inputs from a fixed release or candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            [[ "$RELEASE_TAG" =~ ^v0\.1\.0a[0-9]+$ ]]
+            gh release download "$RELEASE_TAG" --pattern release.json --pattern handoff.json --pattern video-factory-setup.zip --dir ci-page/release
+            python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path('ci-page/release')
+          r=json.loads((root/'release.json').read_text()); h=json.loads((root/'handoff.json').read_text())
+          assert 'v'+r['version']==os.environ['RELEASE_TAG'] and r['version']==h['version']
+          for k in ('source_commit','archive_sha256','manifest_sha256'): assert r[k]==h[k]
+          PY
+          else
+            python -m pip wheel --no-deps --wheel-dir ci-page/wheels ./packages/video-factory-core
+            python -m pip download --only-binary=:all: --dest ci-page/wheels "cryptography==46.0.5" "psycopg[binary]==3.3.6"
+            python .github/scripts/build-release.py --out ci-page/release --wheels ci-page/wheels --source "$(git rev-parse HEAD)"
+          fi
       - name: Assemble draft and verify reader interactions
         run: |
           python .github/scripts/validate-skill.py skills/video-factory-setup
-          python .github/scripts/build-release.py --out ci-page/release --wheels ci-page/wheels --source "$(git rev-parse HEAD)"
           python .github/scripts/build-delivery.py --out ci-page/site --receipt ci-page/release/release.json --repository "$GITHUB_REPOSITORY"
+          if [ -f ci-page/release/video-factory-setup.zip ]; then
+            cmp ci-page/release/video-factory-setup.zip ci-page/site/video-factory-setup.zip
+          fi
           python .github/scripts/delivery-smoke.py ci-page/site ci-page/evidence
       - name: Compare typography with the live official AI page
         run: python .github/scripts/brand-parity-smoke.py ci-page/site ci-page/evidence
@@ -55,6 +81,12 @@ jobs:
           name: installation-page-${{ github.run_id }}-${{ github.run_attempt }}
           path: ci-page/evidence/
           retention-days: 14
+      - name: Preserve exact reviewed guide
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-installation-guide
+          path: ci-page/site/
+          retention-days: 90
       - name: Record review scope
         if: always()
         run: |

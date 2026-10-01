@@ -26,7 +26,7 @@ For a first-time installer, the page makes the path from product information to 
 
 ## Reading path
 
-Product promise → four-stage workflow → concrete installation outcomes → highlighted download/copy actions → later projects → test status and support. Full Agent instructions, detailed setup steps, release history and server requirements remain available through native disclosure controls. Readiness, costs and material limitations remain visible or explicitly linked.
+Product promise → interactive table/workflow/review demonstrations → installation outcomes → always-visible Agent instructions and compact copy control → four preparation items → later projects → full-width support. Detailed setup steps and release information remain available through native disclosure controls. The test-progress section is removed at the user's request; invited-test identity and material usage limits remain concise.
 
 ## Responsive behavior
 
@@ -36,7 +36,7 @@ Product promise → four-stage workflow → concrete installation outcomes → h
 
 ## Motion and accessibility
 
-Only short button color feedback (180 ms) and anchor scrolling. Reduced motion disables transitions and smooth scrolling. Visible keyboard focus, native details/summary, text labels and minimum 44 px controls. Copy fallback opens the instruction disclosure before selecting text.
+Only short button color feedback (180 ms) and anchor scrolling. Reduced motion disables transitions and smooth scrolling. Visible keyboard focus, native details/summary, text labels and minimum 44 px controls. Instructions are always visible; copy fallback selects their text. Demo tabs support keyboard navigation.
 
 ## Review gate
 
@@ -47,3 +47,7 @@ Cloud-only Chrome checks at 320, 390, 820 and 1440 px, copy/download/scenario be
 Reference: https://www.yueyu.tech/zh/solutions/ai-workflow-models (hydrated AI page, not its SEO fallback). Installation, setup, credential wizard and employee review surfaces share its font family, medium heading weight, white/gray text, navy backgrounds and blue accent. Task forms retain smaller headings appropriate to their layout. Guide controls remain larger than the marketing site's 14 px controls, and white primary-action labels use #2563eb for contrast. These are intentional readability adaptations.
 
 The cloud `brand-parity-smoke.py` compares the live official page and guide in the same Chrome at 1440 and 390 px: computed heading family/size/weight/leading/tracking, accent/background and actual rendered Chinese font. It also verifies the shipped application stylesheets using synthetic text. The regular cloud regression covers actual installed UI behavior. Screenshots and computed styles are retained as evidence; a failed or unavailable live reference must not be described as verified parity. This does not deploy either website.
+
+## October 1 user-directed revision
+
+The previous two-column installation/support layouts are superseded by [the full-width installation and product demonstration revision](INSTALL_PAGE_LAYOUT_REVISION.md). Keep the official palette and typography. The customer installation artifact remains a30; page source is recorded separately.

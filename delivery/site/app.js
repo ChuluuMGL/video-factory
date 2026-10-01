@@ -28,12 +28,12 @@
     document.getElementById('scenario-description').textContent = descriptions[mode];
     const source = new URL('skill/SKILL.md', window.location.href).href;
     prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n若该私有页面无法访问，请读取我附上的完整 video-factory-setup.zip（保留包内全部文件）。\n安装包版本：${config.version}；来源：${config.release_url}\n\n请先说明这次要做什么、完成后如何检查结果，再逐步询问必要的服务器、项目和飞书信息。请帮我整理配置并执行安装，不要求我先学习内部命令。密码与密钥只在私有输入界面填写，不在聊天中收集。完成后给出实际网址、检查结果、未完成事项，以及下次如何继续。新增项目优先使用服务器已安装的兼容版本，不能自动升级旧服务。`;
-    document.getElementById('copy-prompt').firstChild.textContent = '复制这段指引 ';
+    document.querySelector('#copy-prompt span').textContent = '复制';
     feedback.textContent = '';
   }
   async function copy() {
-    try { await navigator.clipboard.writeText(prompt.value); feedback.textContent = '已复制。请粘贴给 AI 助手；第一次使用时，同时附上完整 Skill 文件。'; }
-    catch { const preview = prompt.closest('details'); if (preview) preview.open = true; prompt.focus(); prompt.select(); feedback.textContent = '已选中指引，请按 Ctrl+C 或 ⌘C 复制。'; }
+    try { await navigator.clipboard.writeText(prompt.value); document.querySelector('#copy-prompt span').textContent = '已复制'; feedback.textContent = '已复制，粘贴给 AI 助手即可。'; }
+    catch { prompt.focus(); prompt.select(); feedback.textContent = '已选中指引，请按 Ctrl+C 或 ⌘C 复制。'; }
   }
   document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => select(button.dataset.mode)));
   document.getElementById('copy-prompt').addEventListener('click', copy);
@@ -43,6 +43,20 @@
   if (releaseURL.protocol !== 'https:' || releaseURL.hostname !== 'github.com') throw new Error('Invalid release source');
   releaseLink.href = releaseURL.href; releaseLink.textContent = `${config.version} · 受邀测试安装包`;
   document.getElementById('version').textContent = config.version;
-  document.getElementById('delivery-status').textContent = config.delivery_checks_passed ? '本页自动化检查通过' : '尚无本页通过检查的记录';
+  const demoTabs = [...document.querySelectorAll('[data-demo]')];
+  function showDemo(tab) {
+    demoTabs.forEach(button => { const active = button === tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; document.getElementById(button.getAttribute('aria-controls')).hidden = !active; });
+  }
+  demoTabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => showDemo(tab));
+    tab.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (i + 1) % demoTabs.length;
+      if (event.key === 'ArrowLeft') next = (i + demoTabs.length - 1) % demoTabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = demoTabs.length - 1;
+      if (next !== undefined) { event.preventDefault(); showDemo(demoTabs[next]); demoTabs[next].focus(); }
+    });
+  });
   select('install');
 })();

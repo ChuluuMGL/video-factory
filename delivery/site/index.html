@@ -13,7 +13,7 @@
   <a class="skip" href="#start">跳到安装指南</a>
   <header>
     <a class="brand" href="#">▸ <span>Video Factory</span></a>
-    <nav aria-label="主要导航"><a href="#how">安装后有什么</a><a href="#start">怎样安装</a><a href="#projects">新增项目</a><a href="#status">测试进展</a></nav>
+    <nav aria-label="主要导航"><a href="#how">安装后有什么</a><a href="#start">怎样安装</a><a href="#projects">新增项目</a><a href="#demo">产品演示</a></nav>
     <span class="edition">受邀测试中</span>
   </header>
   <main>
@@ -26,19 +26,42 @@
         <a class="button primary" href="#start">查看安装步骤 <span>↓</span></a>
         <p class="small">管理员安装，员工通过网页工作。</p>
       </div>
-      <aside class="workflow" aria-label="视频制作的四个步骤">
-        <p class="workflow-title">从资料到交付，一条清楚的流程</p>
-        <ol>
-          <li><strong>商品资料</strong><span>提供卖点与参考图片</span></li>
-          <li><strong>生成脚本</strong><span>审核内容，需要时修改</span></li>
-          <li><strong>生成视频</strong><span>确认费用后，执行生成</span></li>
-          <li><strong>审核与下载</strong><span>由团队确认最终结果</span></li>
-        </ol>
+      <aside class="hero-board" aria-label="一个视频任务的流程示意">
+        <div class="board-top"><span>夏季新品 · 示例项目</span><span class="demo-tag">流程示意</span></div>
+        <div class="board-task"><span class="task-icon" aria-hidden="true">▷</span><div><p>新品介绍短片</p><strong>每次修改，都有版本可查。</strong></div></div>
+        <div class="board-track"><span>商品资料</span><i aria-hidden="true">→</i><span>脚本</span><i aria-hidden="true">→</i><span>视频</span></div>
+        <div class="board-review"><span class="review-dot" aria-hidden="true"></span><div><strong>先审核，再继续。</strong><p>意见跟随任务，确认后进入下一步。</p></div></div>
+        <a href="#demo" class="demo-link">看看团队怎样使用 <span aria-hidden="true">↗</span></a>
       </aside>
     </section>
-    <section class="notice" aria-label="当前测试范围">
-      <strong>目前仅限受邀测试</strong>
-      <p>自动化流程已测试；真实模型、实际网址和独立用户验收仍待完成。<a href="#status">查看测试范围 ↗</a></p>
+
+    <section id="demo" class="section showcase">
+      <div class="section-heading"><p class="eyebrow">看看实际怎么用</p><h2>一条任务，三个工作场景。</h2><p>资料在表格里整理，执行交给工作流，结果在网页里审核。</p></div>
+      <div class="demo-tabs" role="tablist" aria-label="选择产品演示">
+        <button id="tab-base" role="tab" aria-controls="demo-base" aria-selected="true" data-demo="base">飞书任务表</button>
+        <button id="tab-flow" role="tab" aria-controls="demo-flow" aria-selected="false" tabindex="-1" data-demo="flow">n8n 执行流程</button>
+        <button id="tab-review" role="tab" aria-controls="demo-review" aria-selected="false" tabindex="-1" data-demo="review">视频审核界面</button>
+      </div>
+      <div id="demo-base" class="demo-pane" role="tabpanel" aria-labelledby="tab-base">
+        <div class="demo-caption"><h3>把散落的需求，放进一张任务表。</h3><p>商品、脚本、负责人都有对应记录。把选定任务导入工作区，继续生成和审核。</p><span class="demo-tag">表格结构示例 · 虚构数据</span></div>
+        <div class="table-demo"><div class="table-toolbar"><strong>▦ 新品视频项目</strong><span>商品资料 / 视频任务</span></div>
+          <div class="table-scroll" tabindex="0" role="region" aria-label="示例任务表，可横向滚动"><table><caption class="sr-only">三条虚构任务展示任务表的字段结构</caption><thead><tr><th>视频任务</th><th>商品 SKU</th><th>脚本内容</th><th>负责人</th></tr></thead><tbody>
+          <tr><td><span class="cell-icon">▷</span> 新品介绍</td><td>CUP-01</td><td>先展示外观，再呈现使用方式</td><td><span class="avatar">林</span> 小林</td></tr>
+          <tr><td><span class="cell-icon">▷</span> 细节展示</td><td>CUP-01</td><td>近景展示杯盖与杯身细节</td><td><span class="avatar">陈</span> 小陈</td></tr>
+          <tr><td><span class="cell-icon">▷</span> 日常场景</td><td>BAG-02</td><td>用一个场景说明商品用途</td><td><span class="avatar">林</span> 小林</td></tr>
+          </tbody></table></div><p class="visual-note">任务可导入工作区；生成结果与审核记录保存在客户服务器。</p></div>
+      </div>
+      <div id="demo-flow" class="demo-pane" role="tabpanel" aria-labelledby="tab-flow" hidden>
+        <div class="demo-caption"><h3>员工确认后，后台接着执行。</h3><p>n8n 按已授权的任务调度。需要修改时回到审核环节，保留前一版记录。</p><span class="demo-tag">执行逻辑示意</span></div>
+        <div class="flow-demo"><div class="table-toolbar"><strong>n8n / 视频任务调度</strong><span>由客户服务器运行</span></div>
+          <ol class="flow-nodes"><li><span class="node-icon">✓</span><strong>员工确认</strong><small>审核脚本与生成计划</small></li><li><span class="node-icon">↗</span><strong>调度生成</strong><small>使用项目模型账户</small></li><li><span class="node-icon">◷</span><strong>取得结果</strong><small>记录任务回执</small></li><li><span class="node-icon">▷</span><strong>审核成片</strong><small>通过后下载</small></li></ol>
+          <div class="revision-path"><span aria-hidden="true">↶</span> 需要修改 → 填写意见 → 生成下一版 → 再次审核</div>
+        </div>
+      </div>
+      <div id="demo-review" class="demo-pane" role="tabpanel" aria-labelledby="tab-review" hidden>
+        <div class="demo-caption"><h3>视频和修改意见，在同一个地方。</h3><p>员工查看脚本、播放视频，再选择通过或退回。旧版本与审核记录一并保留。</p><span class="demo-tag">实际产品界面 · 演示数据</span><a class="demo-link" href="assets/review-demo.png" target="_blank" rel="noopener">查看完整界面 ↗</a></div>
+        <figure class="review-demo"><div class="review-image-window"><img src="assets/review-demo.png" width="1280" height="2414" loading="lazy" alt="Video Factory 实际审核界面，含脚本、视频播放器、历史意见与审核操作；使用合成测试数据"></div><figcaption>审核区域局部截图，可查看完整界面；播放器中为测试占位视频。</figcaption></figure>
+      </div>
     </section>
 
     <section id="how" class="section">
@@ -54,30 +77,20 @@
     <section id="start" class="section install">
       <div class="section-heading"><p class="eyebrow">安装指南</p><h2>把安装交给助手。</h2><p>下载 Skill，复制指引，一起交给能操作服务器的 AI 助手。已有 Skill 时，只需复制指引。</p></div>
 
-      <div class="install-grid">
-        <div class="install-panel">
-          <div class="scenarios" role="group" aria-label="选择要做的事"><button type="button" data-mode="install" aria-pressed="true">第一次安装</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续上次安装</button><button type="button" data-mode="repair" aria-pressed="false">排查问题</button></div>
-          <p id="scenario-description" class="scenario-description" aria-live="polite">第一次安装：连接你的服务器，安装服务，并配置第一个测试项目。</p>
-          <div class="actions"><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill</a><button type="button" class="button primary" id="copy-prompt">复制这段指引 <span>↗</span></button></div>
-          <p id="copy-feedback" role="status" aria-live="polite"></p>
-          <details class="prompt-preview"><summary>查看完整指引</summary><label class="prompt-label" for="agent-prompt">发送给 AI 助手的指引</label><textarea id="agent-prompt" readonly rows="9">正在读取安装包信息……</textarea></details>
-          <p class="small">安装包需授权，可请实施同事提供或代装。交给助手时，请保留 Skill 包内的全部文件。</p>
-          <details><summary>安装包与下载权限</summary>
-            <p class="small">当前安装包只向受邀人员开放。安装者需要自己的 GitHub 仓库读取权限；没有权限时，由获授权的实施同事提供安装包。不要借用或分享别人的访问凭证。</p>
-            <dl class="source-list"><dt>安装说明</dt><dd><a href="skill/SKILL.md" id="skill-source">阅读 Skill 主文件</a></dd><dt>服务器安装包</dt><dd><a id="release-link">读取中</a></dd><dt>当前版本</dt><dd id="version">读取中</dd><dt>文件校验信息</dt><dd><a href="release.json">供 AI 助手核对安装包</a></dd></dl>
-            <p class="small">这是私有预览页。AI 助手无法打开页面链接时，使用你下载的完整 Skill 文件。</p>
-          </details>
-        </div>
-        <aside class="preparation"><h3>开始前准备什么？</h3><ol>
-          <li><strong>能操作服务器的 AI 助手</strong><span>能够读取文件，并在你授权后连接服务器。</span></li>
-          <li><strong>一台 Linux 服务器</strong><span>准备登录方式，由助手检查安装条件。</span></li>
-          <li><strong>第一个项目的资料</strong><span>项目名称、商品资料、参考图和审核人员。</span></li>
-          <li><strong>模型账户和员工访问网址</strong><span>模型密钥（API Key）、域名与 HTTPS 证书，可请实施同事协助准备。</span></li>
-        </ol><p class="small">密码和密钥按引导在专用输入窗口填写，不发送到聊天里。</p>
-        <details><summary>给实施同事的服务器要求</summary><p class="small">自动环境准备支持 Ubuntu 24.04、x86_64 架构、至少 4 GiB 内存。安装器可准备 Python、Docker 和 Compose；磁盘空间、网络与已有服务由助手先检查。</p></details></aside>
+      <div class="install-panel">
+        <div class="install-toolbar"><div class="scenarios" role="group" aria-label="选择要做的事"><button type="button" data-mode="install" aria-pressed="true">第一次安装</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续上次安装</button><button type="button" data-mode="repair" aria-pressed="false">排查问题</button></div><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill <span aria-hidden="true">↓</span></a></div>
+        <p id="scenario-description" class="scenario-description" aria-live="polite">连接服务器，安装服务，配置第一个项目。</p>
+        <div class="prompt-preview"><div class="prompt-toolbar"><label for="agent-prompt">发送给 AI 助手的指引</label><button type="button" id="copy-prompt" class="copy-button" aria-label="复制安装指引"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>复制</span></button></div><textarea id="agent-prompt" readonly rows="9">正在读取安装包信息……</textarea></div>
+        <div class="prompt-bottom"><p id="copy-feedback" role="status" aria-live="polite"></p><span class="small">已有 Skill？直接复制指引即可。</span></div>
+        <details class="release-details"><summary>版本与安装包</summary><p>安装包仅向受邀人员开放。没有仓库权限时，请实施同事提供或代装。</p><dl class="source-list"><dt>安装说明</dt><dd><a href="skill/SKILL.md" id="skill-source">阅读完整 Skill</a></dd><dt>服务器安装包</dt><dd><a id="release-link">读取中</a></dd><dt>当前版本</dt><dd id="version">读取中</dd><dt>文件校验信息</dt><dd><a href="release.json">供助手核对安装包</a></dd></dl></details>
       </div>
+      <aside class="preparation"><div class="prep-heading"><h3>开始前，准备好这四样。</h3><p>助手会逐项引导；密码与密钥只在专用输入窗口填写。</p></div><ol>
+        <li><span class="prep-number">01</span><strong>AI 助手</strong><span>能读取 Skill，并按授权连接服务器。</span></li>
+        <li><span class="prep-number">02</span><strong>Linux 服务器</strong><span>准备连接方式，环境由助手检查和安装。</span></li>
+        <li><span class="prep-number">03</span><strong>项目资料</strong><span>商品、参考图、飞书应用与审核人员。</span></li>
+        <li><span class="prep-number">04</span><strong>模型与访问网址</strong><span>模型账户、域名和证书，可由实施同事协助。</span></li>
+      </ol><details><summary>给实施同事的服务器要求</summary><p class="small">自动环境准备支持 Ubuntu 24.04、x86_64、至少 4 GiB 内存。助手检查磁盘、网络和已有服务，并准备 Python、Docker 与 Compose。</p></details></aside>
     </section>
-
     <section id="setup" class="process-section" aria-label="详细安装过程">
       <details><summary>安装时，助手会带你完成什么？</summary>
       <p>你提供信息、确认设置；助手检查环境并执行安装。</p>
@@ -98,22 +111,8 @@
       <div class="example"><p class="eyebrow">例如，从夏季新品到秋季上新</p><blockquote>“新增一个秋季上新项目，保留夏季新品项目。用现有服务，带我完成配置。”</blockquote><p>助手会检查已有安装，保留原项目，再询问新项目所需的信息。</p><div class="rule"></div><p><strong>谁需要使用 Skill？</strong><br>负责安装和维护的管理员或实施同事。日常员工打开对应项目的网页即可工作，不需要安装 Skill。</p></div>
     </section>
 
-    <section id="status" class="section">
-      <div class="section-heading"><p class="eyebrow">测试进展</p><h2>当前还在测试阶段。</h2><p>自动化检查已有通过记录。真实模型、实际网址与独立用户安装，仍需逐项验收。</p></div>
-      <details><summary>展开各项测试进展</summary>
-      <div class="status-table">
-        <div><strong>本页操作、复制指引与 Skill 下载</strong><span id="delivery-status" class="pill neutral">尚无本页通过检查的记录</span></div>
-        <div><strong>安装、配置和任务流程的自动化测试</strong><span class="pill">已发布测试版已通过</span></div>
-        <div><strong>本版使用真实模型完成视频任务</strong><span class="pill neutral">待实际验证</span></div>
-        <div><strong>员工通过实际网址登录和使用</strong><span class="pill neutral">待实际验证</span></div>
-        <div><strong>新用户只按指南完成安装和使用</strong><span class="pill neutral">待独立用户验证</span></div>
-      </div>
-      </details>
-      <details><summary>查看版本与真实测试范围</summary><p class="small">下载版本以本页安装包信息为准。只有通过全部五组云端检查的固定包才会提供下载，覆盖页面操作、安装与恢复；自动化中的模型和身份使用测试数据。a29 另在授权云服务器上完成了真实飞书建表、脚本返工审核和安装续接，由助手操作同一真实账号。该结果不代表不同员工账号、独立用户安装或真实视频生产已通过验收。</p></details>
-    </section>
-
     <section id="help" class="section help-layout">
-      <div class="section-heading"><p class="eyebrow">使用与维护</p><h2>常见问题。</h2></div>
+      <div class="section-heading"><p class="eyebrow">使用与维护</p><h2>常见问题。</h2><p>从第一次安装，到日常使用和后续维护。</p></div>
       <div class="faq">
         <details><summary>安装后，从哪里进入？</summary><p>安装完成后，你会收到员工工作区的网址和飞书表格链接。员工打开工作区，用自己的飞书身份登录。项目管理员负责授予成员权限；不要把安装指南页当作员工登录页。</p></details>
         <details><summary>飞书表格和工作区分别做什么？</summary><p>可以新建飞书多维表格（Base），也可以连接已有表，把表里的任务导入工作区处理。当前新生成的任务、审核记录和视频保存在服务器工作区，不会自动写回飞书表格。</p></details>
