@@ -51,3 +51,7 @@ The cloud `brand-parity-smoke.py` compares the live official page and guide in t
 ## October 1 user-directed revision
 
 The previous two-column installation/support layouts are superseded by [the full-width installation and product demonstration revision](INSTALL_PAGE_LAYOUT_REVISION.md). Keep the official palette and typography. The customer installation artifact remains a30; page source is recorded separately.
+
+## Latest simplification (2026-10-01)
+
+Supersedes the scene-demo revision: remove the decorative hero board, all demo tabs and the test screenshot. Present the product as Setup Skill plus customer-hosted video workflows; describe the review webpage only as an operational interface. Use one full-width product definition, installation panel and five maintenance questions. Retain official typography, always-visible instructions and compact copy control. No replacement stock or synthetic promotional imagery.

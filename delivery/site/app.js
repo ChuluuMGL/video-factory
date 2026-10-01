@@ -15,19 +15,12 @@
     resume: '请使用 Video Factory Setup Skill，继续上次未完成的安装。先查阅上次安装记录，确认服务器和已完成步骤；不重复创建尚未确认结果的资源。',
     repair: '请使用 Video Factory Setup Skill，先只读检查我指定的项目。根据当前版本、任务和报错查找原因。不要删除数据或直接重装。'
   };
-  const descriptions = {
-    install: '第一次安装：连接你的服务器，安装服务，并配置第一个测试项目。',
-    project: '新增项目：复用这个客户已有的服务，单独配置新项目，保留原有项目。',
-    resume: '继续上次安装：检查已有安装记录，从尚未完成的步骤继续。',
-    repair: '排查问题：先检查指定项目的状态和报错，再说明原因与处理办法。'
-  };
   let mode = 'install';
   function select(value) {
     mode = value;
     document.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
-    document.getElementById('scenario-description').textContent = descriptions[mode];
     const source = new URL('skill/SKILL.md', window.location.href).href;
-    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n若该私有页面无法访问，请读取我附上的完整 video-factory-setup.zip（保留包内全部文件）。\n安装包版本：${config.version}；来源：${config.release_url}\n\n请先说明这次要做什么、完成后如何检查结果，再逐步询问必要的服务器、项目和飞书信息。请帮我整理配置并执行安装，不要求我先学习内部命令。密码与密钥只在私有输入界面填写，不在聊天中收集。完成后给出实际网址、检查结果、未完成事项，以及下次如何继续。新增项目优先使用服务器已安装的兼容版本，不能自动升级旧服务。`;
+    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n链接不可访问时，读取附件 video-factory-setup.zip，保留全部文件。\n安装包版本：${config.version}；来源：${config.release_url}\n\n按 Skill 逐步确认服务器与项目，执行配置并验收。密码与密钥只在私有输入界面填写，不进入聊天。完成后交接服务状态、使用入口与续接方式；新增项目复用兼容服务，不自动升级。`;
     prompt.setSelectionRange(0, 0);
     prompt.scrollTop = 0;
     document.querySelector('#copy-prompt span').textContent = '复制';
@@ -45,20 +38,5 @@
   if (releaseURL.protocol !== 'https:' || releaseURL.hostname !== 'github.com') throw new Error('Invalid release source');
   releaseLink.href = releaseURL.href; releaseLink.textContent = `${config.version} · 受邀测试安装包`;
   document.getElementById('version').textContent = config.version;
-  const demoTabs = [...document.querySelectorAll('[data-demo]')];
-  function showDemo(tab) {
-    demoTabs.forEach(button => { const active = button === tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; document.getElementById(button.getAttribute('aria-controls')).hidden = !active; });
-  }
-  demoTabs.forEach((tab, i) => {
-    tab.addEventListener('click', () => showDemo(tab));
-    tab.addEventListener('keydown', event => {
-      let next;
-      if (event.key === 'ArrowRight') next = (i + 1) % demoTabs.length;
-      if (event.key === 'ArrowLeft') next = (i + demoTabs.length - 1) % demoTabs.length;
-      if (event.key === 'Home') next = 0;
-      if (event.key === 'End') next = demoTabs.length - 1;
-      if (next !== undefined) { event.preventDefault(); showDemo(demoTabs[next]); demoTabs[next].focus(); }
-    });
-  });
   select('install');
 })();

@@ -54,18 +54,8 @@ try:
             assert page.locator('#agent-prompt').evaluate('(el) => !el.closest("details")')
             assert page.locator('#status').count() == 0
             assert page.locator('#copy-prompt').bounding_box()['width'] <= 100
-            for scene in ('base', 'flow', 'review'):
-                page.locator(f'[data-demo="{scene}"]').click()
-                assert page.locator(f'#demo-{scene}').is_visible()
-                assert page.locator('[role="tabpanel"]:visible').count() == 1
-                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), label + scene
-                page.locator('#demo').screenshot(path=str(evidence / f'{label}-demo-{scene}.png'))
-            page.wait_for_function('document.querySelector("#demo-review img").complete && document.querySelector("#demo-review img").naturalWidth > 0')
-            page.locator('[data-demo="base"]').click()
-            page.locator('[data-demo="base"]').press('ArrowRight')
-            assert page.locator('#demo-flow').is_visible()
-            page.locator('[data-demo="flow"]').press('Home')
-            assert page.locator('#demo-base').is_visible()
+            assert page.locator('.hero-board, #demo-review, #demo').count() == 0
+            assert '自托管视频工作流' in page.locator('body').inner_text()
             for mode in ('install', 'project', 'resume', 'repair'):
                 button = page.locator(f'[data-mode="{mode}"]'); button.click()
                 assert button.get_attribute('aria-pressed') == 'true'
@@ -75,6 +65,7 @@ try:
                 assert 'TRUSTED_' not in text and '<我们的' not in text
                 page.locator('#copy-prompt').click()
                 assert page.evaluate('navigator.clipboard.readText()') == text
+            page.locator('#choose-project').evaluate('(el) => el.closest("details").open = true')
             page.locator('#choose-project').click()
             assert page.locator('[data-mode="project"]').get_attribute('aria-pressed') == 'true'
             with page.expect_download() as downloaded:
@@ -95,6 +86,7 @@ try:
             page.screenshot(path=str(evidence / f'{label}-first-screen.png'))
             page.screenshot(path=str(evidence / f'{label}.png'), full_page=True)
             page.locator('#start').screenshot(path=str(evidence / f'{label}-install.png'))
+            page.locator('#help').screenshot(path=str(evidence / f'{label}-help.png'))
             # Instructions never collapse; optional setup detail remains available.
             assert page.locator('#agent-prompt').is_visible()
             page.locator('#setup summary').click()
@@ -122,7 +114,7 @@ finally:
     server.shutdown(); server.server_close()
 result = {'status': 'PASS', 'version': manifest['version'], 'source_commit': manifest['source_commit'],
           'desktop_mobile': 'PASS', 'four_agent_entry_points': 'PASS', 'clipboard': 'PASS',
-          'always_visible_instructions': 'PASS', 'compact_copy': 'PASS', 'three_demo_scenes': 'PASS',
+          'always_visible_instructions': 'PASS', 'compact_copy': 'PASS', 'compact_product_definition': 'PASS',
           'complete_skill_download': 'PASS', 'relative_links': 'PASS', 'markdown_links': 'PASS', 'page_errors': errors,
           'customer_installation': 'not_run', 'business_ready': False}
 (evidence / 'delivery-result.json').write_text(json.dumps(result, indent=2) + '\n')
