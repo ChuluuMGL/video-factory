@@ -1,5 +1,6 @@
 """Employee-confirmed H3 plans from administrator-owned per-SKU settings."""
 import re
+import json
 from pathlib import PurePosixPath
 from .runtime_store import RuntimeStore,RuntimeFault,identifier
 from .feishu_bridge import FeishuBridge,meta,save
@@ -29,6 +30,13 @@ def configure(store,token,project,credential_ref,billing_owner,region,assets):
         if not setup or set(assets)-{s['sku_id'] for s in setup['configuration']['project']['products']}:raise RuntimeFault('VIDEO_SKU_NOT_IN_PROJECT')
         if not db.execute('SELECT revision FROM vault WHERE alias=?',(credential_ref[7:],)).fetchone():raise RuntimeFault('SECRET_MISSING')
         value={'credential_ref':credential_ref,'billing_owner':billing_owner,'region':region,'assets':assets}
+        # Replacing a project's model account must invalidate unused approvals
+        # for the previous profile, while keeping submitted receipts pollable.
+        for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'worker:%'").fetchall():
+            job=json.loads(row['value'])
+            if job.get('plan',{}).get('project')==project:
+                job['expires_at']=0;job['approval_revoked']='video_profile_changed'
+                save(db,row['key'],job)
         save(db,'video:profile:'+project,value);store.audit(db,actor,'video_provider_configured',project)
     return {'project':project,'model':'MiniMax-H3','configured_skus':sorted(assets),'provider_requests':0}
 

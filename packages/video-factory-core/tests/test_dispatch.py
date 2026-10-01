@@ -39,6 +39,27 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(self.provider.calls,1)
         self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'awaiting_video_review')
         self.assertEqual(self.execute()['status'],'idle')
+    def test_replacing_video_profile_revokes_unused_paid_approval(self):
+        from video_factory.feishu_bridge import save
+        from video_factory.video_jobs import configure
+        with self.store.connect() as db:save(db,'setup:project:brand',{'configuration':{'project':{'base_mode':'bind','products':[{'sku_id':'sku'}]}}})
+        self.approve()
+        configure(self.store,self.token,'brand','secret:fixture','fixture-account','global',{'sku':{'assets_root':'/work/fixture','specification':self.spec}})
+        self.assertEqual(self.execute()['status'],'idle')
+        self.assertEqual(self.provider.calls,0)
+        with self.assertRaisesRegex(RuntimeFault,'EXPIRED'):
+            self.worker.step(self.token,'brand','one',1,self.key,self.root,allow_paid=True)
+
+    def test_replacing_video_profile_preserves_submitted_receipt(self):
+        from video_factory.feishu_bridge import save
+        from video_factory.video_jobs import configure
+        with self.store.connect() as db:save(db,'setup:project:brand',{'configuration':{'project':{'base_mode':'bind','products':[{'sku_id':'sku'}]}}})
+        self.approve();self.execute()
+        configure(self.store,self.token,'brand','secret:fixture','fixture-account','global',{'sku':{'assets_root':'/work/fixture','specification':self.spec}})
+        self.execute()
+        self.assertEqual(self.provider.calls,1)
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'awaiting_video_review')
+
     def test_template_has_no_admin_secret_no_auto_activation(self):
         result=template('brand','approved-job-key');self.assertFalse(result['active'])
         self.assertIn('/v1/dispatch',result['nodes'][1]['parameters']['url'])

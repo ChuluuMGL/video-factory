@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import socket
 import ssl
+import subprocess
+import sys
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -55,7 +57,18 @@ def smoke(stack,root,session):
             path=root/(name+'.json');path.write_text(json.dumps(data));path.chmod(0o644)
             stack.compose('cp',str(path),'n8n:/tmp/'+name+'.json')
             stack.compose('exec','-T','n8n','n8n','import:'+kind,'--input=/tmp/'+name+'.json')
-        output=stack.compose('run','--rm','--no-deps','-e','N8N_RUNNERS_BROKER_PORT=5689','n8n','execute','--id=VfApprovedDispatch001','--rawOutput',timeout=180).decode()
+        execution=subprocess.run(['docker','compose','--project-directory',str(stack.root),'-f',str(stack.root/'compose.json'),
+            'run','--rm','--no-deps','-e','N8N_RUNNERS_BROKER_PORT=5689','n8n','execute','--id=VfApprovedDispatch001','--rawOutput'],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180)
+        if execution.returncode:
+            # This cloud-only test has synthetic identities and no vendor keys.
+            # Still redact ephemeral capabilities and generated stack secrets.
+            diagnostic=(execution.stdout+execution.stderr).decode(errors='replace')
+            for secret in [cap['token'],admin,*[p.read_text() for p in (stack.root/'secrets').glob('*') if p.is_file()]]:
+                if secret:diagnostic=diagnostic.replace(secret,'<redacted>')
+            print(diagnostic,file=sys.stderr)
+            raise AssertionError('N8N_APPROVED_DISPATCH_EXECUTION_FAILED')
+        output=execution.stdout.decode()
         assert '"idle"' in output and '"provider_requests": 0' in output, 'N8N_APPROVED_DISPATCH_FAILED'
         post('/v1/automation/revoke',{'key_id':cap['key_id']},admin)
         from video_factory.production_setup import schedule
