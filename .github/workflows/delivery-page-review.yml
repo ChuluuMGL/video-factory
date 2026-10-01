@@ -44,12 +44,21 @@ jobs:
         run: |
           python -m pip install "playwright==1.55.0" "PyYAML==6.0.2"
           sudo "$(command -v python)" -m playwright install --with-deps chrome
-          # The hosted runner's Azure mirror can stall on the 61 MB CJK package.
-          # Keep Ubuntu's signed package indexes/checksums and use its main mirror.
-          if [ -f /etc/apt/apt-mirrors.txt ]; then
-            sudo sed -i 's#http://azure.archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' /etc/apt/apt-mirrors.txt
-          fi
-          timeout 180s sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y fonts-noto-cjk
+          # Install the required SC face, not Ubuntu's 61 MB all-language font bundle.
+          # Pin both the upstream revision and Git blob identity; do not skip CJK QA.
+          curl --fail --location --retry 2 --connect-timeout 15 --max-time 90 \
+            https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf \
+            --output /tmp/vf-NotoSansCJKsc-Regular.otf
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          data=Path('/tmp/vf-NotoSansCJKsc-Regular.otf').read_bytes()
+          assert len(data)==16437364
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()=='dc15562470b4f842321894787a0d066879ccff8b'
+          PY
+          mkdir -p "$HOME/.local/share/fonts"
+          mv /tmp/vf-NotoSansCJKsc-Regular.otf "$HOME/.local/share/fonts/"
+          fc-cache -f
       - name: Assemble inputs from a fixed release or candidate
         env:
           GH_TOKEN: ${{ github.token }}
