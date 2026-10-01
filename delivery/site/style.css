@@ -182,3 +182,27 @@ footer .brand { font-size: 20px; }
 }
 
 @media (max-width:620px) { nav { display:flex; justify-content:space-between; gap:12px; } nav a { white-space:nowrap; } }
+
+/* Real public project media: one quiet gallery, with no mock application UI. */
+.hero-actions { display:flex; align-items:center; gap:28px; }
+.case-link { display:inline-flex; align-items:center; gap:12px; min-height:48px; color:#93c5fd; text-decoration:none; }
+.case-videos { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px; margin-top:32px; }
+.case-videos figure { margin:0; min-width:0; }
+.case-videos video { display:block; width:100%; aspect-ratio:9/16; object-fit:contain; background:var(--paper); border-radius:12px; }
+.case-videos figcaption { padding-top:16px; }
+.case-videos figcaption > span { font-size:14px; color:var(--muted); }
+.case-videos h3 { font-size:20px; margin:4px 0 0; }
+.case-videos figcaption a { display:inline-flex; align-items:center; min-height:44px; color:#93c5fd; font-size:14px; }
+.case-context { display:flex; justify-content:space-between; align-items:baseline; gap:24px; margin-top:24px; border-top:1px solid var(--line); padding-top:20px; font-size:16px; }
+.case-context p { margin:0; color:var(--muted); }
+.case-context a { color:#93c5fd; flex-shrink:0; }
+@media (max-width:850px) {
+  .case-videos { grid-template-columns:repeat(2,minmax(0,1fr)); gap:28px 20px; }
+  .case-context { flex-direction:column; gap:12px; }
+}
+@media (max-width:620px) {
+  .hero-actions { flex-wrap:wrap; gap:12px; }
+  .case-videos { gap:24px 14px; }
+  .case-videos h3 { font-size:18px; }
+  .case-videos figcaption { padding-top:10px; }
+}

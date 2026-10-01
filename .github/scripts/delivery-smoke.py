@@ -39,6 +39,7 @@ server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Quiet, directory=str(root
 thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
 origin = f'http://127.0.0.1:{server.server_port}'
 errors = []
+media_checks = []
 try:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel='chrome', headless=True, args=['--no-sandbox'])
@@ -87,12 +88,40 @@ try:
             page.screenshot(path=str(evidence / f'{label}.png'), full_page=True)
             page.locator('#start').screenshot(path=str(evidence / f'{label}-install.png'))
             page.locator('#help').screenshot(path=str(evidence / f'{label}-help.png'))
+            page.locator('#cases').screenshot(path=str(evidence / f'{label}-cases.png'))
             # Instructions never collapse; optional setup detail remains available.
             assert page.locator('#agent-prompt').is_visible()
             page.locator('#setup summary').click()
             assert page.locator('#setup .steps').is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), label + '-expanded'
             page.locator('#start').screenshot(path=str(evidence / f'{label}-instructions.png'))
+        # Public legacy cases must actually play; they are not installer acceptance evidence.
+        assert page.locator('#cases video').count() == 4
+        assert '不是当前安装版的验收样片' in page.locator('#cases').inner_text()
+        official = context.new_page()
+        assert official.goto('https://www.yueyu.tech/zh/solutions/ai-workflow-models').ok
+        official.locator('.ai-workflow-page video').first.wait_for()
+        official_sources = official.locator('video source').evaluate_all('(els) => els.map(e => e.src)')
+        official_posters = official.locator('video').evaluate_all('(els) => els.map(e => e.poster)')
+        for video in page.locator('#cases video').all():
+            source = video.locator('source').get_attribute('src')
+            poster = video.get_attribute('poster')
+            assert source in official_sources and poster in official_posters, (source, poster)
+            assert video.get_attribute('autoplay') is None
+            assert video.get_attribute('preload') == 'none'
+            response = context.request.get(poster)
+            assert response.ok and response.headers['content-type'].startswith('image/')
+            video.scroll_into_view_if_needed()
+            video.evaluate('(v) => { v.muted = true; v.load(); }')
+            page.wait_for_function('(src) => [...document.querySelectorAll("#cases video")].some(v => v.currentSrc === src && v.readyState >= 2 && v.videoWidth > 0)', arg=source, timeout=45000)
+            video.evaluate('(v) => v.play()')
+            page.wait_for_function('(src) => [...document.querySelectorAll("#cases video")].some(v => v.currentSrc === src && v.currentTime > 0.25 && !v.paused)', arg=source, timeout=20000)
+            info = video.evaluate('(v) => {v.pause(); return {source:v.currentSrc,duration:v.duration,width:v.videoWidth,height:v.videoHeight,currentTime:v.currentTime,error:v.error};}')
+            assert info['duration'] > 1 and not info['error']
+            media_checks.append(info)
+        page.set_viewport_size({'width':1440,'height':1000})
+        page.locator('#cases').screenshot(path=str(evidence / 'cases-playback.png'))
+        official.close()
         # All relative resource and anchor links must resolve, including docs.
         for href in page.locator('a[href]').evaluate_all('(links) => links.map(a => a.getAttribute("href"))'):
             if href.startswith('#'):
@@ -116,6 +145,7 @@ result = {'status': 'PASS', 'version': manifest['version'], 'source_commit': man
           'desktop_mobile': 'PASS', 'four_agent_entry_points': 'PASS', 'clipboard': 'PASS',
           'always_visible_instructions': 'PASS', 'compact_copy': 'PASS', 'compact_product_definition': 'PASS',
           'complete_skill_download': 'PASS', 'relative_links': 'PASS', 'markdown_links': 'PASS', 'page_errors': errors,
+          'official_case_playback': media_checks,
           'customer_installation': 'not_run', 'business_ready': False}
 (evidence / 'delivery-result.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result))

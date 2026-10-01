@@ -3,55 +3,48 @@
 ## Product focus
 
 - Route: Video Factory installation guide (`delivery/site`).
-- Audience: a first-time customer or the colleague installing for them.
-- First viewport: understand the product's video workflow and find the installation entry.
-- Context: desktop and mobile product guide. Preserve YUEYU's navy/blue identity, plain HTML/CSS/JS, private release access and truthful test status.
+- Audience: prospective users, customer administrators and implementation colleagues.
+- First viewport: understand the path from product information to scripts and videos, then choose real cases or installation.
+- Deliverable: customer-hosted workflows, configured through Setup Skill. The review webpage is an operating interface, not the entire product.
 
 ## Visual thesis
 
-For a first-time installer, the page makes the path from product information to an approved video legible through one prominent workflow illustration, large type and a single installation panel.
+Explain the product with concise typography and a single gallery of real project videos, then lead into one installation panel.
 
-- Hero object: a four-stage, text-based workflow — product information, script, video, human review/download. Original HTML/CSS, no third-party imagery or license dependency. It describes a process, not a real completed task or a fabricated customer result.
-- Avoid small-text architecture diagrams, repeated instructions, decorative letters, nested cards and distracting motion.
+- Media: the four anonymous project videos and posters already publicly displayed on the user's official AI services page. The user identified those workflows as the product's origins and requested their reuse. Link to those exact official assets; do not copy private project data or substitute synthetic demo media.
+- Provenance: legacy project examples, not evidence that the current installer has passed real-model or independent customer acceptance.
+- Avoid decorative hero panels, black test videos, mock apps, performance promises, repeated business pitches and invented project-to-brand attribution.
 
 ## Visual system
 
 | Element | Decision |
 |---|---|
-| Base | `#02040a`, official AI surfaces `#0f1219` / `#0f1623` |
-| Accent | Brand blue `#3b82f6`; white-on-`#2563eb` actions; light blue focus |
-| Type | Exact official Simplified Chinese system font stack, including Hiragino Sans GB and Noto Sans SC; no webfont downloads. Headline `clamp(1.9rem, 7.8vw, 4.5rem)`, weight 500, line-height 1.2 and tracking −0.03em. Section titles 30–48 px; body 18 px and supporting copy at least 16 px |
-| Grid | Maximum 1152 px of content plus 24 px gutters; asymmetric hero; clear left alignment |
-| Surfaces | 28 px installation panel corners, pill actions, 12 px inputs, thin separators and 64–96 px section spacing; no decorative nested boxes |
+| Base | Official `#02040a`, surfaces `#0f1219` / `#0f1623` |
+| Accent | Brand `#3b82f6`; white-on-`#2563eb` primary action |
+| Type | Official Chinese system sans stack, medium headings, no downloaded fonts; headline `clamp(1.9rem, 7.8vw, 4.5rem)` |
+| Grid | Maximum 1152 px content, 24 px outer padding, full-width sections |
+| Media | Four 9:16 players on desktop; two columns at 850 px and below; contain original frames, native controls, no autoplay |
+| Surfaces | One installation panel, quiet separators; no nested promotional cards |
 
 ## Reading path
 
-Product promise → interactive table/workflow/review demonstrations → installation outcomes → always-visible Agent instructions and compact copy control → four preparation items → later projects → full-width support. Detailed setup steps and release information remain available through native disclosure controls. The test-progress section is removed at the user's request; invited-test identity and material usage limits remain concise.
+1. Product purpose and three concise components.
+2. Four real project videos, one origin sentence and one link to complete official case records.
+3. Full Skill download, four operation choices, always-visible Agent instructions and compact top-right copy button.
+4. Preparation checklist and five full-width maintenance questions.
 
-## Responsive behavior
+The official AI page retains business-wide offerings and case metrics. This page provides the reusable product and installation path. No official-site edits, public access change or installer contract change are included.
 
-- Narrow mobile (320–390 px): one reading column, official responsive headline, 18 px body, full-width actions, two-column scenario selector. Workflow below primary action.
-- Tablet (820 px): stack hero and install columns; preserve font sizes rather than shrinking everything.
-- Desktop (1440 px): asymmetric hero, three outcomes, install instructions beside preparation checklist.
+## Responsive behavior and accessibility
 
-## Motion and accessibility
-
-Only short button color feedback (180 ms) and anchor scrolling. Reduced motion disables transitions and smooth scrolling. Visible keyboard focus, native details/summary, text labels and minimum 44 px controls. Instructions are always visible; copy fallback selects their text. Demo tabs support keyboard navigation.
+Desktop keeps the gallery in one row. Tablet and mobile use two columns with readable labels and full-frame videos. At 320–390 px the primary installation action spans the column; the case link stays secondary. Navigation remains one row. Controls have visible focus and accessible names; native players expose controls and every video has a direct-open fallback. No video preloading or autoplay; 180 ms button feedback and anchor scrolling respect reduced motion.
 
 ## Review gate
 
-Cloud-only Chrome checks at 320, 390, 820 and 1440 px, copy/download/scenario behavior, expanded disclosures and screenshots. These checks do not establish customer installation or real-model acceptance. No change to installation contract, account permissions, DNS or the official website production repository.
+Cloud Chrome checks at 320, 390, 820 and 1440 px: no horizontal overflow, copy/fallback/download, four operations, real video metadata and advancing playback, source/poster parity with the hydrated official page, and screenshots. Separate existing brand checks compare computed typography and actual Chinese fonts against the live official AI page. These checks do not prove customer access, independent installation or real-model acceptance.
 
-## Official-site parity
+## Reference
 
-Reference: https://www.yueyu.tech/zh/solutions/ai-workflow-models (hydrated AI page, not its SEO fallback). Installation, setup, credential wizard and employee review surfaces share its font family, medium heading weight, white/gray text, navy backgrounds and blue accent. Task forms retain smaller headings appropriate to their layout. Guide controls remain larger than the marketing site's 14 px controls, and white primary-action labels use #2563eb for contrast. These are intentional readability adaptations.
+https://www.yueyu.tech/zh/solutions/ai-workflow-models
 
-The cloud `brand-parity-smoke.py` compares the live official page and guide in the same Chrome at 1440 and 390 px: computed heading family/size/weight/leading/tracking, accent/background and actual rendered Chinese font. It also verifies the shipped application stylesheets using synthetic text. The regular cloud regression covers actual installed UI behavior. Screenshots and computed styles are retained as evidence; a failed or unavailable live reference must not be described as verified parity. This does not deploy either website.
-
-## October 1 user-directed revision
-
-The previous two-column installation/support layouts are superseded by [the full-width installation and product demonstration revision](INSTALL_PAGE_LAYOUT_REVISION.md). Keep the official palette and typography. The customer installation artifact remains a30; page source is recorded separately.
-
-## Latest simplification (2026-10-01)
-
-Supersedes the scene-demo revision: remove the decorative hero board, all demo tabs and the test screenshot. Present the product as Setup Skill plus customer-hosted video workflows; describe the review webpage only as an operational interface. Use one full-width product definition, installation panel and five maintenance questions. Retain official typography, always-visible instructions and compact copy control. No replacement stock or synthetic promotional imagery.
+This direction supersedes older workflow mockups and the screenshot-demo layout. Preserve the fixed a30 Skill and installer; page source and legacy-case provenance are recorded separately.
