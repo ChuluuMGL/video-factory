@@ -69,4 +69,8 @@ def smoke(stack,root):
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
         return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','human_acceptance':'not_run'}
+    except Exception:
+        try:print(compose(stack,'fs_brand','logs','--no-color','--tail','20').decode(),file=__import__('sys').stderr)
+        except Exception:pass
+        raise
     finally:stop_all(stack)

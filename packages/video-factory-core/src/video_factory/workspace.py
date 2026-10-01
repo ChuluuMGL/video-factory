@@ -84,7 +84,8 @@ def document(stack, value):
           'ports':[str(urlsplit(value['origin']).port or 443)+':8443'],
           'entrypoint':['nginx','-g','daemon off;'],
           'volumes':[str(root/'nginx.conf')+':/etc/nginx/nginx.conf:ro',str(root/'tls')+':/tls:ro'],
-          'depends_on':{'workspace':{'condition':'service_healthy'}}}
+          'depends_on':{'workspace':{'condition':'service_healthy'}},
+          'healthcheck':{'test':['CMD','wget','-q','-O','/dev/null','http://127.0.0.1:8082/healthz'],'interval':'2s','timeout':'3s','retries':30}}
     egress={**common,'image':relay['image'],'user':'10001:10001','networks':['review','outbound'],
             'entrypoint':['python','-m','video_factory.worker_egress'],'command':['--persistent'],
             'healthcheck':relay['healthcheck'],'pids_limit':64,'mem_limit':'128m'}
@@ -106,8 +107,10 @@ events { worker_connections 128; }
 http {
  access_log off;
  client_body_temp_path /tmp/body; proxy_temp_path /tmp/proxy;
+ fastcgi_temp_path /tmp/fastcgi; uwsgi_temp_path /tmp/uwsgi; scgi_temp_path /tmp/scgi;
  limit_req_zone $binary_remote_addr zone=requests:1m rate=5r/s;
  limit_conn_zone $binary_remote_addr zone=connections:1m;
+ server { listen 127.0.0.1:8082; location = /healthz { return 200 "ready"; } }
  server {
   listen 8443 ssl; server_name HOST;
   ssl_certificate /tls/certificate.pem; ssl_certificate_key /tls/key.pem;
