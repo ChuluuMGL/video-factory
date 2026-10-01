@@ -4,15 +4,15 @@
 
 **当前是私有受控测试版。安装、真实飞书建表与脚本审核有历史实测；完整视频自动生产和独立客户自助交付尚未验收。**
 
-a29 已发布并完成授权云服务器上的真实飞书建表、任务导入、脚本返工审核和 Setup 续接，由 Agent 操作同一真实账号。端口检测修复已合并，a30 正在准备固定发行验证；当前安装指南仍指向 a29。真实域名与模型、不同员工账号、独立人员验收仍未完成。
+a30 已发布：端口检测修复、247 项核心回归与全部五组云端检查通过；安装指南和完整 Skill 已同步。a29 另已完成授权云服务器上的真实飞书建表、任务导入、脚本返工审核和 Setup 续接，由 Agent 操作同一真实账号。真实域名与模型、不同员工账号、独立人员验收仍未完成。
 
 ## 从哪里开始
 
 **[打开安装指南页面](https://video-factory-install-guide.fresh-note-6263.chatgpt.site)** · 当前为所有者私有预览。
 
-**[下载经过云端验证的 0.1.0a29 候选版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a29)** · 需要本仓库读取权限。
+**[下载经过云端验证的 0.1.0a30 候选版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30)** · 需要本仓库读取权限。
 
-[本次交付验证记录](docs/product/DELIVERY_A29_RESULT.md)明确区分已通过与未完成范围。
+[本次交付验证记录](docs/product/DELIVERY_A30_RESULT.md)明确区分已通过与未完成范围。
 
 - **安装者**：[安装与交接指南](docs/product/CUSTOMER_GUIDE.md) → [完整 Setup Skill](skills/video-factory-setup/SKILL.md)。安装页面源文件在 `delivery/site/`，同版本网页与 Skill 包由云端检查后生成。
 - **已有客户新增项目**：调用同一 Skill，选择“新增项目”，复用已有服务；不重装 n8n，不默认复制旧项目的业务凭据。
