@@ -19,8 +19,8 @@ async function act(button, work) {
 async function boot() {
   const result = await request('/api/session'); csrf = result.csrf;
   clearTimeout(expiry);
-  expiry=setTimeout(()=>{ clearTimeout(polling); cancelPlan(); current=null; $('workspace').hidden=true; $('login').hidden=true; $('video').pause(); $('video').removeAttribute('src'); $('video').load(); $('script').textContent=''; $('history').textContent=''; $('tasks').replaceChildren(); message('本次审核入口已到期，请联系管理员重新开启。'); },result.remaining_seconds*1000);
-  $('project').textContent = '项目：'+result.project+' · 应用：'+result.app_id+' · 本次剩余约 '+Math.ceil(result.remaining_seconds/60)+' 分钟';
+  if (!result.persistent) expiry=setTimeout(()=>{ clearTimeout(polling); cancelPlan(); current=null; $('workspace').hidden=true; $('login').hidden=true; $('video').pause(); $('video').removeAttribute('src'); $('video').load(); $('script').textContent=''; $('history').textContent=''; $('tasks').replaceChildren(); message('本次审核入口已到期，请联系管理员重新开启。'); },result.remaining_seconds*1000);
+  $('project').textContent = '项目：'+result.project+' · 应用：'+result.app_id+(result.persistent?' · 员工工作区':' · 本次剩余约 '+Math.ceil(result.remaining_seconds/60)+' 分钟');
   $('login').hidden = result.authenticated; $('workspace').hidden = !result.authenticated;
   if (result.authenticated) await tasks();
 }

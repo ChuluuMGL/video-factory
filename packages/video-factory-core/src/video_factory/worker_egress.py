@@ -99,9 +99,13 @@ class RelayServer(socketserver.ThreadingTCPServer):
 
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--persistent', action='store_true')
+    args=parser.parse_args()
     with RelayServer(('0.0.0.0',8443),Relay) as server:
         server.timeout=2
-        deadline=time.monotonic()+600
+        deadline=float('inf') if args.persistent else time.monotonic()+600
         while time.monotonic()<deadline:server.handle_request()
 
 

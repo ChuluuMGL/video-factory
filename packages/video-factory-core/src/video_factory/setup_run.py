@@ -35,6 +35,8 @@ def register(commands):
     p.add_argument('--connection-port', type=int, default=8791)
     p.add_argument('--review-port', type=int, default=8790)
     p.add_argument('--seconds', type=int, default=360)
+    p.add_argument('--browser-input', action='store_true', help='human input via loopback browser, never Agent chat')
+    p.add_argument('--input-port', type=int, default=8792)
 
 
 def choice(prompt, read, write):
@@ -83,7 +85,7 @@ def install(args, store, session, reviewed, password):
         return apply_setup(args, latest, current, password)['project']
 
 
-def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
+def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_products=None):
     admin_host(); local_engine()
     if (not 1 <= args.seconds <= 360 or any(not 1024 <= p <= 65535 for p in (args.connection_port, args.review_port))
             or args.connection_port == args.review_port):
@@ -96,7 +98,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
     source = SessionStore(args.from_session).read() if args.from_session else None
     store.start(source)
     result = setup_questions(store, read=read, read_reference=hidden, write=write,
-                            next_step='接下来在本向导核对安装计划，再决定是否执行。', existing_base_only=False)
+                            next_step='接下来在本向导核对安装计划，再决定是否执行。', existing_base_only=False, read_products=read_products)
     if result.get('interrupted') or result['status'] != 'plan_ready':
         return {'status': 'configuration_saved', 'business_ready': False}
     session = store.read()
@@ -190,14 +192,26 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print):
 
 def run(args):
     previous = {}
+    browser = None
     try:
-        if not (sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()):
+        if not getattr(args, 'browser_input', False) and not (sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()):
             raise RuntimeFault('SETUP_RUN_REQUIRES_PRIVATE_TTY')
         def interrupted(*_): raise KeyboardInterrupt
         for signum in (signal.SIGTERM, signal.SIGHUP):
             previous[signum] = signal.getsignal(signum)
             signal.signal(signum, interrupted)
-        result = welcome(args)
+        if getattr(args, 'browser_input', False):
+            if args.input_port in (args.connection_port, args.review_port, args.runtime_port or 8787, args.n8n_port or 5678):
+                raise RuntimeFault('SETUP_INPUT_PORT_CONFLICT')
+            from .setup_browser import BrowserInput
+            browser = BrowserInput(args.input_port)
+            print(json.dumps({'status': 'awaiting_human_input', 'url': browser.url, 'access': 'same_port_ssh_tunnel', 'expires_in': 1800}), flush=True)
+            from .onboarding import read_json
+            import io
+            result = welcome(args, read=browser.read, hidden=browser.hidden, write=browser.write,
+                             read_products=lambda raw: read_json(io.StringIO(raw)))
+        else:
+            result = welcome(args)
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except (KeyboardInterrupt, EOFError):
@@ -207,4 +221,5 @@ def run(args):
     except Exception:
         print(json.dumps({'error': 'SETUP_RUN_INCOMPLETE_READ_STATUS', 'business_ready': False})); return 2
     finally:
+        if browser: browser.close()
         for signum, handler in previous.items(): signal.signal(signum, handler)

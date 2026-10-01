@@ -39,6 +39,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="vfctl")
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
+    from .workspace import register as register_workspace, cli as workspace_cli
+    register_workspace(commands)
     register_runtime(commands)
     register_host(commands)
     register_stack(commands)
@@ -84,6 +86,8 @@ def main(argv=None):
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == 'workspace':
+        return workspace_cli(args)
     if args.command == 'setup-run':
         return run_setup_run(args)
     if args.command == 'review-ui':

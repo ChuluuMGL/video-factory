@@ -111,6 +111,7 @@ jobs:
           set -euo pipefail
           sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/review-ui-smoke.py ci-results
           sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-connect-smoke.py ci-results
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-browser-smoke.py ci-results
       - name: Record scope
         if: always()
         shell: bash

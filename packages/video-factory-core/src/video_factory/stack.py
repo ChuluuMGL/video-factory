@@ -382,6 +382,8 @@ class Stack:
 
     def stop(self):
         with self.lock():
+            from .workspace import stop_all
+            stop_all(self)
             self.compose('stop','--timeout','60',timeout=200)
             return self.status()
 
@@ -395,6 +397,8 @@ class Stack:
         private_directory(destination.parent)
         if destination.exists() or destination.is_symlink() or destination.is_relative_to(self.root):
             raise RuntimeFault('BACKUP_REQUIRES_NEW_PATH_OUTSIDE_STACK')
+        from .workspace import stop_all
+        stop_all(self)
         # Explicit cold backup; services deliberately remain stopped afterward.
         self.compose('stop','--timeout','60',timeout=200)
         components=self.status()['components']

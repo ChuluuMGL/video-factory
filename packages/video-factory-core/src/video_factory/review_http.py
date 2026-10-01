@@ -33,6 +33,8 @@ class ReviewServer(ThreadingHTTPServer):
         self.deadline = clock() + seconds
         self.sessions, self.session_lock = {}, threading.Lock()
         self.capacity = threading.BoundedSemaphore(32)
+        self.cookie_seconds = 360
+        self.persistent = False
         self.login_count = 0
         super().__init__(address, handler or ReviewHandler)
         self.origin = 'http://127.0.0.1:' + str(self.server_port)
@@ -198,7 +200,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             elif path.path in ('/', '/api/session'):
                 if path.query: raise RuntimeFault('REQUEST_INVALID')
                 sid, session = self.server.session(sid, create=True)
-                cookie = [('Set-Cookie', self.cookie_name+'='+sid+'; Path=/; HttpOnly; SameSite=Strict; Max-Age=360')]
+                cookie = [('Set-Cookie', self.cookie_name+'='+sid+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+str(self.server.cookie_seconds)+('; Secure' if self.server.origin.startswith('https://') else ''))]
                 if path.path == '/':
                     data = (self.assets/'index.html').read_bytes()
                     self.headers_out(200, 'text/html; charset=utf-8', len(data), cookie); self.wfile.write(data)
@@ -207,7 +209,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                         authenticated = bool(session['token']) and self.server.clock() < session.get('expires', 0)
                         self.reply(200, {'csrf': session['csrf'], 'project': self.server.service.project,
                                          'app_id': self.server.oauth.app_id, 'authenticated': authenticated,
-                                         'remaining_seconds': max(0, int(self.server.deadline-self.server.clock()))}, cookie)
+                                         'persistent': self.server.persistent,
+                                         'remaining_seconds': self.server.cookie_seconds if self.server.persistent else max(0, int(self.server.deadline-self.server.clock()))}, cookie)
             elif self.path in ('/app.js', '/style.css'):
                 name, mime = ('app.js', 'text/javascript') if self.path == '/app.js' else ('style.css', 'text/css')
                 data = (self.assets/name).read_bytes(); self.headers_out(200, mime, len(data)); self.wfile.write(data)

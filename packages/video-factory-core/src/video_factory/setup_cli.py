@@ -8,7 +8,7 @@ from .onboarding import (QUESTIONS, FIELDS, SessionStore, SetupError, describe,
                          read_input_file, read_json)
 
 
-def interactive(store, *, read=None, read_reference=None, write=None, next_step=None, existing_base_only=False):
+def interactive(store, *, read=None, read_reference=None, write=None, next_step=None, existing_base_only=False, read_products=None):
     read = input if read is None else read
     read_reference = getpass.getpass if read_reference is None else read_reference
     write = print if write is None else write
@@ -33,7 +33,7 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
         if binding_question:
             question = {**question, 'choices': [('bind', '绑定已有飞书 Base（本入口暂不自动建表）')], 'default': 'bind'}
         write("\n[" + question["step"] + "] " + question["question"])
-        if question["kind"] == "products":
+        if question["kind"] == "products" and read_products is None:
             write("终端输入：填写包含该数组的 JSON 文件绝对路径；向导读取文件后提交数组。")
         for number, (value, label) in enumerate(question["choices"], 1):
             write(f"  {number}. {label} [{value}]")
@@ -46,7 +46,7 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
         try:
             # References are non-secret, but hide input in case a user pastes a Key.
             answer = (read_reference("引用> ") if question["kind"] == "reference"
-                      else read("输入> ")).strip()
+                      else read("粘贴 SKU JSON 数组> " if question["kind"] == "products" and read_products else "输入> ")).strip()
             if len(answer) > 1024:
                 raise SetupError("SETUP_INPUT_TOO_LARGE")
             if answer == ":quit":
@@ -74,7 +74,7 @@ def interactive(store, *, read=None, read_reference=None, write=None, next_step=
                     raise SetupError("SETUP_CHOICE_UNSUPPORTED")
                 answer = question["choices"][index][0]
             elif question["kind"] == "products":
-                answer = read_input_file(answer)
+                answer = read_products(answer) if read_products else read_input_file(answer)
             if binding_question and answer != 'bind':
                 raise SetupError('SETUP_EXISTING_BASE_REQUIRED')
             result = store.answer({question["field"]: answer}, session["revision"])
