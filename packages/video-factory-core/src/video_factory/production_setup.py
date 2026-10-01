@@ -22,6 +22,7 @@ def register(commands):
     p.add_argument('--stack-root',type=Path,required=True)
     p.add_argument('--session',type=Path,required=True)
     p.add_argument('--browser-input',action='store_true')
+    p.add_argument('--video-assets',type=Path,help='Agent-prepared non-secret SKU asset mapping')
     p.add_argument('--input-port',type=int,default=8792)
 
 
@@ -98,7 +99,11 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
             billing=read('视频费用账户标签> ').strip()
             region=read('视频账户区域 global 或 cn> ').strip()
             write('由 Agent 将已授权的产品图片上传到客户工作目录并计算哈希，再准备每 SKU 素材 JSON。')
-            assets=json.loads(read('粘贴每 SKU 素材 JSON（不含密钥）> '))
+            if getattr(args,'video_assets',None):
+                from .onboarding import read_input_file
+                assets=read_input_file(str(args.video_assets))
+                write('Agent 已准备素材配置；请核对 SKU：'+', '.join(sorted(assets)))
+            else:assets=json.loads(read('粘贴每 SKU 素材 JSON（不含密钥）> '))
             if choice('确认将视频密钥与 SKU 素材配置保存到本项目',read,write):
                 with stack.lock():rpc(stack,{'action':'video','token':token,'session':session,'secret':secret,'billing_owner':billing,'region':region,'assets':assets})
                 write('视频配置已保存；具体任务仍需逐条审核和授权。');secret=None

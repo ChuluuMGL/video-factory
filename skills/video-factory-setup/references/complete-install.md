@@ -12,7 +12,7 @@
 
 视频调度只使用 approved_execution 项目凭据和 dispatch-template。每任务的已审脚本、素材哈希及管理员单次生成授权均是执行前提；不要将 queue_read 凭据换成管理员 Token，也不要给 n8n 提供通用管理凭据。未知提交保持待核对。
 
-完成工作区后，使用同版 `production-setup --stack-root … --session … --browser-input` 引导用户在私有页面填写脚本/视频 API Key。Agent 先上传本项目实际 SKU 参考图到客户 stack 的 data/worker，使用10001所有者与私有权限，计算真实 SHA256 并准备素材映射。用户不必自行编写JSON或记CLI；素材路径与规格是非秘密配置，可由Agent准备，Key必须用户本人输入。
+完成工作区后，使用同版 `production-setup --stack-root … --session … --browser-input` 引导用户在私有页面填写脚本/视频 API Key。Agent 先上传本项目实际 SKU 参考图到客户 stack 的 data/worker，使用10001所有者与私有权限，计算真实 SHA256 并准备素材映射，通过 production-setup 的 --video-assets 私有文件参数交给向导，让用户只核对 SKU 而不粘贴 JSON。用户不必自行编写JSON或记CLI；素材路径与规格是非秘密配置，可由Agent准备，Key必须用户本人输入。
 
 脚本路线当前固定 DeepSeek Flash，视频固定 MiniMax H3；未实现的 Seedance/语音路线不能假装可选。向导生成项目级 n8n 流程并回读；启用调度会重启本客户 n8n，必须告知影响并遵循当前授权。调度授权有效90天，需要记录截止时间和续期责任。备份恢复后重新授权，绝不能恢复旧的未用付费权限。
 

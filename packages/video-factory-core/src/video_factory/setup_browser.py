@@ -13,6 +13,21 @@ from .runtime_store import RuntimeFault, canonical
 ASSETS = Path(__file__).with_name('wizard_assets')
 
 
+class InputServer(ThreadingHTTPServer):
+    daemon_threads=True
+    block_on_close=False
+    def __init__(self,*args):
+        self.capacity=threading.BoundedSemaphore(16)
+        super().__init__(*args)
+    def process_request(self,request,address):
+        if not self.capacity.acquire(blocking=False):self.shutdown_request(request);return
+        try:super().process_request(request,address)
+        except BaseException:self.capacity.release();raise
+    def process_request_thread(self,request,address):
+        try:super().process_request_thread(request,address)
+        finally:self.capacity.release()
+
+
 class BrowserInput:
     def __init__(self, port=8792, seconds=1800):
         if type(port) is not int or not 1024 <= port <= 65535 or not 1 <= seconds <= 3600:
@@ -23,7 +38,7 @@ class BrowserInput:
         self.messages, self.prompt, self.answer = [], None, None
         self.closed = False
         self.deadline = time.monotonic()+seconds
-        self.server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+        self.server = InputServer(('127.0.0.1', port), Handler)
         self.server.daemon_threads = True
         self.server.owner = self
         self.server.handle_error = lambda *_: None

@@ -145,6 +145,10 @@ def stop_all(stack):
     if base.exists():
         for path in sorted(base.iterdir()):
             if path.is_dir() and (path/'workspace.json').exists():
+                value=json.loads((path/'workspace.json').read_text())
+                # Restored copies carry old instance IDs. They must never stop
+                # the source host's companion or block a backup before reapply.
+                if value['stack_instance']!=stack.config['instance']:continue
                 compose(stack,path.name,'down','--timeout','15')
 
 
