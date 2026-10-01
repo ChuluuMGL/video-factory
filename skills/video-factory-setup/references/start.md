@@ -25,7 +25,7 @@
 
 版本来源：https://github.com/ChuluuMGL/video-factory/releases 。首次部署读取页面固定标签；已有服务先核对安装版本，不盲选 latest。
 
-start.py 参数为 --manifest-sha256、--prefix、--session、--root；新增项目用 --mode new-project --from-session 原会话，恢复用 --mode resume。无私有 TTY 时 --prepare-only 仅准备工具，不表示配置完成。镜像网络受限时选匹配版本的离线镜像包，不混用 wheels 和镜像。大包只在云端流转。
+start.py 参数为 --manifest-sha256、--prefix、--session、--root；新增项目用 --mode new-project --from-session 原会话，恢复用 --mode resume。a28 没有私有 TTY 时优先使用 --browser-input，由用户在 SSH 隧道中的私有页面输入。--prepare-only 仅准备工具，不表示配置完成。镜像网络受限时选匹配版本的离线镜像包，不混用 wheels 和镜像。大包只在云端流转。
 
 ## 4. 引导而不是转交命令
 

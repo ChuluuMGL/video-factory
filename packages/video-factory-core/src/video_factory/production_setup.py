@@ -107,7 +107,7 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
             write('请先由 Agent 完成常驻工作区的域名与 HTTPS 部署，再续接调度配置。')
             return {'status':'script_configuration_saved_dispatch_pending','project':project,'business_ready':False}
         write('调度只执行明确授权的脚本请求和已批准的视频任务；每次最多推进一个任务。')
-        write('授权有效期 7 天，届满停止执行；再次运行本向导可以续期。恢复备份后旧授权无效。')
+        write('授权有效期 90 天，届满停止执行；再次运行本向导可以续期。恢复备份后旧授权无效。')
         if not choice('配置本项目 n8n 调度凭据和流程',read,write):
             return {'status':'credentials_saved_schedule_not_changed','project':project}
         activate=choice('现在启用调度（会短暂重启本客户 n8n）',read,write)

@@ -10,7 +10,8 @@ from .runtime_store import RuntimeFault,canonical,identifier
 def issue(store,token,project,ttl_hours=24,*,scope='queue_read'):
     if scope not in ('queue_read','approved_execution'):raise RuntimeFault('AUTOMATION_SCOPE_INVALID')
     identifier(project)
-    if type(ttl_hours) is not int or not 1<=ttl_hours<=168:raise RuntimeFault('AUTOMATION_TTL_INVALID')
+    maximum=8760 if scope=='approved_execution' else 168
+    if type(ttl_hours) is not int or not 1<=ttl_hours<=maximum:raise RuntimeFault('AUTOMATION_TTL_INVALID')
     raw=secrets.token_urlsafe(32);key=hashlib.sha256(raw.encode()).hexdigest()
     value={'project':project,'scope':scope,'expires_at':time.time()+3600*ttl_hours}
     with store.connect() as db:
@@ -57,5 +58,5 @@ def template(project,credential_id):
         'connections':{'Read schedule':{'main':[[{'node':'Read project queue','type':'main','index':0}]]}},'settings':{'executionOrder':'v1'}}
 
 
-def issue_execution(store,token,project,ttl_hours=24):
+def issue_execution(store,token,project,ttl_hours=2160):
     return issue(store,token,project,ttl_hours,scope='approved_execution')

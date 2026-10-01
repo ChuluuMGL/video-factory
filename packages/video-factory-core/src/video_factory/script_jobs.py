@@ -53,7 +53,11 @@ class ScriptJobs:
             feedback=''
             if previous:
                 if not meta(db,key(project,task,expected_revision)):raise RuntimeFault('SCRIPT_TASK_SOURCE_CONFLICT')
-                audit=db.execute('SELECT receipt FROM events').fetchall()
+                # IDs are validated; bind LIKE patterns and escape underscore.
+                task_match='%"task":"'+task.replace('_', '\\_')+'"%'
+                project_match='%"project":"'+project.replace('_', '\\_')+'"%'
+                audit=db.execute("SELECT receipt FROM events WHERE receipt LIKE ? ESCAPE '\\' AND receipt LIKE ? ESCAPE '\\' LIMIT 501",(task_match,project_match)).fetchall()
+                if len(audit)>500:raise RuntimeFault('SCRIPT_HISTORY_REQUIRES_REVIEW')
                 rows=[json.loads(v[0]) for v in audit]
                 feedback='\n'.join(r.get('feedback','') for r in rows if r.get('project')==project and r.get('task')==task and r.get('revision')==expected_revision)
         value={'project':project,'task':task,'sku':sku,'brief':brief,'feedback':feedback[-8000:],

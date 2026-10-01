@@ -105,7 +105,7 @@ class SetupAdmin:
         if action == 'execution_key':
             from .automation import issue_execution
             project=inspect_project(self.store,payload['token'],payload['session'])['project']
-            return issue_execution(self.store,payload['token'],project,168)
+            return issue_execution(self.store,payload['token'],project,2160)
         if action == 'revoke_execution':
             from .automation import revoke
             return revoke(self.store,payload['token'],payload['key_id'])
