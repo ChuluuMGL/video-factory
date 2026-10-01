@@ -2,13 +2,16 @@ import copy
 import io
 import json
 import os
+import socket
+import sys
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 from cryptography.fernet import Fernet
 
-from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json
+from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json, preflight
 from video_factory.runtime_store import RuntimeFault
 from video_factory.postgres_store import PG_SCHEMA
 
@@ -120,3 +123,41 @@ class StackTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux gateway port semantics')
+class PortPreflightTests(unittest.TestCase):
+    def check_ports(self, root, first, second):
+        info = json.dumps({'OSType':'linux', 'Architecture':'x86_64',
+                           'MemTotal':8*1024**3, 'ServerVersion':'test'}).encode()
+        with patch('video_factory.stack.admin_host'), patch('video_factory.stack.local_engine'), \
+             patch('video_factory.stack.run', side_effect=[info, b'2.40.3']), \
+             patch('video_factory.stack.shutil.disk_usage') as disk:
+            disk.return_value.free = 8*1024**3
+            return preflight(root, first, second)
+
+    def test_closed_gateway_connection_does_not_block_new_install(self):
+        with tempfile.TemporaryDirectory() as root, socket.socket() as listener, socket.socket() as spare:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(('127.0.0.1', 0)); address = listener.getsockname()
+            spare.bind(('127.0.0.1', 0)); second = spare.getsockname()[1]; spare.close()
+            listener.listen(1)
+            with socket.create_connection(address, timeout=2) as client:
+                connection, _ = listener.accept()
+                connection.close()
+                self.assertEqual(client.recv(1), b'')
+            listener.close()
+            # Prove this fixture reaches the old false-positive condition.
+            with socket.socket() as old_probe:
+                with self.assertRaises(OSError): old_probe.bind(address)
+            result = self.check_ports(Path(root), address[1], second)
+            self.assertTrue(result['loopback_ports_available'])
+
+    def test_active_loopback_and_wildcard_listeners_are_still_rejected(self):
+        for host in ('127.0.0.1', '0.0.0.0'):
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as root, socket.socket() as listener:
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                listener.bind((host, 0)); listener.listen(1)
+                port = listener.getsockname()[1]
+                with self.assertRaisesRegex(RuntimeFault, '^STACK_PORT_ALREADY_IN_USE$'):
+                    self.check_ports(Path(root), port, 5678 if port != 5678 else 8787)

@@ -86,6 +86,10 @@ def preflight(root,runtime_port=8787,n8n_port=5678):
         if type(port) is not int or not 1024<=port<=65535:
             raise RuntimeFault('STACK_PORT_INVALID')
         with socket.socket() as sock:
+            # Match the gateway's restart semantics: closed connections in
+            # TIME_WAIT must not look like an active service. A live listener
+            # still rejects this bind; SO_REUSEPORT is deliberately not used.
+            sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             try:sock.bind(('127.0.0.1',port))
             except OSError:raise RuntimeFault('STACK_PORT_ALREADY_IN_USE') from None
     return {'platform':'linux/amd64','docker_version':info.get('ServerVersion'),'compose_version':version,
