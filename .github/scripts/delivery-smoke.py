@@ -24,10 +24,13 @@ with zipfile.ZipFile(root / 'video-factory-setup.zip') as bundle:
         assert '..' not in Path(name).parts
         relative = name.removeprefix('video-factory-setup/')
         assert bundle.read(name) == (root / 'skill' / relative).read_bytes()
-for path in (root / 'skill').rglob('*.md'):
+markdown_links=[]
+for path in [*(root / 'skill').rglob('*.md'), *root.glob('*.md')]:
     for link in re.findall(r'\]\(([^)]+)\)', path.read_text()):
         if '://' not in link and not link.startswith('#'):
-            assert (path.parent / link.split('#')[0]).is_file(), (path.name, link)
+            target=(path.parent / link.split('#')[0]).resolve()
+            assert target.is_relative_to(root) and target.is_file(), (path.name, link)
+            markdown_links.append(target.relative_to(root).as_posix())
 
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *_): pass
@@ -72,12 +75,14 @@ try:
             elif not href.startswith('https://'):
                 assert context.request.get(origin + '/' + href).status == 200, href
         assert not errors, errors
+        for href in markdown_links:
+            assert context.request.get(origin + '/' + href).status == 200, href
         browser.close()
 finally:
     server.shutdown(); server.server_close()
 result = {'status': 'PASS', 'version': manifest['version'], 'source_commit': manifest['source_commit'],
           'desktop_mobile': 'PASS', 'four_agent_entry_points': 'PASS', 'clipboard': 'PASS',
-          'complete_skill_download': 'PASS', 'relative_links': 'PASS', 'page_errors': errors,
+          'complete_skill_download': 'PASS', 'relative_links': 'PASS', 'markdown_links': 'PASS', 'page_errors': errors,
           'customer_installation': 'not_run', 'business_ready': False}
 (evidence / 'delivery-result.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result))
