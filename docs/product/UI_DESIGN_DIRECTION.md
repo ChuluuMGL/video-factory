@@ -18,11 +18,11 @@ For a first-time installer, the page makes the path from product information to 
 
 | Element | Decision |
 |---|---|
-| Base | `#02040a`, restrained navy surfaces `#0d1422` |
+| Base | `#02040a`, official AI surfaces `#0f1219` / `#0f1623` |
 | Accent | Brand blue `#3b82f6`; white-on-`#2563eb` actions; light blue focus |
-| Type | Native system sans, no font downloads. Desktop headline 44–64 px, section titles 32–44 px, body 18 px, supporting copy at least 16 px |
-| Grid | Maximum 1280 px including 48 px margins; asymmetric hero; clear left alignment |
-| Surfaces | One installation panel, thin separators and generous section spacing; no decorative nested boxes |
+| Type | Exact official Simplified Chinese system font stack, including Hiragino Sans GB and Noto Sans SC; no webfont downloads. Headline `clamp(1.9rem, 7.8vw, 4.5rem)`, weight 500, line-height 1.2 and tracking −0.03em. Section titles 30–48 px; body 18 px and supporting copy at least 16 px |
+| Grid | Maximum 1152 px of content plus 24 px gutters; asymmetric hero; clear left alignment |
+| Surfaces | 28 px installation panel corners, pill actions, 12 px inputs, thin separators and 64–96 px section spacing; no decorative nested boxes |
 
 ## Reading path
 
@@ -30,7 +30,7 @@ Product promise → four-stage workflow → concrete installation outcomes → h
 
 ## Responsive behavior
 
-- Narrow mobile (320–390 px): one reading column, 32–44 px headline, 18 px body, full-width actions, two-column scenario selector. Workflow below primary action.
+- Narrow mobile (320–390 px): one reading column, official responsive headline, 18 px body, full-width actions, two-column scenario selector. Workflow below primary action.
 - Tablet (820 px): stack hero and install columns; preserve font sizes rather than shrinking everything.
 - Desktop (1440 px): asymmetric hero, three outcomes, install instructions beside preparation checklist.
 
@@ -41,3 +41,9 @@ Only short button color feedback (180 ms) and anchor scrolling. Reduced motion d
 ## Review gate
 
 Cloud-only Chrome checks at 320, 390, 820 and 1440 px, copy/download/scenario behavior, expanded disclosures and screenshots. These checks do not establish customer installation or real-model acceptance. No change to installation contract, account permissions, DNS or the official website production repository.
+
+## Official-site parity
+
+Reference: https://www.yueyu.tech/zh/solutions/ai-workflow-models (hydrated AI page, not its SEO fallback). Installation, setup, credential wizard and employee review surfaces share its font family, medium heading weight, white/gray text, navy backgrounds and blue accent. Task forms retain smaller headings appropriate to their layout. Guide controls remain larger than the marketing site's 14 px controls, and white primary-action labels use #2563eb for contrast. These are intentional readability adaptations.
+
+The cloud `brand-parity-smoke.py` compares the live official page and guide in the same Chrome at 1440 and 390 px: computed heading family/size/weight/leading/tracking, accent/background and actual rendered Chinese font. It also verifies the shipped application stylesheets using synthetic text. The regular cloud regression covers actual installed UI behavior. Screenshots and computed styles are retained as evidence; a failed or unavailable live reference must not be described as verified parity. This does not deploy either website.
