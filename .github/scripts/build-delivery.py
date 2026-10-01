@@ -19,6 +19,10 @@ def build(destination, receipt_file, repository, checked=False):
     shutil.copytree('delivery/site', destination)
     shutil.copytree('skills/video-factory-setup', destination / 'skill')
     shutil.copyfile('docs/product/CUSTOMER_GUIDE.md', destination / 'customer-guide.md')
+    allowed = json.loads(Path('distribution/customer-docs.json').read_text())
+    for name in ('NEW_INSTALL_CAPABILITIES.md', 'INDEPENDENT_ACCEPTANCE.md'):
+        assert name in allowed
+        shutil.copyfile(Path('docs/product') / name, destination / name)
     shutil.copyfile(receipt_file, destination / 'release.json')
     with zipfile.ZipFile(destination / 'video-factory-setup.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted((destination / 'skill').rglob('*')):
