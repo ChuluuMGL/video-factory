@@ -7,6 +7,11 @@ on:
       - '.github/scripts/publication-audit.py'
       - '.github/workflows/publication-audit.yml'
   workflow_dispatch:
+    inputs:
+      scope:
+        type: choice
+        options: [all, source, releases, ci]
+        default: all
 
 permissions:
   contents: read
@@ -20,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [source, releases, ci]
+        scope: ${{ fromJSON(github.event_name == 'push' && '["source"]' || inputs.scope == 'all' && '["source","releases","ci"]' || format('["{0}"]', inputs.scope)) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

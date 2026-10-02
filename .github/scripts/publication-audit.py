@@ -16,7 +16,7 @@ MODE = sys.argv[1]
 OUT = Path('audit-results')
 OUT.mkdir(exist_ok=True)
 result = {'mode': MODE, 'repository': REPO, 'source_sha': os.environ['GITHUB_SHA'],
-          'scanner': 'gitleaks 8.30.1', 'archive_depth': 5, 'decode_depth': 2,
+          'scanner': 'gitleaks 8.30.1', 'archive_depth': 0 if MODE == 'source' else 5, 'decode_depth': 2,
           'inspected': [], 'uninspected': [], 'errors': [], 'findings': [],
           'publication_approved': False}
 
@@ -43,7 +43,8 @@ def scan(path, label, kind='dir'):
     with tempfile.TemporaryDirectory() as temp:
         report = Path(temp) / 'raw.json'
         command = ['gitleaks', kind, str(path), '--redact=100', '--no-banner',
-                   '--ignore-gitleaks-allow', '--log-level=error', '--no-color', '--max-archive-depth=5',
+                   '--ignore-gitleaks-allow', '--log-level=error', '--no-color',
+                   '--max-archive-depth=' + ('0' if MODE == 'source' else '5'),
                    '--max-decode-depth=2', '--report-format=json',
                    '--report-path', str(report)]
         if kind == 'git':
