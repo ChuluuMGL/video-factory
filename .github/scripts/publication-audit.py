@@ -42,13 +42,14 @@ def pages(endpoint, key=None):
 def scan(path, label, kind='dir'):
     with tempfile.TemporaryDirectory() as temp:
         report = Path(temp) / 'raw.json'
-        command = ['gitleaks', kind, str(path), '--redact=100', '--no-banner',
+        command = ['gitleaks', kind, str(path), '--redact=0', '--no-banner',
                    '--ignore-gitleaks-allow', '--log-level=error', '--no-color',
                    '--max-archive-depth=' + ('0' if MODE == 'source' else '5'),
                    '--max-decode-depth=2', '--report-format=json',
                    '--report-path', str(report)]
         if kind == 'git':
             command += ['--log-opts=--all']
+        # Raw values exist only in the temporary cloud report for classification.
         # Never publish stdout/stderr or raw reports; they can contain private metadata.
         p = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                            timeout=1200)
@@ -56,9 +57,18 @@ def scan(path, label, kind='dir'):
             raise RuntimeError('SCANNER_FAILED')
         findings = json.loads(report.read_text())
         for hit in findings:
+            # Classify in the isolated runner; never include actual values in receipts.
+            secret = hit.get('Secret', '')
+            if secret == 'NOT-A-REAL-CREDENTIAL':
+                classification = 'explicit-synthetic-fixture'
+            elif secret.startswith('/run/secrets/') and not any(c.isspace() for c in secret):
+                classification = 'runtime-secret-file-reference'
+            else:
+                classification = 'requires-review'
             result['findings'].append({'object': label,
                 'rule': hit.get('RuleID'), 'file': hit.get('File'),
-                'line': hit.get('StartLine'), 'commit': hit.get('Commit')})
+                'line': hit.get('StartLine'), 'commit': hit.get('Commit'),
+                'classification': classification})
         if p.stderr.strip():
             import re
             diagnostic = p.stderr.decode(errors='replace')
