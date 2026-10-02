@@ -20,7 +20,8 @@ class AuditPolicyTests(unittest.TestCase):
     def test_only_recognized_fixture_findings_are_non_blocking(self):
         self.assertEqual(policy.verdict({'findings': [
             {'classification': 'explicit-synthetic-fixture'},
-            {'classification': 'runtime-secret-file-reference'}]}),
+            {'classification': 'runtime-secret-file-reference'},
+            {'classification': 'reviewed-test-assertion'}]}),
                          ('inspection_completed', 0, 0))
 
     def test_scanner_failure_cannot_pass_even_without_findings(self):
@@ -29,3 +30,19 @@ class AuditPolicyTests(unittest.TestCase):
 
     def test_clean_scan_passes(self):
         self.assertEqual(policy.verdict({}), ('inspection_completed', 0, 0))
+
+    def test_reviewed_assertion_exception_is_exact_and_file_scoped(self):
+        name = '.github/scripts/container-stack-smoke.py'
+        source = Path(__file__).resolve().parents[2] / name
+        line = source.read_text().splitlines()[42]
+        self.assertTrue(policy.reviewed_assertion('generic-api-key', name, line))
+        self.assertFalse(policy.reviewed_assertion('generic-api-key', 'other.py', line))
+        self.assertFalse(policy.reviewed_assertion('different-rule', name, line))
+
+    def test_changing_the_fixture_value_removes_the_exception(self):
+        name = '.github/scripts/container-stack-smoke.py'
+        source = Path(__file__).resolve().parents[2] / name
+        line = source.read_text().splitlines()[42]
+        changed = line.replace('NOT-A-REAL-CREDENTIAL', 'a-different-value')
+        self.assertNotEqual(line, changed)
+        self.assertFalse(policy.reviewed_assertion('generic-api-key', name, changed))
