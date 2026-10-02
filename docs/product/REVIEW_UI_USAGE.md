@@ -52,7 +52,7 @@ ssh -N -L 127.0.0.1:8790:127.0.0.1:8790 user@customer-host
 
 云端检查使用官方结构的模拟 OAuth/飞书 HTTP 服务、真实安装包、Google Chrome、数据库与 FFmpeg；浏览器授权动作由测试 fixture 模拟，不能据此宣称真实飞书登录成功。实际容器启动测试不提交授权请求，也不调用模型。
 
-上述是限时窗口最初的合成测试范围。后续版本已增加常驻入口、凭据向导、建表和生成返工，a31 已公开安装页与 Skill；a29 也完成过同一真实账号的授权和脚本审核。当前发行版真实模型、独立员工及客户验收尚未完成，Base 回写仍未实现，见 [当前状态](STATUS.md)。
+上述是限时窗口最初的合成测试范围。后续版本已增加常驻入口、凭据向导、建表和生成返工，a31 已公开安装页与 Skill；a29 也完成过同一真实账号的授权和脚本审核。当前发行版真实模型、独立员工及客户验收尚未完成，Base 回写仍未实现，见 [当前状态](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/STATUS.md)。
 
 设备授权协议参考飞书官方 CLI 的 [设备授权实现](https://github.com/larksuite/cli/blob/main/internal/auth/device_flow.go) 和 [端点定义](https://github.com/larksuite/cli/blob/main/internal/auth/paths.go)。产品固定调用官方域名，不提供用户可配置的 OAuth 代理目标。
 
