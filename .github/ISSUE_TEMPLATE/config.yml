@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装指南 / Installation guide
+    url: https://www.yueyu.tech/zh/products/video-factory/
+    about: 从完整 Skill 开始安装 / Start with the complete Skill
+  - name: 安全报告 / Security reporting
+    url: https://github.com/ChuluuMGL/video-factory/security/policy
+    about: 安全问题请私密报告，不要创建公开 Issue / Report vulnerabilities privately

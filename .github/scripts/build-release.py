@@ -1,4 +1,4 @@
-"""Build a private candidate handoff, from wheels already built in cloud CI."""
+"""Build a pinned candidate handoff from wheels already built in cloud CI."""
 import argparse
 from email.parser import BytesParser
 import hashlib
@@ -21,7 +21,7 @@ def release_member(info):
     return info
 
 
-def build(out, wheel_dirs, source):
+def build(out, wheel_dirs, source, public_release=False):
     assert re.fullmatch(r'[a-f0-9]{40}', source)
     version = tomllib.loads(Path('packages/video-factory-core/pyproject.toml').read_text())['project']['version']
     root = out / f'video-factory-{version}-linux-x86_64-cpython312'
@@ -58,10 +58,16 @@ def build(out, wheel_dirs, source):
     shutil.copyfile('distribution/INSTALL.md', root / 'INSTALL.md')
     (root / 'templates').mkdir()
     shutil.copyfile('packages/video-factory-core/examples/setup/products.json', root / 'templates/products.json')
+    if public_release:
+        assert Path('LICENSE').is_file(), 'OWNER_APPROVED_LICENSE_REQUIRED'
+        for legal_file in ('LICENSE','NOTICE','THIRD_PARTY_NOTICES.md'):
+            shutil.copyfile(legal_file,root/legal_file)
+        import runpy
+        runpy.run_path('.github/scripts/collect-third-party.py')['collect'](root)
     files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(root.rglob('*')) if p.is_file()}
     manifest = {'schema': 1, 'version': version, 'source_commit': source,
-                'target': 'linux-x86_64-cpython312', 'channel': 'private_candidate', 'files': files}
+                'target': 'linux-x86_64-cpython312', 'channel': 'public_alpha' if public_release else 'private_candidate', 'files': files}
     (root / 'manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
     archive = out / (root.name + '.tar.gz')
     with tarfile.open(archive, 'w:gz') as tar:
@@ -69,7 +75,7 @@ def build(out, wheel_dirs, source):
     receipt = {'schema': 1, 'version': version, 'source_commit': source, 'archive': archive.name,
                'archive_sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
                'manifest_sha256': hashlib.sha256((root / 'manifest.json').read_bytes()).hexdigest(),
-               'target': manifest['target'], 'public_release': False}
+               'target': manifest['target'], 'public_release': public_release}
     (out / 'release.json').write_text(json.dumps(receipt, indent=2) + '\n')
     (out / 'SHA256SUMS').write_text(receipt['archive_sha256'] + '  ' + archive.name + '\n')
     print(json.dumps(receipt))
@@ -80,5 +86,6 @@ if __name__ == '__main__':
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--wheels', type=Path, nargs='+', required=True)
     p.add_argument('--source', required=True)
+    p.add_argument('--public-release', action='store_true')
     args = p.parse_args()
-    build(args.out, args.wheels, args.source)
+    build(args.out, args.wheels, args.source, args.public_release)

@@ -36,7 +36,11 @@
   const releaseLink = document.getElementById('release-link');
   const releaseURL = new URL(config.release_url);
   if (releaseURL.protocol !== 'https:' || releaseURL.hostname !== 'github.com') throw new Error('Invalid release source');
-  releaseLink.href = releaseURL.href; releaseLink.textContent = `${config.version} · 受邀测试安装包`;
+  releaseLink.href = releaseURL.href; releaseLink.textContent = `${config.version} · ${config.public_download ? "公开测试版" : "受邀测试安装包"}`;
+  document.querySelector(".edition").textContent = config.public_download ? "公开测试版" : "受邀测试中";
+  document.getElementById("download-access").textContent = config.public_download
+    ? "安装包公开下载，无需 GitHub 登录或仓库授权。由助手核对固定版本与校验信息。"
+    : "安装包仅向受邀人员开放。没有仓库权限时，请实施同事提供或代装。";
   document.getElementById('version').textContent = config.version;
   select('install');
 })();
