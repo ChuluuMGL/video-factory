@@ -1,38 +1,84 @@
 # Video Factory
 
-通过 Agent Skill，在客户自己的服务器上安装和管理视频项目。默认使用飞书 Base 与 n8n；同一客户可管理多个项目，不局限于任何发布平台。
+> 通过 Agent Skill，把视频工作流部署到你自己的服务器。
+>
+> 默认连接飞书 Base 与 n8n，同一客户可持续新增项目。
 
-**当前是私有受控测试版。安装、真实飞书建表与脚本审核有历史实测；完整视频自动生产和独立客户自助交付尚未验收。**
+**中文** | [English](README.en.md)
 
-a30 已发布：端口检测修复、247 项核心回归与全部五组云端检查通过；安装指南和完整 Skill 已同步。a29 另已完成授权云服务器上的真实飞书建表、任务导入、脚本返工审核和 Setup 续接，由 Agent 操作同一真实账号。真实域名与模型、不同员工账号、独立人员验收仍未完成。
+[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/) · [固定发行版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [安全报告](SECURITY.md)
 
-## 从哪里开始
+## 它是什么
 
-**[打开官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)** · 页面公开，服务器安装包仍为受邀测试版。
+Video Factory 将商品资料、脚本生成、视频生成和人工审核连接为可维护的项目流程。管理员通过 AI 助手安装和配置，员工在客户自己的工作区处理任务。
 
-**[下载经过云端验证的 0.1.0a30 候选版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30)** · 需要本仓库读取权限。
+- **独立部署**：服务、数据库、账户和密钥由客户管理。
+- **多项目复用**：同一客户新增项目时复用基础服务，分别配置商品、飞书和模型。
+- **可续接维护**：同一 Skill 支持首次安装、新增项目、继续安装和故障排查。
 
-[本次交付验证记录](docs/product/DELIVERY_A30_RESULT.md)明确区分已通过与未完成范围。
+安装程序运行在客户服务器；Skill 是 AI 助手的操作指南。官网用于介绍与安装，不保存客户项目账户或模型密钥。
 
-- **安装者**：[安装与交接指南](docs/product/CUSTOMER_GUIDE.md) → [完整 Setup Skill](skills/video-factory-setup/SKILL.md)。安装页面源文件在 `delivery/site/`，同版本网页与 Skill 包由云端检查后生成。
-- **已有客户新增项目**：调用同一 Skill，选择“新增项目”，复用已有服务；不重装 n8n，不默认复制旧项目的业务凭据。
-- **维护者**：[产品定义](docs/product/PRD.md)、[当前状态](docs/product/STATUS.md)、[交付验收](docs/product/DELIVERY_ACCEPTANCE.md)。
+## 当前版本与使用范围
 
-## 产品由哪些部分组成
+**0.1.0a30 · 私有受邀测试版，尚未开源。**
 
-| 部分 | 在哪里 | 谁使用 |
-|---|---|---|
-| 安装页面 | 交付网站 | 客户和安装同事 |
-| Setup Skill | 操作人员的 Agent | 管理员和实施人员 |
-| 产品服务、PostgreSQL、n8n | 客户服务器 | 持续运行项目与任务 |
-| 飞书和审核入口 | 客户工作环境 | 日常员工 |
+官网指南和完整 Skill 可公开访问；服务器发行包需要本仓库读取权限，或由获授权的实施人员提供经过核验的固定包。访问权限不等于开源许可。
 
-安装程序是 Skill 调用的服务器部署工具，不是员工必须另装的桌面软件。Skill 更新与服务器升级分别进行。当前服务器目标为 Linux x86_64 / Python 3.12 / Docker Compose。
+a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真实飞书建表、任务导入和脚本返工审核，由 Agent 操作同一账号。**当前版本的新部署真实模型生成、不同员工账号和独立客户完整验收仍未完成**；历史项目案例不代替本安装版验收。
 
-## 仓库范围
+详细范围：[发行验证记录](docs/product/DELIVERY_A30_RESULT.md) · [当前状态](docs/product/STATUS.md)。
 
-这是正式产品整理仓库，保持私有。只迁入产品源码、通用测试、安装器、Skill 和产品文档；历史四客户运行目录、ECS 回执、客户数据和旧工作流文件不迁入。保留一个 a19 运行底座源码基线，仅用于云端升级回归，不导入旧仓库的完整历史。
+## 开始安装
 
-原 TikTok 仓库保留作为私有历史档案，不是新客户安装入口。此仓库尚未完成开源审查和许可证选择，不能把“仓库整理完成”写成“已开源”。
+推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作服务器的 Agent。
 
-固定发行包通过本仓库的云端检查后发布为私有预发行版；Skill 和安装页必须指向同一发行版。首次拉取需要安装者自己的读取权限。不要把开发分支、临时 Actions 下载地址或“latest”冒充固定产品版本。
+**已有仓库权限，也可以直接从 GitHub 开始，不必经过网页：**
+
+1. 阅读[安装与交接指南](docs/product/CUSTOMER_GUIDE.md)。
+2. 让 Agent 读取完整的 [`skills/video-factory-setup/`](skills/video-factory-setup/) 目录，保留其中的 `references/`。
+3. 将下面的指引交给 Agent；由它按 Skill 获取和校验固定发行包，然后逐步引导配置。
+
+```text
+请使用本仓库 skills/video-factory-setup/ 中的完整 Skill，
+带我在自己的服务器上首次安装 Video Factory，并配置第一个测试项目。
+固定版本使用 0.1.0a30；先检查服务器和发行包，再逐步引导 Setup。
+密码和 API Key 通过私有输入通道填写，不放在聊天中。
+```
+
+准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。常驻员工入口还需要域名和有效 HTTPS 证书。Agent 检查并准备 Python 3.12、Docker 与 Compose。
+
+不要把维护者的 GitHub token 发给客户。下载权限不足时，由获授权的实施人员协助；不得把开发分支或临时 Actions 附件当作正式安装包。
+
+## 已有安装，继续使用
+
+| 告诉 Agent | 处理方式 |
+|---|---|
+| 新增一个项目 | 复用当前服务，建立独立项目配置，无需重装 Skill 或 n8n |
+| 继续上次安装 | 核对原 session 和部署状态，续接未完成步骤 |
+| 排查这个项目的问题 | 先只读诊断，定位服务器、飞书、模型或任务故障 |
+| 升级服务 | 核对兼容版本，先备份并保留回退路径；更新 Skill 不等于升级服务 |
+
+## 安装后有哪些部分
+
+| 部分 | 位置与用途 |
+|---|---|
+| Setup Skill | 管理员或实施人员的 Agent，负责安装和维护 |
+| 产品服务、PostgreSQL、n8n | 客户服务器，保存配置并执行任务 |
+| 飞书 Base | 项目资料与已有任务接入 |
+| 员工工作区 | 客户服务器提供的操作与审核入口 |
+
+当前新生成任务和视频不会自动回写 Base；统一多项目门户和自动证书续期也尚未内置。完整能力与限制见[安装能力说明](docs/product/NEW_INSTALL_CAPABILITIES.md)。
+
+## 文档与仓库范围
+
+- 安装人员：[客户指南](docs/product/CUSTOMER_GUIDE.md)、[完整 Skill](skills/video-factory-setup/SKILL.md)、[验收指南](docs/product/INDEPENDENT_ACCEPTANCE.md)。
+- 维护人员：[产品定义](docs/product/PRD.md)、[状态](docs/product/STATUS.md)、[迁移范围](docs/product/MIGRATION.md)、[公开发布检查](docs/product/PUBLICATION_REVIEW.md)。
+- 安全与数据：[安全报告](SECURITY.md)、[数据说明](PRIVACY.md)。
+
+此仓库保存通用源码、合成测试、安装器和产品文档。旧 TikTok 项目仓库保留为私有历史档案，不作为新客户入口，也不随此仓库一起公开。
+
+## 维护、版权与授权
+
+由 [Chuluu](https://github.com/ChuluuMGL) 维护；产品官网：[月瑀科技](https://www.yueyu.tech/zh/products/video-factory/)。
+
+Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。目前未选择开源许可证；没有 `LICENSE` 文件不表示已授权公开再分发。第三方组件保留各自的许可条款，仍需在公开发行前核对。
