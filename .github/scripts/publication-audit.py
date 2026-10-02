@@ -59,6 +59,15 @@ def scan(path, label, kind='dir'):
                 'rule': hit.get('RuleID'), 'file': hit.get('File'),
                 'line': hit.get('StartLine'), 'commit': hit.get('Commit')})
         if p.stderr.strip():
+            import re
+            diagnostic = p.stderr.decode(errors='replace')
+            for hit in findings:
+                for field in ('Secret', 'Match', 'Email', 'Author'):
+                    value = hit.get(field, '')
+                    if len(value) >= 4:
+                        diagnostic = diagnostic.replace(value, '[redacted]')
+            diagnostic = re.sub(r'[A-Za-z0-9_+/=-]{28,}', '[redacted]', diagnostic)
+            result.setdefault('scanner_diagnostics', []).append({'object': label, 'text': diagnostic[:1800]})
             raise RuntimeError('SCANNER_REPORTED_ERROR')
         return len(findings)
 
@@ -69,7 +78,8 @@ def download_scan(endpoint, name, label, expected_digest=None):
             # name is metadata, never a shell command or an extraction destination.
             target = Path(temp) / Path(name).name
             with target.open('wb') as dest:
-                p = subprocess.run(['gh', 'api', '-H', 'Accept: application/octet-stream', endpoint],
+                headers = ['-H', 'Accept: application/octet-stream'] if '/releases/assets/' in endpoint else []
+                p = subprocess.run(['gh', 'api', *headers, endpoint],
                                    stdout=dest, stderr=subprocess.DEVNULL, timeout=900)
             if p.returncode:
                 raise RuntimeError('DOWNLOAD_FAILED')
@@ -133,7 +143,8 @@ try:
     else:
         raise RuntimeError('UNKNOWN_SCOPE')
 except Exception as error:
-    result['errors'].append({'object': MODE, 'type': type(error).__name__})
+    result['errors'].append({'object': MODE, 'type': type(error).__name__,
+                             'reason': str(error) if isinstance(error, RuntimeError) else 'INSPECTION_ERROR'})
 finally:
     result['status'] = 'inspection_completed' if not result['errors'] else 'inspection_incomplete'
     save()
