@@ -7,3 +7,16 @@ evidence/
 ci-*/
 .delivery-preview/
 .vf-setup/
+
+# Operator-only credentials and runtime material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+secrets/
+audit-results/
