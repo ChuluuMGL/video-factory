@@ -1,0 +1,59 @@
+name: Anonymous release installation
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        default: '0.1.0a31'
+        required: true
+      source:
+        type: string
+        required: true
+      archive_sha256:
+        type: string
+        required: true
+      manifest_sha256:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  anonymous:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Download anonymously and compare trusted release hashes
+        env:
+          VF_VERSION: ${{ inputs.version }}
+          VF_SOURCE: ${{ inputs.source }}
+          VF_ARCHIVE: ${{ inputs.archive_sha256 }}
+          VF_MANIFEST: ${{ inputs.manifest_sha256 }}
+        run: |
+          python - <<'PY'
+          import os,re,json,hashlib,urllib.request
+          from pathlib import Path
+          version=os.environ['VF_VERSION'];assert re.fullmatch(r'0\.1\.0a[0-9]+',version)
+          assert re.fullmatch(r'[a-f0-9]{40}',os.environ['VF_SOURCE'])
+          for k in ('VF_ARCHIVE','VF_MANIFEST'):assert re.fullmatch(r'[a-f0-9]{64}',os.environ[k])
+          base='https://github.com/ChuluuMGL/video-factory/releases/download/v'+version+'/'
+          p=Path('anonymous-release');p.mkdir()
+          # No GitHub token, cookies, authorization header or credential helper.
+          with urllib.request.urlopen(base+'release.json',timeout=60) as response:raw=response.read()
+          r=json.loads(raw);assert r['version']==version and r['source_commit']==os.environ['VF_SOURCE']
+          assert r['archive_sha256']==os.environ['VF_ARCHIVE'] and r['manifest_sha256']==os.environ['VF_MANIFEST']
+          assert re.fullmatch(r'video-factory-0\.1\.0a[0-9]+-linux-x86_64-cpython312\.tar\.gz',r['archive'])
+          (p/'release.json').write_bytes(raw)
+          with urllib.request.urlopen(base+r['archive'],timeout=90) as response:data=response.read(40*1024*1024)
+          assert hashlib.sha256(data).hexdigest()==r['archive_sha256'];(p/r['archive']).write_bytes(data)
+          print(json.dumps({'anonymous_release_download':'PASS','source':r['source_commit'],'archive_sha256':r['archive_sha256']}))
+          PY
+      - name: Install downloaded archive and verify offline reuse
+        run: |
+          sudo "$(command -v python)" .github/scripts/upstream-install-smoke.py "$GITHUB_WORKSPACE/anonymous-release"

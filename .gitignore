@@ -20,3 +20,8 @@ ci-*/
 *.sqlite3
 secrets/
 audit-results/
+
+# Generated release handoffs
+public-release/
+public-release-notes.md
+anonymous-release/
