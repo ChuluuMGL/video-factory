@@ -1,14 +1,19 @@
 # 当前产品状态
 
-2026-10-01，当前已发布私有测试版 0.1.0a30。端口修复、247 项核心回归与五组云端检查全部通过，固定包和安装指南已同步；a29 已完成真实云服务器安装和飞书脚本审核闭环。真实客户生产验收未完成。新仓库未迁入历史客户运行目录和整仓历史。详见 [a29 交付回执](DELIVERY_A29_RESULT.md) 和 [a30 验证记录](DELIVERY_A30_RESULT.md)。
+2026-10-02，当前公开版本 **0.1.0a31（MIT，测试版）**。源码、完整 Skill 与固定安装包可匿名获取；官网入口已同步。独立客户、不同员工账号和新部署真实模型生成仍未完成，不等于生产验收。
 
-## 官网入口已发布（2026-10-02）
+## a31 公开发行
+
+- 源码与固定发行：[GitHub](https://github.com/ChuluuMGL/video-factory) · [a31](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31)。GitHub 个人署名 Chuluu，官网公司署名月瑀科技。
+- [完整云端检查](https://github.com/ChuluuMGL/video-factory/actions/runs/36978369426)与[匿名下载安装](https://github.com/ChuluuMGL/video-factory/actions/runs/36981979115)通过；发行源码 `50d99e7ccd2688a114bbb1f102a8a776d6218929`。
+- 公开包仅带自有 wheel；首次安装从 PyPI 官方文件源按大小及 SHA-256 获取外部 wheel，完整获取后可断网复用。服务镜像从上游按固定摘要获取。
+- 旧运行日志、内部镜像和历史附件留在原私有档案。10 个旧内部 Release 及其 40 个附件已从产品仓库移除，Git 源码标签保留；旧 CI 运行及附件此前已归档清除。
+- 已开启 GitHub secret scanning、push protection 与 private vulnerability reporting。扫描不保证没有漏洞，见 [安全报告](../../SECURITY.md)。
+- 官网静态安装页已部署；既有产品菜单顺序保留。[正式官网复测](https://github.com/ChuluuMGL/YUEYUTECH/actions/runs/36983815452)已通过。详见 [a31 发行回执](DELIVERY_A31_RESULT.md)。
+
+## 历史：a30 官网入口（2026-10-02）
 
 官网产品与安装页：https://www.yueyu.tech/zh/products/video-factory/ 。页脚、桌面产品下拉和手机产品菜单均将 Video Factory 放在第一项。官网 [PR #19](https://github.com/ChuluuMGL/YUEYUTECH/pull/19) 已合并，部署版本 `1f7fccb65967b4974ceb4eb375e6d8258fd87125`。固定 a30 Skill 未改变，产品仓库和服务器安装包仍私有；独立客户安装及新部署真实生成验收仍待完成。
-
-## 开源准备（2026-10-02）
-
-所有者已同意公开现有仓库；目前仍为私有，等待许可证选择、新发行包验证与官网同步。历史发行和 CI 原始资料已在云端完整备份到私有档案。旧 CI 运行和附件经摘要核验后已从产品库清除，旧链接不能再作为公开访问证据。贡献说明、问题模板、第三方许可和页面下载权限适配正在开源准备分支中整理，详见 [发布检查](PUBLICATION_REVIEW.md)。
 
 ## a30 已发布（2026-10-01）
 
@@ -40,6 +45,6 @@ a27 来源 `5d75f1b01aef76f7bd1c7522784543549c042f7c` 已通过全部四组云�
 
 - 实际域名/证书、新部署的真实模型调用、不同员工账号权限、非作者独立安装、第二项目真实接入与客户接管验收。
 - 新生成任务或附件自动回写 Base；内置 ACME 自动签发和续期。当前由客户或实施方管理证书。
-- 客户接管与完整生产验收、公开访问和开源许可证审查。仓库保持私有。
+- 客户接管与完整生产验收。
 
 详细交付门槛见 [DELIVERY_ACCEPTANCE.md](DELIVERY_ACCEPTANCE.md)。云端合成检查、真实供应商、真人业务验收分别记录。

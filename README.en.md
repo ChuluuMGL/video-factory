@@ -24,9 +24,9 @@ The installer runs on the customer's server. The Skill guides the AI agent. The 
 
 Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
 
-a30 passed 247 core regression tests and five cloud check groups. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Real model generation on a new current-version deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
+a31 passed 247 core tests, anonymous fixed-package installation, browser flows, PostgreSQL/n8n upgrade and recovery, and offline checks with both Docker storage modes. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Real model generation on a new current-version deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
 
-See the [release verification record](docs/product/DELIVERY_A30_RESULT.md) and [current status](docs/product/STATUS.md).
+See the [release verification record](docs/product/DELIVERY_A31_RESULT.md) and [current status](docs/product/STATUS.md).
 
 ## Get started
 
