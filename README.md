@@ -8,7 +8,7 @@ a30 已发布：端口检测修复、247 项核心回归与全部五组云端检
 
 ## 从哪里开始
 
-**[打开安装指南页面](https://video-factory-install-guide.fresh-note-6263.chatgpt.site)** · 当前为所有者私有预览。
+**[打开官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)** · 页面公开，服务器安装包仍为受邀测试版。
 
 **[下载经过云端验证的 0.1.0a30 候选版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30)** · 需要本仓库读取权限。
 
