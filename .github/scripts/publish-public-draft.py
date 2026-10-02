@@ -1,7 +1,9 @@
 """Persist only verified, allowlisted release inputs as a maintainer-only draft."""
 import json,os,subprocess
 from pathlib import Path
-assert os.environ['GITHUB_EVENT_NAME'] in ('workflow_dispatch','pull_request')
+assert os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch'
+assert os.environ['GITHUB_REF']=='refs/heads/main'
+assert os.environ.get('VF_CREATE_DRAFT')=='true'
 assert os.environ['GITHUB_REPOSITORY']=='ChuluuMGL/video-factory'
 root=Path('public-release');r=json.loads((root/'release.json').read_text());assert r['public_release'] is True
 notes=Path('public-release-notes.md');notes.write_text('''Video Factory · MIT public alpha / MIT 开源测试版

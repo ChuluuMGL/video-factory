@@ -3,6 +3,11 @@ name: Cloud regression
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      create_draft:
+        description: 'After all checks, create a new version draft (main only; existing releases are never replaced)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -301,9 +306,10 @@ jobs:
           python .github/scripts/stage-public-release.py
           VF_CI_SCRIPT
       - name: Preserve verified candidate as a draft release
-        if: github.repository == 'ChuluuMGL/video-factory' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/open-source-release')) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/open-source-release'))
+        if: github.repository == 'ChuluuMGL/video-factory' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.create_draft == true
         env:
           GH_TOKEN: ${{ github.token }}
+          VF_CREATE_DRAFT: 'true'
         run: |
           python3 .github/scripts/safe-ci.py cloud-check-208 <<'VF_CI_SCRIPT'
           python .github/scripts/publish-public-draft.py

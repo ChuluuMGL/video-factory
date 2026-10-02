@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from audit_policy import reviewed_fixture_command, verdict
 
 REPO = os.environ['GITHUB_REPOSITORY']
 MODE = sys.argv[1]
@@ -66,6 +67,18 @@ def scan(path, label, kind='dir'):
             else:
                 classification = 'requires-review'
             import re
+            if classification == 'requires-review':
+                fixture = '.github/scripts/container-stack-smoke.py'
+                file = hit.get('File', '')
+                lines = []
+                if kind == 'git' and file == fixture and re.fullmatch('[0-9a-f]{40}', hit.get('Commit', '')):
+                    lines = subprocess.check_output(
+                        ['git', 'show', hit['Commit'] + ':' + fixture], text=True).splitlines()
+                elif kind == 'dir' and Path(file).resolve() == (Path(path) / fixture).resolve():
+                    lines = Path(file).read_text().splitlines()
+                number = hit.get('StartLine', 0)
+                if 0 < number <= len(lines) and reviewed_fixture_command(hit.get('RuleID'), fixture, lines[number - 1]):
+                    classification = 'reviewed-test-command'
             prefix = hit.get('Match', '').partition(secret)[0] if secret else ''
             label_match = re.search(r'([A-Za-z_][A-Za-z0-9_]{0,40})[\\"\']*\s*[:=]\s*[\\"\']*\s*$', prefix)
             prefix = label_match.group(1) if label_match else '[not recorded]'
@@ -162,7 +175,7 @@ except Exception as error:
     result['errors'].append({'object': MODE, 'type': type(error).__name__,
                              'reason': str(error) if isinstance(error, RuntimeError) else 'INSPECTION_ERROR'})
 finally:
-    result['status'] = 'inspection_completed' if not result['errors'] else 'inspection_incomplete'
+    result['status'], result['review_required'], exit_code = verdict(result)
     save()
     import base64, zlib
     # Small, redacted report survives even when Actions artifact storage is full.
@@ -171,6 +184,6 @@ finally:
     print(json.dumps({'mode': MODE, 'status': result['status'],
                       'inspected': len(result['inspected']), 'findings': len(result['findings']),
                       'uninspected': len(result['uninspected']), 'errors': len(result['errors']),
+                      'review_required': result['review_required'],
                       'publication_approved': False}))
-if result['errors']:
-    sys.exit(2)
+sys.exit(exit_code)
