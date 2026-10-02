@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from audit_policy import verdict
 
 REPO = os.environ['GITHUB_REPOSITORY']
 MODE = sys.argv[1]
@@ -162,7 +163,7 @@ except Exception as error:
     result['errors'].append({'object': MODE, 'type': type(error).__name__,
                              'reason': str(error) if isinstance(error, RuntimeError) else 'INSPECTION_ERROR'})
 finally:
-    result['status'] = 'inspection_completed' if not result['errors'] else 'inspection_incomplete'
+    result['status'], result['review_required'], exit_code = verdict(result)
     save()
     import base64, zlib
     # Small, redacted report survives even when Actions artifact storage is full.
@@ -171,6 +172,6 @@ finally:
     print(json.dumps({'mode': MODE, 'status': result['status'],
                       'inspected': len(result['inspected']), 'findings': len(result['findings']),
                       'uninspected': len(result['uninspected']), 'errors': len(result['errors']),
+                      'review_required': result['review_required'],
                       'publication_approved': False}))
-if result['errors']:
-    sys.exit(2)
+sys.exit(exit_code)

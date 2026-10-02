@@ -1,6 +1,7 @@
 name: Publication privacy audit
 
 on:
+  pull_request:
   push:
     branches: [main, codex/repository-publication-readiness, codex/open-source-release]
   workflow_dispatch:
@@ -22,12 +23,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: ${{ fromJSON(github.event_name == 'push' && '["source"]' || inputs.scope == 'all' && '["source","releases","ci"]' || format('["{0}"]', inputs.scope)) }}
+        scope: ${{ fromJSON(github.event_name != 'workflow_dispatch' && '["source"]' || inputs.scope == 'all' && '["source","releases","ci"]' || format('["{0}"]', inputs.scope)) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify privacy gate decisions
+        run: python3 -m unittest discover -s .github/tests -p 'test_audit_policy.py' -v
       - name: Verify repository scope and install pinned scanner
         env:
           GH_TOKEN: ${{ github.token }}
