@@ -1,3 +1,7 @@
+# MIT 公开发行检查
+
+2026-10-02：所有者已确认 MIT 许可证和公开现有仓库。a31 正在云端验证；正式切换前仓库仍为私有。开源不代表独立客户生产验收已完成。
+
 # 公开发布检查 / Publication review
 
 **仓库保持私有。补齐文档和扫描完成均不自动授权公开。**
@@ -6,7 +10,7 @@
 
 ## 开源准备进度（2026-10-02）
 
-所有者已同意公开现有 Video Factory 仓库，并要求保护隐私。公开方向已确定；具体源码许可证正在等待选择，不把默认选项当成授权。
+所有者已同意公开现有 Video Factory 仓库，并要求保护隐私。公开方向已确定；源码许可证已由所有者确认采用 MIT。
 
 - 40 个 Release 附件、152 个 CI 附件和 63 份运行日志已在云端转存原私有历史档案，合计 33,575,870,571 字节，逐项校验 SHA-256 与长度。源码 Git bundle 和讨论记录也已备份。
 - 核验备份后，产品库的 63 次旧 Actions 运行与相关 152 个附件已移除，并回读确认均为零。历史 `resumeToken` 诊断资料留在私有档案，不进入公开内容。
@@ -46,7 +50,7 @@
 
 ---
 
-The repository remains private. GitHub attribution is `Copyright (c) 2026 Chuluu`; the official website retains company attribution. No open-source license has been chosen.
+The repository remains private. GitHub attribution is `Copyright (c) 2026 Chuluu`; the official website retains company attribution. The owner has approved the MIT license.
 
 Review current source, all Git references, author metadata, release assets, CI logs/artifacts, media and third-party licensing separately. The cloud workflow is read-only and uses a pinned, checksum-verified Gitleaks binary. It scans Git history, release assets and accessible CI logs/small artifacts. Large CI artifacts are inventoried, not treated as identical to released images without digest evidence. Expired or inaccessible objects remain gaps.
 

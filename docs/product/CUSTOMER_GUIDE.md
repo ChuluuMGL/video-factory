@@ -27,7 +27,7 @@ Video Factory 是通过 Setup Skill 部署到客户服务器的视频工作流�
 
 从交付页面下载完整 Skill 包，交给支持自定义 Skill 和服务器操作的 Agent。已有 Skill 时直接使用，不需要每个项目重装。不要只复制 SKILL.md：references 文件也必须保留。
 
-受控测试阶段，安装包在私有 GitHub Release 中，下载人员需要仓库读取权限。不能把维护者的 GitHub token 发给客户或放入聊天。没有读取权限时，由获授权的安装同事传输经过核验的发行包；不能假装公开下载成功。
+a31 起安装包在公开 GitHub Release 中提供，无需 GitHub 登录。按固定标签下载并核对 release.json 和 SHA256SUMS；下载受网络限制时，可由实施人员传输同一份已核验包。公开版不附带整套服务镜像，客户服务器按固定摘要从上游拉取。
 
 ## 四个入口
 

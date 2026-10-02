@@ -6,7 +6,7 @@
 
 [中文](README.md) | **English**
 
-[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
+[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
 
 ## What it does
 
@@ -20,9 +20,9 @@ The installer runs on the customer's server. The Skill guides the AI agent. The 
 
 ## Version and availability
 
-**0.1.0a30 · Private, invitation-only testing. Not open source.**
+**0.1.0a31 · MIT-licensed public alpha.**
 
-The website and complete Skill are public. Server release packages require repository access or a verified handoff by an authorized installer. Repository access is not an open-source license.
+Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
 
 a30 passed 247 core regression tests and five cloud check groups. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Real model generation on a new current-version deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
 
@@ -32,7 +32,7 @@ See the [release verification record](docs/product/DELIVERY_A30_RESULT.md) and [
 
 Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) to download the complete Skill and give it to an agent that can read files and operate your server.
 
-**With repository access, you can also start directly from GitHub:**
+**You can also start directly from GitHub:**
 
 1. Read the [installation and handoff guide](docs/product/CUSTOMER_GUIDE.md).
 2. Have your agent read the complete [`skills/video-factory-setup/`](skills/video-factory-setup/) directory, including `references/`.
@@ -41,14 +41,14 @@ Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) 
 ```text
 Use the complete Skill in skills/video-factory-setup/ to install
 Video Factory on my own server and configure the first test project.
-Use version 0.1.0a30. Check the server and release package first,
+Use version 0.1.0a31. Check the server and release package first,
 then guide me through Setup. Use private input channels for passwords
 and API keys; do not collect them in chat.
 ```
 
 Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. A persistent employee workspace also needs a domain and a valid HTTPS certificate. The agent checks and prepares Python 3.12, Docker and Compose.
 
-Never share a maintainer's GitHub token with a customer. If download access is missing, an authorized installer must assist. Development branches and temporary Actions artifacts are not supported release packages.
+Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 
 The operational guides and installer interactions are currently primarily in Chinese. This English README does not imply that the full product is localized.
 
@@ -84,4 +84,4 @@ This repository contains generic source, synthetic tests, installers and product
 
 Maintained by [Chuluu](https://github.com/ChuluuMGL). Product website: [YUEYU TECH](https://www.yueyu.tech/zh/products/video-factory/).
 
-Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. No open-source license has been selected. The absence of a `LICENSE` file is not a grant of permission to redistribute. Third-party components retain their own terms, which must be reviewed before public distribution.
+Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. Original code and documentation use the [MIT license](LICENSE). Dependencies, images and case media retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Issues and pull requests are welcome; see [contributing](CONTRIBUTING.md).

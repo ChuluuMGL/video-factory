@@ -4,9 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-factory-core"
-version = "0.1.0a30"
+version = "0.1.0a31"
 description = "Installable, disabled-by-default project bootstrap for Video Factory"
 readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Chuluu"}]
 requires-python = ">=3.11"
 dependencies = ["cryptography==46.0.5", "psycopg[binary]==3.3.6"]
 

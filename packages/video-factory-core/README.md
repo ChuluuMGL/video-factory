@@ -4,7 +4,7 @@ Product direction and current gaps: [self-hosted PRD](../../docs/product/PRD.md)
 
 ## Candidate distribution
 
-The private release archive includes this CLI, dependency wheels, SHA256 lock, installer and `video-factory-setup` Skill. See the [release guide](../../docs/product/RELEASE_USAGE.md). It targets Linux x86_64 / Python 3.12, installs into a separate version prefix without network access, and returns the next Setup command. Docker remains a prerequisite; installing the CLI does not start services.
+The pinned release archive includes this CLI, dependency wheels, SHA256 lock, installer and `video-factory-setup` Skill. See the [release guide](../../docs/product/RELEASE_USAGE.md). It targets Linux x86_64 / Python 3.12, installs into a separate version prefix without network access, and returns the next Setup command. Docker remains a prerequisite; installing the CLI does not start services.
 
 ## Unified terminal setup
 

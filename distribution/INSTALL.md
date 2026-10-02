@@ -1,4 +1,4 @@
-# Video Factory 私有候选发行包
+# Video Factory 固定版本发行包
 
 本包交付固定版本 CLI、完整依赖 wheels、哈希锁、Skill 和操作手册。它不包含 Docker 引擎或服务镜像，不是已公开发布的下载地址，也不代表真实客户业务验收。
 
