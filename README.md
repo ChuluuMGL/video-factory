@@ -6,7 +6,7 @@
 
 **中文** | [English](README.en.md)
 
-[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/) · [固定发行版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a30) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [安全报告](SECURITY.md)
+[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/) · [固定发行版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [安全报告](SECURITY.md)
 
 ## 它是什么
 
@@ -20,9 +20,9 @@ Video Factory 将商品资料、脚本生成、视频生成和人工审核连接
 
 ## 当前版本与使用范围
 
-**0.1.0a30 · 私有受邀测试版，尚未开源。**
+**0.1.0a31 · MIT 开源测试版。**
 
-官网指南和完整 Skill 可公开访问；服务器发行包需要本仓库读取权限，或由获授权的实施人员提供经过核验的固定包。访问权限不等于开源许可。
+官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户自行提供服务器、飞书及模型账户。
 
 a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真实飞书建表、任务导入和脚本返工审核，由 Agent 操作同一账号。**当前版本的新部署真实模型生成、不同员工账号和独立客户完整验收仍未完成**；历史项目案例不代替本安装版验收。
 
@@ -32,7 +32,7 @@ a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真
 
 推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作服务器的 Agent。
 
-**已有仓库权限，也可以直接从 GitHub 开始，不必经过网页：**
+**也可以直接从 GitHub 开始：**
 
 1. 阅读[安装与交接指南](docs/product/CUSTOMER_GUIDE.md)。
 2. 让 Agent 读取完整的 [`skills/video-factory-setup/`](skills/video-factory-setup/) 目录，保留其中的 `references/`。
@@ -41,13 +41,13 @@ a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真
 ```text
 请使用本仓库 skills/video-factory-setup/ 中的完整 Skill，
 带我在自己的服务器上首次安装 Video Factory，并配置第一个测试项目。
-固定版本使用 0.1.0a30；先检查服务器和发行包，再逐步引导 Setup。
+固定版本使用 0.1.0a31；先检查服务器和发行包，再逐步引导 Setup。
 密码和 API Key 通过私有输入通道填写，不放在聊天中。
 ```
 
 准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。常驻员工入口还需要域名和有效 HTTPS 证书。Agent 检查并准备 Python 3.12、Docker 与 Compose。
 
-不要把维护者的 GitHub token 发给客户。下载权限不足时，由获授权的实施人员协助；不得把开发分支或临时 Actions 附件当作正式安装包。
+固定发行包可匿名下载。不要把开发分支或临时 Actions 附件当作正式安装包。
 
 ## 已有安装，继续使用
 
@@ -81,4 +81,6 @@ a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真
 
 由 [Chuluu](https://github.com/ChuluuMGL) 维护；产品官网：[月瑀科技](https://www.yueyu.tech/zh/products/video-factory/)。
 
-Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。目前未选择开源许可证；没有 `LICENSE` 文件不表示已授权公开再分发。第三方组件保留各自的许可条款，仍需在公开发行前核对。
+Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。本项目自有源码和文档采用 [MIT](LICENSE)；第三方依赖、镜像和案例媒体保留各自条款，见 [第三方说明](THIRD_PARTY_NOTICES.md)。欢迎通过 Issue 和 Pull Request 提出改进，参见 [贡献指南](CONTRIBUTING.md)。
+
+a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。

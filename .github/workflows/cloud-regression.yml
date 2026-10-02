@@ -22,224 +22,15 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Prepare cloud-only virtual machine tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils ovmf
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-10 <<'VF_CI_SCRIPT'
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils ovmf
+          VF_CI_SCRIPT
       - name: Install and reuse dependencies in empty Ubuntu guest
-        run: bash .github/scripts/host-vm-smoke.sh
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: cloud-host-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-host/result.json
-            ci-host/before.json
-            ci-host/after.json
-            ci-host/install.log
-            ci-host/repeat.log
-            ci-host/cloud-init.log
-          retention-days: 14
-
-  regression:
-    name: Linux Python regression and package smoke
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout candidate
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Prepare Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: '3.12.14'
-      - name: Prepare isolated SSH fixture
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq openssh-server python3-venv ffmpeg
-      - name: Build and install package
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ci-results
-          python -m pip wheel --no-deps --wheel-dir ci-results/wheels ./packages/video-factory-core 2>&1 | tee ci-results/build.log
-          python -m pip download --only-binary=:all: --dest ci-results/dependencies "cryptography==46.0.5" "psycopg[binary]==3.3.6"
-          python -m pip install --no-index --find-links ci-results/dependencies ci-results/wheels/*.whl
-      - name: Build private candidate release and validate Skill
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install "PyYAML==6.0.2"
-          python .github/scripts/validate-skill.py skills/video-factory-setup
-          python .github/scripts/build-release.py --out ci-release --wheels ci-results/wheels ci-results/dependencies --source "$(git rev-parse HEAD)" > ci-results/release-build.json
-      - name: Delivered archive offline install and refusal checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- "$(command -v python)" .github/scripts/release-smoke.py "$GITHUB_WORKSPACE/ci-release" | tee ci-results/release-install.json
-      - name: Preserve private candidate handoff
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: video-factory-candidate-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-release/*.tar.gz
-            ci-release/release.json
-            ci-release/SHA256SUMS
-          retention-days: 14
-      - name: Core unit regression without external network
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -v 2>&1 | tee ci-results/core.log
-      - name: Installed CLI offline smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- "$(command -v vfctl)" --version | tee ci-results/version.txt
-          sudo unshare --net -- "$(command -v vfctl)" canary --project-dir "$GITHUB_WORKSPACE/packages/video-factory-core/examples/new-brand" | tee ci-results/cli-canary.json
-      - name: Installed Setup CLI resume and project draft smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- "$(command -v python)" .github/scripts/setup-package-smoke.py "$GITHUB_WORKSPACE/packages/video-factory-core/examples/setup/answers.json" | tee ci-results/setup-package.json
-      - name: Runtime host bootstrap, restart and restore without external network
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/runtime-host-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" | tee ci-results/runtime-host.json
-      - name: Pinned SSH installation and resume without external network
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/ssh-host-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" | tee ci-results/ssh-host.json
-      - name: Generic worker through loopback provider and full media decode
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/worker-package-smoke.py | tee ci-results/worker-package.json
-      - name: Installed Feishu identity import review and repair without external network
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/feishu-package-smoke.py | tee ci-results/feishu-package.json
-      - name: Prepare cloud browser
-        run: |
-          python -m pip install "playwright==1.55.0"
-          sudo "$(command -v python)" -m playwright install --with-deps chrome
-      - name: Assemble customer handoff and test real page interactions
-        shell: bash
-        run: |
-          set -euo pipefail
-          python .github/scripts/build-delivery.py --out ci-delivery --receipt ci-release/release.json --repository "$GITHUB_REPOSITORY"
-          python .github/scripts/delivery-smoke.py ci-delivery ci-results/delivery
-      - name: Employee browser login review repair and media playback without external network
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/review-ui-smoke.py ci-results
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-connect-smoke.py ci-results
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-browser-smoke.py ci-results
-          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/business-flow-smoke.py ci-results
-      - name: Record scope
-        if: always()
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          python - <<'PY'
-          import json, os, pathlib, subprocess
-          data = {
-              "candidate_sha": os.environ["CANDIDATE_SHA"],
-              "checkout_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-              "event_sha": os.environ["GITHUB_SHA"],
-              "runner": "ubuntu-24.04", "python": "3.12.14",
-              "scope": "unit_regression_and_isolated_cloud_host_install",
-              "external_network_during_tests": "disabled_by_network_namespace",
-              "customer_install_acceptance": "not_run",
-              "real_n8n_execution": "not_run",
-              "paid_model_generation": "not_run",
-              "human_acceptance": "not_run"
-          }
-          out = pathlib.Path("ci-results")
-          out.mkdir(exist_ok=True)
-          (out / "scope.json").write_text(json.dumps(data, indent=2) + "\n")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-              summary.write("Cloud-only regression, installed-package, native host and SSH bootstrap checks.\n\n")
-              summary.write("No customer deployment, live n8n, paid model call or human acceptance is covered.\n")
-          PY
-      - name: Preserve regression logs
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloud-regression-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-results/*.log
-            ci-results/*.json
-            ci-results/*.txt
-            ci-results/*.png
-            ci-results/delivery/
-          retention-days: 14
-
-  container-stack:
-    name: Pinned PostgreSQL and n8n stack recovery
-    needs: regression
-    permissions:
-      contents: read
-      actions: read
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Checkout candidate
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - name: Prepare Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12.14'
-      - name: Build immutable wheel inputs
-        run: |
-          mkdir -p ci-stack/wheels ci-stack/dependencies
-          python -m pip wheel --no-deps --wheel-dir ci-stack/wheels ./packages/video-factory-core
-          python -m pip download --only-binary=:all: --dest ci-stack/dependencies "cryptography==46.0.5" "psycopg[binary]==3.3.6"
-          python -m pip install --no-index --find-links ci-stack/dependencies ci-stack/wheels/*.whl
-      - name: Fetch the exact offline-tested release archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download "$GITHUB_RUN_ID" -n "video-factory-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -D ci-stack/release
-          python - <<'PY'
-          import hashlib, json, pathlib, tarfile
-          root = pathlib.Path('ci-stack/release')
-          receipt = json.loads((root / 'release.json').read_text())
-          archive = root / receipt['archive']
-          assert hashlib.sha256(archive.read_bytes()).hexdigest() == receipt['archive_sha256']
-          with tarfile.open(archive) as source:
-              source.extractall(root, filter='data')
-          PY
-      - name: Build previously verified 0.1.0a19 upgrade baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ci-stack/baseline-source ci-stack/baseline
-          git archive eef5bd513e7ac3b23b99de94a41b6c3176a2616b packages/video-factory-core | tar -x -C ci-stack/baseline-source
-          python -m pip wheel --no-deps --wheel-dir ci-stack/baseline ci-stack/baseline-source/packages/video-factory-core
-      - name: Real container stack, PostgreSQL migration and complete cold restore
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-stack/wheels" "$GITHUB_WORKSPACE/ci-stack/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-stack/release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json
-      - name: Preserve synthetic integration evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: cloud-stack-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-stack/result.json
-            ci-stack/diagnostics.log
-          retention-days: 14
-
+          python3 .github/scripts/safe-ci.py cloud-check-15 <<'VF_CI_SCRIPT'
+          bash .github/scripts/host-vm-smoke.sh
+          VF_CI_SCRIPT
   feishu-postgres:
     name: Feishu repair on isolated PostgreSQL
     runs-on: ubuntu-24.04
@@ -266,13 +57,16 @@ jobs:
           python-version: '3.12.14'
       - name: Prepare package and fixture media tools
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-25 <<'VF_CI_SCRIPT'
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           python -m pip install ./packages/video-factory-core
           mkdir -p ci-feishu
+          VF_CI_SCRIPT
       - name: Install isolated PostgreSQL fixture and run Feishu repair
         shell: bash
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-34 <<'VF_CI_SCRIPT'
           set -euo pipefail
           sudo env VF_DATABASE_URL_FILE=/root/feishu-fixture-dsn "$(command -v python)" - <<'PY'
           import os
@@ -286,46 +80,184 @@ jobs:
           PostgresStore.install(state,'fixture','cloud-stack-fixture-password')
           PY
           sudo env VF_DATABASE_URL_FILE=/root/feishu-fixture-dsn VF_WORKER_EGRESS=1 VF_CONTAINER_MODE=1 "$(command -v python)" .github/scripts/feishu-package-smoke.py 2> ci-feishu/diagnostics.log | tee ci-feishu/result.json
+          VF_CI_SCRIPT
       - name: Prepare cloud browser
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-51 <<'VF_CI_SCRIPT'
           python -m pip install "playwright==1.55.0"
           sudo "$(command -v python)" -m playwright install --with-deps chrome
+          VF_CI_SCRIPT
       - name: Employee browser review on PostgreSQL with synthetic authorization
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-57 <<'VF_CI_SCRIPT'
           sudo env VF_DATABASE_URL_FILE=/root/feishu-fixture-dsn "$(command -v python)" .github/scripts/review-ui-smoke.py ci-feishu
           sudo env VF_DATABASE_URL_FILE=/root/feishu-fixture-dsn "$(command -v python)" .github/scripts/setup-connect-smoke.py ci-feishu
-      - name: Preserve synthetic PostgreSQL bridge evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: cloud-feishu-pg-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-feishu/*.log
-            ci-feishu/*.json
-            ci-feishu/*.png
-          retention-days: 14
-
-  offline-stack:
+          VF_CI_SCRIPT
+  regression:
+    name: Linux Python regression and package smoke
+    needs: [host-bootstrap, feishu-postgres]
     permissions:
-      contents: read
-      actions: read
-    name: Offline images on classic and containerd stores without network
-    needs: regression
+      contents: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 55
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Checkout candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+          fetch-depth: 0
+      - name: Prepare Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12.14'
-      - name: Download exact release candidate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" -n "video-factory-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -D ci-offline/release
+      - name: Prepare isolated SSH fixture
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-19 <<'VF_CI_SCRIPT'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openssh-server python3-venv ffmpeg
+          VF_CI_SCRIPT
+      - name: Build and install package
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-26 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          mkdir -p ci-results
+          python -m pip wheel --no-deps --wheel-dir ci-results/wheels ./packages/video-factory-core 2>&1 | tee ci-results/build.log
+          python -m pip download --only-binary=:all: --dest ci-results/dependencies "cryptography==46.0.5" "psycopg[binary]==3.3.6"
+          python -m pip install --no-index --find-links ci-results/dependencies ci-results/wheels/*.whl
+          VF_CI_SCRIPT
+      - name: Build MIT candidate release and validate Skill
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-36 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          python -m pip install "PyYAML==6.0.2"
+          python .github/scripts/validate-skill.py skills/video-factory-setup
+          python .github/scripts/build-release.py --public-release --out ci-release --wheels ci-results/wheels ci-results/dependencies --source "$(git rev-parse HEAD)" > ci-results/release-build.json
+          VF_CI_SCRIPT
+      - name: Anonymous upstream acquisition and fixed archive install
+        run: |
+          python3 .github/scripts/safe-ci.py upstream-install <<'VF_CI_SCRIPT'
+          sudo "$(command -v python)" .github/scripts/upstream-install-smoke.py "$GITHUB_WORKSPACE/ci-release"
+          VF_CI_SCRIPT
+      - name: Delivered archive offline install and refusal checks
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-45 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- "$(command -v python)" .github/scripts/release-smoke.py "$GITHUB_WORKSPACE/ci-release" | tee ci-results/release-install.json
+          VF_CI_SCRIPT
+      - name: Core unit regression without external network
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-52 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -v 2>&1 | tee ci-results/core.log
+          VF_CI_SCRIPT
+      - name: Installed CLI offline smoke
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-59 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- "$(command -v vfctl)" --version | tee ci-results/version.txt
+          sudo unshare --net -- "$(command -v vfctl)" canary --project-dir "$GITHUB_WORKSPACE/packages/video-factory-core/examples/new-brand" | tee ci-results/cli-canary.json
+          VF_CI_SCRIPT
+      - name: Installed Setup CLI resume and project draft smoke
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-67 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- "$(command -v python)" .github/scripts/setup-package-smoke.py "$GITHUB_WORKSPACE/packages/video-factory-core/examples/setup/answers.json" | tee ci-results/setup-package.json
+          VF_CI_SCRIPT
+      - name: Runtime host bootstrap, restart and restore without external network
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-74 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/runtime-host-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" | tee ci-results/runtime-host.json
+          VF_CI_SCRIPT
+      - name: Pinned SSH installation and resume without external network
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-81 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/ssh-host-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" | tee ci-results/ssh-host.json
+          VF_CI_SCRIPT
+      - name: Generic worker through loopback provider and full media decode
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-88 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/worker-package-smoke.py | tee ci-results/worker-package.json
+          VF_CI_SCRIPT
+      - name: Installed Feishu identity import review and repair without external network
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-95 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/feishu-package-smoke.py | tee ci-results/feishu-package.json
+          VF_CI_SCRIPT
+      - name: Prepare cloud browser
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-101 <<'VF_CI_SCRIPT'
+          python -m pip install "playwright==1.55.0"
+          sudo "$(command -v python)" -m playwright install --with-deps chrome
+          VF_CI_SCRIPT
+      - name: Assemble customer handoff and test real page interactions
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-108 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          python .github/scripts/build-delivery.py --out ci-delivery --receipt ci-release/release.json --repository "$GITHUB_REPOSITORY"
+          python .github/scripts/delivery-smoke.py ci-delivery ci-results/delivery
+          VF_CI_SCRIPT
+      - name: Employee browser login review repair and media playback without external network
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-116 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/review-ui-smoke.py ci-results
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-connect-smoke.py ci-results
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-browser-smoke.py ci-results
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/business-flow-smoke.py ci-results
+          VF_CI_SCRIPT
+      - name: Extract the exact offline-tested bundle
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-125 <<'VF_CI_SCRIPT'
+          python - <<'PY_EXTRACT'
+          import tarfile,json
+          from pathlib import Path
+          p=Path('ci-release');r=json.loads((p/'release.json').read_text())
+          # build-release already creates the extracted directory beside the archive.
+          assert (p/r['archive'].removesuffix('.tar.gz')/'manifest.json').is_file()
+          PY_EXTRACT
+          VF_CI_SCRIPT
+      - name: Build previously verified 0.1.0a19 upgrade baseline
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-137 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          mkdir -p ci-stack/baseline-source ci-stack/baseline
+          git archive eef5bd513e7ac3b23b99de94a41b6c3176a2616b packages/video-factory-core | tar -x -C ci-stack/baseline-source
+          python -m pip wheel --no-deps --wheel-dir ci-stack/baseline ci-stack/baseline-source/packages/video-factory-core
+          VF_CI_SCRIPT
+      - name: Real container stack, PostgreSQL migration and complete cold restore
+        shell: bash
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-146 <<'VF_CI_SCRIPT'
+          set -euo pipefail
+          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json
+          VF_CI_SCRIPT
+      - name: Reuse the exact checked archive for offline image verification
+        run: |
+          python3 .github/scripts/safe-ci.py cloud-check-152 <<'VF_CI_SCRIPT'
+          mkdir -p ci-offline/release
+          cp ci-release/*.tar.gz ci-release/release.json ci-offline/release/
+          VF_CI_SCRIPT
       - name: Verify and install delivered CLI
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-158 <<'VF_CI_SCRIPT'
           set -euo pipefail
           python - <<'PY'
           import hashlib,json,pathlib,tarfile
@@ -340,14 +272,16 @@ jobs:
           sudo install -d -m 700 /root/vf-offline-release
           sudo tar -xzf ci-offline/release/*.tar.gz -C /root/vf-offline-release
           sudo bash -c '"$1" -I /root/vf-offline-release/video-factory-*/install.py --prefix /root/vf-offline-cli --manifest-sha256 "$2"' _ "$(command -v python)" "$(cat ci-offline/release/trusted-manifest.sha256)" | tee ci-offline/cli-install.json
-          wheel_dir=$(find ci-offline/release -type d -name wheels)
-          python -m pip install --no-index --find-links "$wheel_dir" "$wheel_dir"/video_factory_core-*.whl
+          VF_CI_SCRIPT
       - name: Export pinned runtime and service images
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-178 <<'VF_CI_SCRIPT'
           set -euo pipefail
           sudo /root/vf-offline-cli/venv/bin/vfctl stack export-images --root /root/vf-offline-bundle --wheelhouse /root/vf-offline-cli/release/wheels | tee ci-offline/export.json
+          VF_CI_SCRIPT
       - name: Stop original daemon and test with no outside network or cached images
         run: |
+          python3 .github/scripts/safe-ci.py cloud-check-184 <<'VF_CI_SCRIPT'
           set -euo pipefail
           sudo systemctl stop docker.service docker.socket containerd.service
           for store in classic containerd; do
@@ -360,54 +294,17 @@ jobs:
               result=json.loads(pathlib.Path(f'ci-offline/result-{store}.json').read_text())
               assert result['manifest_sha256']==receipt['manifest_sha256'] and result['image_store']==store
           PY
-      - name: Preserve private image handoff
+          VF_CI_SCRIPT
+      - name: Stage verified public release assets
         run: |
-          sudo cp /root/vf-offline-bundle/images.tar /root/vf-offline-bundle/manifest.json ci-offline/
-          sudo chmod 644 ci-offline/images.tar ci-offline/manifest.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: cloud-offline-images-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-offline/export.json
-            ci-offline/result-*.json
-            ci-offline/diagnostics-*.log
-            ci-offline/cli-install.json
-            ci-offline/images.tar
-            ci-offline/manifest.json
-          compression-level: 0
-          retention-days: 14
-
-  handoff:
-    name: Publish verified private candidate and installation guide
-    needs: [host-bootstrap, regression, container-stack, feishu-postgres, offline-stack]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12.14'
-      - name: Collect exact passing artifacts and create a private prerelease
+          python3 .github/scripts/safe-ci.py cloud-check-200 <<'VF_CI_SCRIPT'
+          python .github/scripts/stage-public-release.py
+          VF_CI_SCRIPT
+      - name: Preserve verified candidate as a draft release
+        if: github.repository == 'ChuluuMGL/video-factory' && ((github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/open-source-release')) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/open-source-release'))
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          set -euo pipefail
-          test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PRIVATE
-          gh run download "$GITHUB_RUN_ID" -n "video-factory-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -D handoff/release
-          gh run download "$GITHUB_RUN_ID" -n "cloud-offline-images-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -D handoff/images
-          python .github/scripts/build-delivery.py --out handoff/site --receipt handoff/release/release.json --repository "$GITHUB_REPOSITORY" --checked
-          python .github/scripts/publish-handoff.py handoff "$GITHUB_SHA" "$GITHUB_RUN_ID"
-      - name: Preserve the installation page from the passing release
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: video-factory-installation-guide
-          path: handoff/site/
-          retention-days: 90
+          python3 .github/scripts/safe-ci.py cloud-check-208 <<'VF_CI_SCRIPT'
+          python .github/scripts/publish-public-draft.py
+          VF_CI_SCRIPT

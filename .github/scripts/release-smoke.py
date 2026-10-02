@@ -44,6 +44,12 @@ with tempfile.TemporaryDirectory(prefix='vf-release-', dir='/root') as tmp:
     # filter drops archive ownership and previously hid a broken handoff.
     command(['tar', '-xzf', str(archive), '-C', str(root)])
     bundle = root / archive.name.removesuffix('.tar.gz')
+    if (bundle/'dependency-downloads.json').exists():
+        # Online acquisition is separately exercised by upstream-install-smoke.py.
+        # Reuse the identical hash-locked cloud wheels for these network-disabled refusal checks.
+        for name in json.loads((bundle/'dependency-downloads.json').read_text()):
+            source=release/archive.name.removesuffix('.tar.gz')/name
+            shutil.copyfile(source,bundle/name)
     prefix = root / 'cli'
     argv = [sys.executable, '-I', str(bundle / 'install.py'), '--prefix', str(prefix), '--manifest-sha256', receipt['manifest_sha256']]
     first = json.loads(command(argv))

@@ -1,0 +1,17 @@
+name: 改进建议 / Feature request
+description: 描述实际需求和预期收益 / Explain the workflow need
+title: '[Feature] '
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: 想解决什么问题？ / What problem should this solve?
+      description: 用通用或合成案例说明，不包含客户资料。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望怎样使用？ / What would the desired workflow look like?
+    validations:
+      required: true

@@ -67,7 +67,8 @@ def scan(path, label, kind='dir'):
                 classification = 'requires-review'
             import re
             prefix = hit.get('Match', '').partition(secret)[0] if secret else ''
-            prefix = re.sub(r'[A-Za-z0-9_+/=-]{25,}', '[identifier]', prefix[-80:])
+            label_match = re.search(r'([A-Za-z_][A-Za-z0-9_]{0,40})[\\"\']*\s*[:=]\s*[\\"\']*\s*$', prefix)
+            prefix = label_match.group(1) if label_match else '[not recorded]'
             result['findings'].append({'object': label,
                 'rule': hit.get('RuleID'), 'file': hit.get('File'),
                 'line': hit.get('StartLine'), 'commit': hit.get('Commit'),
@@ -140,9 +141,6 @@ try:
             for asset in release['assets']:
                 download_scan(f"repos/{REPO}/releases/assets/{asset['id']}", asset['name'],
                               f"{release['tag_name']}/{asset['name']}", asset.get('digest'))
-    elif MODE == 'ci_finding':
-        download_scan(f'repos/{REPO}/actions/artifacts/11140366753/zip', 'artifact.zip',
-                      'artifact:11140366753:cloud-stack-36812100723-1')
     elif MODE == 'ci':
         for artifact in pages(f'repos/{REPO}/actions/artifacts', 'artifacts'):
             label = f"artifact:{artifact['id']}:{artifact['name']}"

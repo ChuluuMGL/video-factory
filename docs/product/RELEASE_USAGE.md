@@ -1,9 +1,11 @@
 # 获取固定发行版
 
-起点是安装指南页面和 完整 Setup Skill（随包 skill/video-factory-setup/）。当前为私有受控测试版，安装者需要 ChuluuMGL/video-factory 读取权限，或由获授权同事安全交付已核验的包。
+从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)或本仓库完整 Setup Skill 开始。a31 起采用 MIT 许可，固定 GitHub Release 可匿名下载，无需 GitHub token。
 
-全部云端检查通过后，流水线创建固定版本预发行版，包含 CLI 包、完整 Skill ZIP、release.json、SHA256SUMS、同版离线镜像与 handoff.json。大文件只在云端下载，不要求客户粘贴维护者 token。
+云端验证通过的版本提供服务器安装包、完整 Skill ZIP、release.json、SHA256SUMS、依赖许可与 handoff.json。Psycopg 对应源码保留在包内；上游服务镜像由客户服务器按固定摘要获取，公开发行不附带整套离线镜像。
 
-Agent 获取指定标签与可信摘要，核验后按 INSTALL.md 使用 start.py 进入安装和 Setup。已有服务新增项目沿用兼容版本，不因新 Skill 自动升级服务器。
+Agent 获取指定标签与摘要，在客户服务器核验后按 INSTALL.md 使用 start.py 进入安装和 Setup。已有服务新增项目沿用兼容版本，不因更新 Skill 自动升级服务器。
 
-源码分支与 CI 临时产物不是长期发行地址。当前没有公开下载、独立签名或自动更新服务。GitHub 读取权限不等于产品管理员权限。
+源码分支和临时 CI 产物不是长期发行地址。当前不提供独立签名或自动更新服务。仓库公开不授予客户服务的管理员权限；独立客户及真实模型验收另行记录。
+
+a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。

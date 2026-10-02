@@ -14,7 +14,7 @@
   <header>
     <a class="brand" href="#">▸ <span>Video Factory</span></a>
     <nav aria-label="主要导航"><a href="#cases">案例</a><a href="#start">安装</a><a href="#help">使用与维护</a></nav>
-    <span class="edition">受邀测试中</span>
+    <span class="edition">测试版</span>
   </header>
   <main>
     <section id="how" class="hero">
@@ -48,7 +48,7 @@
         <div class="install-toolbar"><div class="scenarios" role="group" aria-label="选择要做的事"><button type="button" data-mode="install" aria-pressed="true">第一次安装</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续上次安装</button><button type="button" data-mode="repair" aria-pressed="false">排查问题</button></div><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill <span aria-hidden="true">↓</span></a></div>
         <div class="prompt-preview"><div class="prompt-toolbar"><label for="agent-prompt">发送给 AI 助手的指引</label><button type="button" id="copy-prompt" class="copy-button" aria-label="复制安装指引"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>复制</span></button></div><textarea id="agent-prompt" readonly rows="9">正在读取安装包信息……</textarea></div>
         <div class="prompt-bottom"><p id="copy-feedback" role="status" aria-live="polite"></p></div>
-        <details class="release-details"><summary>版本与安装包</summary><p>安装包仅向受邀人员开放。没有仓库权限时，请实施同事提供或代装。</p><dl class="source-list"><dt>安装说明</dt><dd><a href="skill/SKILL.md" id="skill-source">阅读完整 Skill</a></dd><dt>服务器安装包</dt><dd><a id="release-link">读取中</a></dd><dt>当前版本</dt><dd id="version">读取中</dd><dt>文件校验信息</dt><dd><a href="release.json">供助手核对安装包</a></dd></dl></details>
+        <details class="release-details"><summary>版本与安装包</summary><p id="download-access">请按当前发行信息取得固定安装包，并由助手核对校验信息。</p><dl class="source-list"><dt>安装说明</dt><dd><a href="skill/SKILL.md" id="skill-source">阅读完整 Skill</a></dd><dt>服务器安装包</dt><dd><a id="release-link">读取中</a></dd><dt>当前版本</dt><dd id="version">读取中</dd><dt>文件校验信息</dt><dd><a href="release.json">供助手核对安装包</a></dd></dl></details>
       </div>
       <aside class="preparation"><div class="prep-heading"><h3>安装前准备</h3><p>密码与密钥在私有输入窗口填写。</p></div><ol>
         <li><span class="prep-number">01</span><strong>AI 助手</strong><span>能读取 Skill，并按授权连接服务器。</span></li>

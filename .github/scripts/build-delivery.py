@@ -35,7 +35,7 @@ def build(destination, receipt_file, repository, checked=False):
     page_source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     config = {'version': receipt['version'], 'source_commit': receipt['source_commit'], 'page_source_commit': page_source,
               'release_url': f'https://github.com/{repository}/releases/tag/v{receipt["version"]}',
-              'delivery_checks_passed': checked, 'public_download': False, 'business_ready': False}
+              'delivery_checks_passed': checked, 'public_download': bool(receipt.get('public_release', False)), 'business_ready': False}
     (destination / 'delivery-config.js').write_text('window.VF_DELIVERY = ' + json.dumps(config, ensure_ascii=False) + ';\n')
     hashes = {p.relative_to(destination).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in sorted(destination.rglob('*')) if p.is_file()}

@@ -1,8 +1,17 @@
 # 公开发布检查 / Publication review
 
-**仓库保持私有。补齐文档和扫描完成均不自动授权公开。**
+所有者于 2026-10-02 确认公开现有 Video Factory 仓库，并采用 MIT 许可证。GitHub 使用个人署名 `Copyright (c) 2026 Chuluu`；官网沿用公司署名。客户资料与历史内部附件不随源码公开。
 
-2026-10-02 开始补齐 GitHub 中英文入口、NOTICE、安全报告与数据说明。GitHub 个人署名使用 `Copyright (c) 2026 Chuluu`；官网继续使用公司身份。未选择开源许可证，未修改旧项目仓库或既有发行版。
+## 已处理
+
+- 40 个历史 Release 附件、152 个 CI 附件和 63 份运行日志已转存原私有档案，共 33,575,870,571 字节，逐项校验 SHA-256 和长度。源码 Git bundle 与讨论记录也已备份。
+- 已从产品库移除经核验备份的旧 CI 运行和附件。旧运行链接不是当前可访问的验证证据。历史临时 resume token 诊断留在私有档案。
+- PR、评论与 Issue 文本经过敏感模式复核。当前源码未发现真实客户 Base 链接、客户配置或私钥；凭据扫描命中的是合成测试语句，已查看代码判断。
+- 产品库无客户 Actions secrets、variables、environment 或 webhook；转存用的临时凭据已删除。历史开发机器提交身份保留，后续提交使用 GitHub 匿名邮箱。
+- a31 发行使用 MIT，附依赖原始许可及固定 Psycopg 源码。公开发行不携带整套上游镜像。新 CI 只输出限定的阶段、状态和测试数量；原始日志不再作为公开附件。
+- 原先的 Artifact 额度限制已通过调整交付流程解决：同一云端 runner 完成固定包、容器和离线验证，只将允许公开的固定发行文件保存为草稿。
+
+最终验证及发布状态见 [当前状态](STATUS.md)。源码公开与安装验证不等于独立客户生产验收。
 
 ## 必须分别核对
 
@@ -15,7 +24,7 @@
 | 图片与视频 | 凭据扫描不能代替人工查看；检查人物、表格、身份信息和素材授权 |
 | 依赖与镜像许可 | 核对直接及传递依赖、n8n 和所附镜像的许可及再分发条件；不可把个人源码许可当作第三方许可 |
 | 双语与署名 | 中文/英文说明保持同一版本、权限和验收边界；NOTICE 不冒充开源 LICENSE |
-| 公开决定 | 所有问题处理后，另行明确许可方案和仓库可见性 |
+| 公开决定 | 按已确认的 MIT 与公开范围执行，仍需核对发行与匿名访问 |
 
 ## 可复查的自动化检查
 
@@ -32,7 +41,7 @@
 
 ---
 
-The repository remains private. GitHub attribution is `Copyright (c) 2026 Chuluu`; the official website retains company attribution. No open-source license has been chosen.
+The owner approved public release under MIT. GitHub attribution is `Copyright (c) 2026 Chuluu`; the official website retains company attribution. Historical customer material and raw operational archives remain private. See STATUS.md for the latest release result.
 
 Review current source, all Git references, author metadata, release assets, CI logs/artifacts, media and third-party licensing separately. The cloud workflow is read-only and uses a pinned, checksum-verified Gitleaks binary. It scans Git history, release assets and accessible CI logs/small artifacts. Large CI artifacts are inventoried, not treated as identical to released images without digest evidence. Expired or inaccessible objects remain gaps.
 
