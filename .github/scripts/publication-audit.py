@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from audit_policy import reviewed_assertion, verdict
+from audit_policy import reviewed_fixture_command, verdict
 
 REPO = os.environ['GITHUB_REPOSITORY']
 MODE = sys.argv[1]
@@ -77,8 +77,8 @@ def scan(path, label, kind='dir'):
                 elif kind == 'dir' and Path(file).resolve() == (Path(path) / fixture).resolve():
                     lines = Path(file).read_text().splitlines()
                 number = hit.get('StartLine', 0)
-                if 0 < number <= len(lines) and reviewed_assertion(hit.get('RuleID'), fixture, lines[number - 1]):
-                    classification = 'reviewed-test-assertion'
+                if 0 < number <= len(lines) and reviewed_fixture_command(hit.get('RuleID'), fixture, lines[number - 1]):
+                    classification = 'reviewed-test-command'
             prefix = hit.get('Match', '').partition(secret)[0] if secret else ''
             label_match = re.search(r'([A-Za-z_][A-Za-z0-9_]{0,40})[\\"\']*\s*[:=]\s*[\\"\']*\s*$', prefix)
             prefix = label_match.group(1) if label_match else '[not recorded]'

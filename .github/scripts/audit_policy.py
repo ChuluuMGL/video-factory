@@ -2,8 +2,8 @@
 import hashlib
 
 
-def reviewed_assertion(rule, relative_file, line):
-    # Reviewed n8n synthetic-credential round-trip assertion, not a file allowlist.
+def reviewed_fixture_command(rule, relative_file, line):
+    # Reviewed n8n synthetic-credential export command, not a file allowlist.
     # Any edit to that line removes the exception, including new credential values.
     return (rule == 'generic-api-key'
             and relative_file == '.github/scripts/container-stack-smoke.py'
@@ -13,7 +13,7 @@ def reviewed_assertion(rule, relative_file, line):
 
 def verdict(report):
     reviewed_classes = {'explicit-synthetic-fixture', 'runtime-secret-file-reference',
-                        'reviewed-test-assertion'}
+                        'reviewed-test-command'}
     review_count = sum(hit.get('classification') not in reviewed_classes
                        for hit in report.get('findings', []))
     if report.get('errors'):
