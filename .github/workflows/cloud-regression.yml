@@ -76,15 +76,6 @@ jobs:
         run: |
           set -euo pipefail
           sudo unshare --net -- "$(command -v python)" .github/scripts/release-smoke.py "$GITHUB_WORKSPACE/ci-release" | tee ci-results/release-install.json
-      - name: Preserve private candidate handoff
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: video-factory-candidate-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-release/*.tar.gz
-            ci-release/release.json
-            ci-release/SHA256SUMS
-          retention-days: 14
       - name: Core unit regression without external network
         shell: bash
         run: |
@@ -139,6 +130,15 @@ jobs:
           sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-connect-smoke.py ci-results
           sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/setup-browser-smoke.py ci-results
           sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/business-flow-smoke.py ci-results
+      - name: Preserve private candidate handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: video-factory-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-release/*.tar.gz
+            ci-release/release.json
+            ci-release/SHA256SUMS
+          retention-days: 14
       - name: Record scope
         if: always()
         shell: bash

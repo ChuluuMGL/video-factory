@@ -7,7 +7,7 @@ on:
     inputs:
       scope:
         type: choice
-        options: [all, source, releases, ci, ci_finding]
+        options: [all, source, releases, ci]
         default: all
 
 permissions:

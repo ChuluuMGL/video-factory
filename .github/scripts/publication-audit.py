@@ -141,9 +141,6 @@ try:
             for asset in release['assets']:
                 download_scan(f"repos/{REPO}/releases/assets/{asset['id']}", asset['name'],
                               f"{release['tag_name']}/{asset['name']}", asset.get('digest'))
-    elif MODE == 'ci_finding':
-        download_scan(f'repos/{REPO}/actions/artifacts/11140366753/zip', 'artifact.zip',
-                      'artifact:11140366753:cloud-stack-36812100723-1')
     elif MODE == 'ci':
         for artifact in pages(f'repos/{REPO}/actions/artifacts', 'artifacts'):
             label = f"artifact:{artifact['id']}:{artifact['name']}"
