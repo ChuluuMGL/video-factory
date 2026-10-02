@@ -136,6 +136,11 @@ jobs:
           python .github/scripts/validate-skill.py skills/video-factory-setup
           python .github/scripts/build-release.py --public-release --out ci-release --wheels ci-results/wheels ci-results/dependencies --source "$(git rev-parse HEAD)" > ci-results/release-build.json
           VF_CI_SCRIPT
+      - name: Anonymous upstream acquisition and fixed archive install
+        run: |
+          python3 .github/scripts/safe-ci.py upstream-install <<'VF_CI_SCRIPT'
+          sudo "$(command -v python)" .github/scripts/upstream-install-smoke.py "$GITHUB_WORKSPACE/ci-release"
+          VF_CI_SCRIPT
       - name: Delivered archive offline install and refusal checks
         shell: bash
         run: |
@@ -267,8 +272,6 @@ jobs:
           sudo install -d -m 700 /root/vf-offline-release
           sudo tar -xzf ci-offline/release/*.tar.gz -C /root/vf-offline-release
           sudo bash -c '"$1" -I /root/vf-offline-release/video-factory-*/install.py --prefix /root/vf-offline-cli --manifest-sha256 "$2"' _ "$(command -v python)" "$(cat ci-offline/release/trusted-manifest.sha256)" | tee ci-offline/cli-install.json
-          wheel_dir=$(find ci-offline/release -type d -name wheels)
-          python -m pip install --no-index --find-links "$wheel_dir" "$wheel_dir"/video_factory_core-*.whl
           VF_CI_SCRIPT
       - name: Export pinned runtime and service images
         run: |

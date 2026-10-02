@@ -9,6 +9,7 @@ import shutil
 import tarfile
 import tomllib
 import zipfile
+import urllib.request
 
 
 def release_member(info):
@@ -27,7 +28,7 @@ def build(out, wheel_dirs, source, public_release=False):
     root = out / f'video-factory-{version}-linux-x86_64-cpython312'
     root.mkdir(parents=True)
     (root / 'wheels').mkdir()
-    locks, names = [], set()
+    locks, names, downloads = [], set(), {}
     for directory in wheel_dirs:
         for wheel in sorted(directory.glob('*.whl')):
             assert wheel.is_file() and not wheel.is_symlink()
@@ -42,6 +43,14 @@ def build(out, wheel_dirs, source, public_release=False):
             sha = hashlib.sha256(wheel.read_bytes()).hexdigest()
             locks.append(f'{name}=={info["Version"]} --hash=sha256:{sha}')
             shutil.copyfile(wheel, root / 'wheels' / wheel.name)
+            if public_release and name != 'video-factory-core':
+                with urllib.request.urlopen(f'https://pypi.org/pypi/{name}/{info["Version"]}/json',timeout=45) as response:
+                    upstream=json.load(response)
+                item=next(x for x in upstream['urls'] if x['filename']==wheel.name)
+                assert item['digests']['sha256']==sha and item['size']==wheel.stat().st_size
+                assert item['url'].startswith('https://files.pythonhosted.org/packages/')
+                downloads['wheels/'+wheel.name]={'url':item['url'],'sha256':sha,'size':item['size']}
+
     assert 'video-factory-core' in names and 3 <= len(names) <= 30
     (root / 'requirements.lock').write_text('\n'.join(sorted(locks)) + '\n')
     shutil.copyfile('distribution/install.py', root / 'install.py')
@@ -62,6 +71,7 @@ def build(out, wheel_dirs, source, public_release=False):
         assert Path('LICENSE').is_file(), 'OWNER_APPROVED_LICENSE_REQUIRED'
         for legal_file in ('LICENSE','NOTICE','THIRD_PARTY_NOTICES.md'):
             shutil.copyfile(legal_file,root/legal_file)
+        (root/'dependency-downloads.json').write_text(json.dumps(downloads,sort_keys=True,indent=2)+'\n')
         import runpy
         runpy.run_path('.github/scripts/collect-third-party.py')['collect'](root)
     files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -70,8 +80,13 @@ def build(out, wheel_dirs, source, public_release=False):
                 'target': 'linux-x86_64-cpython312', 'channel': 'public_alpha' if public_release else 'private_candidate', 'files': files}
     (root / 'manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
     archive = out / (root.name + '.tar.gz')
+    def shipped_member(info):
+        relative=info.name.removeprefix(root.name+'/')
+        # Third-party binaries are fetched by the customer from upstream, never redistributed here.
+        if relative in downloads:return None
+        return release_member(info)
     with tarfile.open(archive, 'w:gz') as tar:
-        tar.add(root, arcname=root.name, filter=release_member)
+        tar.add(root, arcname=root.name, filter=shipped_member)
     receipt = {'schema': 1, 'version': version, 'source_commit': source, 'archive': archive.name,
                'archive_sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
                'manifest_sha256': hashlib.sha256((root / 'manifest.json').read_bytes()).hexdigest(),

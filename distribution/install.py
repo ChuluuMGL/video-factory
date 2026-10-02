@@ -73,6 +73,62 @@ def verify(bundle, expected):
     return manifest
 
 
+def prepare_dependencies(bundle, expected):
+    """Materialize only hash-locked upstream files after verifying the trusted manifest."""
+    safe_path(bundle)
+    raw=regular(bundle/'manifest.json')
+    require(re.fullmatch(r'[a-f0-9]{64}',expected) and digest(raw)==expected,'MANIFEST_HASH_MISMATCH')
+    manifest=json.loads(raw);files=manifest['files']
+    if 'dependency-downloads.json' not in files:return
+    raw=regular(bundle/'dependency-downloads.json')
+    require(digest(raw)==files['dependency-downloads.json'],'RELEASE_FILE_HASH_MISMATCH')
+    downloads=json.loads(raw)
+    require(isinstance(files,dict) and 5<=len(files)<=150,'RELEASE_FILES_INVALID')
+    for name,sha in files.items():
+        relative=PurePosixPath(name)
+        require(not relative.is_absolute() and '..' not in relative.parts and str(relative)==name and re.fullmatch(r'[a-f0-9]{64}',sha),'RELEASE_PATH_INVALID')
+    require(isinstance(downloads,dict) and 1<=len(downloads)<=30,'DEPENDENCY_PLAN_INVALID')
+    from urllib.parse import urlsplit
+    from urllib.request import build_opener,ProxyHandler,HTTPRedirectHandler,Request
+    class NoRedirect(HTTPRedirectHandler):
+        def redirect_request(self,*args):raise ValueError('DEPENDENCY_REDIRECT_REJECTED')
+    for name,item in downloads.items():
+        require(re.fullmatch(r'wheels/[A-Za-z0-9_.+-]+\.whl',name) is not None,'DEPENDENCY_PATH_INVALID')
+        require(files.get(name)==item['sha256'] and type(item['size']) is int and 0<item['size']<=32*1024*1024,'DEPENDENCY_PLAN_INVALID')
+        u=urlsplit(item['url'])
+        require(u.scheme=='https' and u.hostname=='files.pythonhosted.org' and u.port is None and not u.username and not u.password and not u.query and not u.fragment and u.path.startswith('/packages/'),'DEPENDENCY_ORIGIN_INVALID')
+    # Reject altered existing files, unexpected files and unsafe directories before any request.
+    for path in bundle.rglob('*'):
+        require(not path.is_symlink(),'RELEASE_SYMLINK_REJECTED')
+        if path.is_dir():
+            info=path.stat();require(info.st_uid==0 and not info.st_mode & 0o022,'RELEASE_DIRECTORY_UNSAFE')
+            continue
+        name=path.relative_to(bundle).as_posix()
+        require(name=='manifest.json' or name in files,'RELEASE_UNEXPECTED_FILES')
+        if name!='manifest.json':require(digest(regular(path))==files[name],'RELEASE_FILE_HASH_MISMATCH')
+    for name in files:
+        require((bundle/name).is_file() or name in downloads,'RELEASE_INCOMPLETE')
+    safe_path(bundle/'wheels')
+    for name,item in downloads.items():
+        path=bundle/name
+        if path.exists():continue
+        # Keep partial bytes outside the verified bundle; failed downloads leave no partial install.
+        import tempfile
+        with tempfile.TemporaryFile() as temp:
+            with build_opener(ProxyHandler({}),NoRedirect()).open(Request(item['url']),timeout=90) as response:
+                require(response.status==200,'DEPENDENCY_DOWNLOAD_FAILED')
+                total=0;h=hashlib.sha256()
+                while True:
+                    chunk=response.read(1024*1024)
+                    if not chunk:break
+                    total+=len(chunk);require(total<=item['size'],'DEPENDENCY_SIZE_MISMATCH')
+                    h.update(chunk);temp.write(chunk)
+            require(total==item['size'] and h.hexdigest()==item['sha256'],'DEPENDENCY_HASH_MISMATCH')
+            temp.seek(0)
+            fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+            with os.fdopen(fd,'wb') as out:shutil.copyfileobj(temp,out)
+
+
 def run(argv):
     # Disable pip configuration and environment injection; do not print subprocess
     # diagnostics containing host-specific configuration. Installation has no network.
@@ -125,6 +181,7 @@ def install(bundle, prefix, expected):
     require(platform.system() == 'Linux' and platform.machine() == 'x86_64' and os.getuid() == 0,
             'LINUX_X86_64_ROOT_REQUIRED')
     require(sys.version_info[:2] == (3, 12), 'PYTHON_312_REQUIRED')
+    prepare_dependencies(bundle, expected)
     manifest = verify(bundle, expected)
     safe_path(prefix)
     require(prefix.parent.is_dir() and not prefix.is_relative_to(bundle) and not bundle.is_relative_to(prefix),

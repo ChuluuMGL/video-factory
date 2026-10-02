@@ -4,7 +4,7 @@ Video Factory 的源码许可仅适用于本项目拥有版权的代码和文档
 
 ## Python 依赖
 
-发行构建会保留每个 wheel 自带的许可文件，并生成包含名称、版本、摘要与许可元数据的清单。Psycopg 采用 LGPL 条款；它及二进制组件的对应源码与许可应一并提供，不能只附本项目的许可证。Cryptography、cffi、pycparser 和其他传递依赖分别保留上游条款。以固定发行包中的依赖清单和许可原文为准。
+公开包不重新分发第三方 wheel；客户服务器按固定哈希直接从 PyPI 官方文件源获取。发行构建保留依赖清单和每个 wheel 自带的许可文件，并生成包含名称、版本、摘要与许可元数据的清单。Psycopg 采用 LGPL 条款；它及二进制组件的对应源码与许可应一并提供，不能只附本项目的许可证。Cryptography、cffi、pycparser 和其他传递依赖分别保留上游条款。以固定发行包中的依赖清单和许可原文为准。
 
 ## 服务器镜像
 
@@ -26,7 +26,7 @@ Python、PostgreSQL、n8n、nginx 和 FFmpeg 由客户服务器从各上游镜�
 
 The project license covers only Video Factory's own code and documentation. Dependencies, container images, external services, trademarks and example media retain their respective terms.
 
-Releases must retain wheel license texts and dependency/version/hash metadata. Psycopg and its binary component use LGPL terms and require their corresponding source and notices; the project license alone is insufficient. Other direct and transitive dependencies retain upstream terms.
+Public archives do not redistribute third-party wheels. Customer servers fetch hash-locked files directly from the official PyPI file host. Releases retain wheel license texts and dependency/version/hash metadata. Psycopg and its binary component use LGPL terms and require their corresponding source and notices; the project license alone is insufficient. Other direct and transitive dependencies retain upstream terms.
 
 Servers obtain pinned upstream images directly. Public releases do not redistribute the former offline image bundles. Network-restricted deployments must prepare appropriately licensed images without substituting arbitrary registries or versions.
 

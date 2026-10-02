@@ -82,3 +82,5 @@ a30 已通过 247 项核心回归和五组云端检查。此前 a29 实测过真
 由 [Chuluu](https://github.com/ChuluuMGL) 维护；产品官网：[月瑀科技](https://www.yueyu.tech/zh/products/video-factory/)。
 
 Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。本项目自有源码和文档采用 [MIT](LICENSE)；第三方依赖、镜像和案例媒体保留各自条款，见 [第三方说明](THIRD_PARTY_NOTICES.md)。欢迎通过 Issue 和 Pull Request 提出改进，参见 [贡献指南](CONTRIBUTING.md)。
+
+a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。

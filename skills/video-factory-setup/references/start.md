@@ -36,3 +36,5 @@ Agent 负责整理非秘密的配置和 SKU、读取 JSON 问题 schema、核对
 首次主机内交互用 setup-run；无私有 TTY 时按 operations.md 的 JSON 分阶段接口完成非秘密步骤。密码和 App Secret 必须由用户直接在安全输入界面录入。不能录屏、回显或自动读取用户输入的秘密到模型上下文。
 
 完成或中断后按 handoff.md 给出结果，保留客户侧 session 定位信息。用户添加后续项目时仍用本 Skill，不重复安装 Skill 或整套服务。
+
+a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。

@@ -47,3 +47,5 @@ python3.12 /root/verified-release/install.py --prefix /opt/vf-cli-VERSION --mani
 升级 CLI 使用新版本目录；升级运行服务另按 发行包中的 `docs/product/STACK_USAGE.md` 创建新部署与恢复检查点。冷备会停服务，不会自动启动；新安装 CLI、备份文件存在、绿色 CI，都不能替代服务回读或实际恢复。
 
 服务镜像无法下载时，使用随包 `docs/product/OFFLINE_IMAGES.md` 的可信离线镜像包，并在 `setup-run` 增加 `--image-bundle` 与 `--image-manifest-sha256`。不要绕过镜像校验或切换未知镜像源。
+
+a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
