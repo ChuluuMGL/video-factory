@@ -43,6 +43,7 @@ jobs:
         run: python3 .github/scripts/publication-audit.py '${{ matrix.scope }}'
       - name: Retain only redacted finding metadata
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: publication-audit-${{ matrix.scope }}-${{ github.run_id }}

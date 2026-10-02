@@ -43,13 +43,13 @@ def scan(path, label, kind='dir'):
     with tempfile.TemporaryDirectory() as temp:
         report = Path(temp) / 'raw.json'
         command = ['gitleaks', kind, str(path), '--redact=100', '--no-banner',
-                   '--ignore-gitleaks-allow', '--max-archive-depth=5',
+                   '--ignore-gitleaks-allow', '--log-level=error', '--no-color', '--max-archive-depth=5',
                    '--max-decode-depth=2', '--report-format=json',
                    '--report-path', str(report)]
         if kind == 'git':
             command += ['--log-opts=--all']
         # Never publish stdout/stderr or raw reports; they can contain private metadata.
-        p = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        p = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                            timeout=1200)
         if p.returncode not in (0, 1) or not report.exists():
             raise RuntimeError('SCANNER_FAILED')
@@ -58,6 +58,8 @@ def scan(path, label, kind='dir'):
             result['findings'].append({'object': label,
                 'rule': hit.get('RuleID'), 'file': hit.get('File'),
                 'line': hit.get('StartLine'), 'commit': hit.get('Commit')})
+        if p.stderr.strip():
+            raise RuntimeError('SCANNER_REPORTED_ERROR')
         return len(findings)
 
 
@@ -135,6 +137,10 @@ except Exception as error:
 finally:
     result['status'] = 'inspection_completed' if not result['errors'] else 'inspection_incomplete'
     save()
+    import base64, zlib
+    # Small, redacted report survives even when Actions artifact storage is full.
+    payload = base64.b64encode(zlib.compress(json.dumps(result).encode())).decode()
+    print('AUDIT_REPORT_BASE64_ZLIB=' + payload)
     print(json.dumps({'mode': MODE, 'status': result['status'],
                       'inspected': len(result['inspected']), 'findings': len(result['findings']),
                       'uninspected': len(result['uninspected']), 'errors': len(result['errors']),
