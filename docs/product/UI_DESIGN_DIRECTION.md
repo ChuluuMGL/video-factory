@@ -33,7 +33,7 @@ Explain the product with concise typography and a single gallery of real project
 3. Full Skill download, four operation choices, always-visible Agent instructions and compact top-right copy button.
 4. Preparation checklist and five full-width maintenance questions.
 
-The official AI page retains business-wide offerings and case metrics. This page provides the reusable product and installation path. No official-site edits, public access change or installer contract change are included.
+The official AI page retains business-wide offerings and case metrics. This page provides the reusable product and installation path. The official product page is now deployed. It links to the MIT public alpha; the customer runtime and model credentials remain on the customer server.
 
 ## Responsive behavior and accessibility
 
@@ -47,4 +47,4 @@ Cloud Chrome checks at 320, 390, 820 and 1440 px: no horizontal overflow, copy/f
 
 https://www.yueyu.tech/zh/solutions/ai-workflow-models
 
-This direction supersedes older workflow mockups and the screenshot-demo layout. Preserve the fixed a30 Skill and installer; page source and legacy-case provenance are recorded separately.
+This direction supersedes older workflow mockups and the screenshot-demo layout. Preserve published installer and Skill hashes; page source and legacy-case provenance are recorded separately. The current public release is recorded in STATUS.md.

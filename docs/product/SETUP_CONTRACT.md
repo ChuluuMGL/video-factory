@@ -1,6 +1,6 @@
 # Setup 交互与状态契约
 
-状态：0.1.0a7 已实现 P1 离线会话、问答、恢复和计划，见 [使用说明](SETUP_USAGE.md)。下列实际身份验证、秘密存储、远程 apply/verify/handoff 仍是后续执行器契约，不能视为已经实现。现有命令见 [核心 README](CUSTOMER_GUIDE.md)。
+本文定义分阶段契约，最初写于 a7；其中状态名是设计要求，不代表每个 CLI 都返回同名字段。当前已实现离线规划、受控部署、加密凭据、飞书接入与常驻工作区，准确命令见 [客户指南](CUSTOMER_GUIDE.md)和[当前安装能力](NEW_INSTALL_CAPABILITIES.md)。真实模型与独立人员验收仍见 [当前状态](STATUS.md)。
 
 ## 入口与对象
 
