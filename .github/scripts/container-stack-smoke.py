@@ -268,15 +268,11 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         print('STAGE: Feishu identity import and repair on PostgreSQL, real n8n queue read',file=sys.stderr,flush=True)
         fixture=Path('.github/scripts/feishu-package-smoke.py').read_bytes()
         bootstrap=("import runpy; from pathlib import Path; p=Path('/tmp/feishu-smoke.py'); p.write_bytes("+repr(fixture)+"); runpy.run_path(str(p),run_name='__main__')").encode()
-        # This is a synthetic-only fixture, so preserve sanitized child diagnostics
-        # instead of losing them to the production command runner's redaction.
+        # Keep synthetic child output private; failure receipts expose only the stage and code.
         fixture_result=subprocess.run(['docker','compose','--profile','worker','--project-directory',str(fourth.root),'-f',str(fourth.root/'compose.json'),
             'run','--rm','-T','--no-deps','--entrypoint','python','worker','-'],input=bootstrap,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=300)
         if fixture_result.returncode:
-            diagnostic=fixture_result.stderr.decode(errors='replace')+fixture_result.stdout.decode(errors='replace')
-            for secret_path in (fourth.root/'secrets').glob('*'):
-                if secret_path.is_file():diagnostic=diagnostic.replace(secret_path.read_text(),'<redacted>')
-            print(diagnostic,file=sys.stderr)
+            print(json.dumps({'stage':'feishu_container_fixture','returncode':fixture_result.returncode}),file=sys.stderr)
             raise AssertionError('FEISHU_CONTAINER_FIXTURE_FAILED')
         feishu_proof=json.loads(fixture_result.stdout)
         assert feishu_proof['status']=='PASS' and feishu_proof['backend']=='postgresql'
@@ -401,10 +397,9 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         for stack in stacks:
             try:
                 print(stack.compose('ps','--all').decode(),file=sys.stderr)
-                logs=stack.compose('logs','--no-color','--tail','35').decode()
-                for path in (stack.root/'secrets').glob('*'):
-                    if path.is_file():logs=logs.replace(path.read_text(),'<redacted>')
-                print(logs,file=sys.stderr)
+                # Service logs can contain generated n8n resume tokens that are
+                # not present in secrets/. Preserve status, not raw service logs.
+                print('SERVICE_LOGS_OMITTED_FROM_CI_EVIDENCE',file=sys.stderr)
             except Exception:pass
         raise
     finally:

@@ -61,12 +61,9 @@ def smoke(stack,root,session):
             'run','--rm','--no-deps','-e','N8N_RUNNERS_BROKER_PORT=5689','n8n','execute','--id=VfApprovedDispatch001','--rawOutput'],
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180)
         if execution.returncode:
-            # This cloud-only test has synthetic identities and no vendor keys.
-            # Still redact ephemeral capabilities and generated stack secrets.
-            diagnostic=(execution.stdout+execution.stderr).decode(errors='replace')
-            for secret in [cap['token'],admin,*[p.read_text() for p in (stack.root/'secrets').glob('*') if p.is_file()]]:
-                if secret:diagnostic=diagnostic.replace(secret,'<redacted>')
-            print(diagnostic,file=sys.stderr)
+            # n8n may generate tokens absent from our secrets directory.
+            # Preserve the failure code without archiving raw execution output.
+            print(json.dumps({'stage':'n8n_approved_dispatch','returncode':execution.returncode}),file=sys.stderr)
             raise AssertionError('N8N_APPROVED_DISPATCH_EXECUTION_FAILED')
         output=execution.stdout.decode()
         assert '"idle"' in output and '"provider_requests": 0' in output, 'N8N_APPROVED_DISPATCH_FAILED'
@@ -89,7 +86,7 @@ def smoke(stack,root,session):
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
         return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
     except Exception:
-        try:print(compose(stack,'fs_brand','logs','--no-color','--tail','20').decode(),file=__import__('sys').stderr)
+        try:print('SERVICE_LOGS_OMITTED_FROM_CI_EVIDENCE',file=__import__('sys').stderr)
         except Exception:pass
         raise
     finally:stop_all(stack)

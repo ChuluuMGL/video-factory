@@ -2,10 +2,7 @@ name: Private publication audit
 
 on:
   push:
-    branches: [codex/repository-publication-readiness]
-    paths:
-      - '.github/scripts/publication-audit.py'
-      - '.github/workflows/publication-audit.yml'
+    branches: [main, codex/repository-publication-readiness]
   workflow_dispatch:
     inputs:
       scope:
