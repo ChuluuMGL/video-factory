@@ -11,6 +11,10 @@
 - 已开启 GitHub secret scanning、push protection 与 private vulnerability reporting。扫描不保证没有漏洞，见 [安全报告](../../SECURITY.md)。
 - 官网静态安装页已部署；既有产品菜单顺序保留。[正式官网复测](https://github.com/ChuluuMGL/YUEYUTECH/actions/runs/36983815452)已通过。详见 [a31 发行回执](DELIVERY_A31_RESULT.md)。
 
+## 发布后维护（2026-10-02）
+
+[PR #7](https://github.com/ChuluuMGL/video-factory/pull/7) 已合并：测试与创建草稿解耦、隐私发现阻断、现行说明与官网验收文档同步。完整云端回归、隐私检查与官网线上复测通过，见 [维护回执](MAINTENANCE_2026_10_02.md)。固定 a31 安装包和 Skill 保持原摘要；真实业务验收及后续能力仍未关闭。
+
 ## 历史：a30 官网入口（2026-10-02）
 
 官网产品与安装页：https://www.yueyu.tech/zh/products/video-factory/ 。页脚、桌面产品下拉和手机产品菜单均将 Video Factory 放在第一项。官网 [PR #19](https://github.com/ChuluuMGL/YUEYUTECH/pull/19) 已合并，部署版本 `1f7fccb65967b4974ceb4eb375e6d8258fd87125`。固定 a30 Skill 未改变，产品仓库和服务器安装包仍私有；独立客户安装及新部署真实生成验收仍待完成。
