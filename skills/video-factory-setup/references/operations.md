@@ -24,7 +24,7 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 /opt/vf-cli-VERSION/venv/bin/vfctl setup-run --session /root/vf-private/customer.setup.json --root /opt/video-factory --wheelhouse /opt/vf-cli-VERSION/release/wheels
 ```
 
-若提供离线镜像包，先读发行包 `docs/product/OFFLINE_IMAGES.md`，取得可信交付记录中的清单摘要，在上述命令增加 `--image-bundle /root/vf-image-bundle --image-manifest-sha256 TRUSTED_IMAGE_MANIFEST_SHA256`。包目录 700、文件 600、归 root 所有；必须与当前发行 wheels 匹配。不要自动采信包内自报摘要、切换未知镜像源或将大镜像包下载到安装人员电脑。
+若提供离线镜像包，先读发行包 `docs/product/OFFLINE_IMAGES.md`，取得可信交付记录中的清单摘要，在上述命令增加 `--image-bundle /root/vf-image-bundle --image-manifest-sha256 TRUSTED_IMAGE_MANIFEST_SHA256`。包目录 700、文件 600、归 root 所有；使用同批交付的 CLI 和镜像，核对完整 wheels 哈希，不能只比较版本号。公开发行不含整套镜像，应由部署方准备并经私有渠道直传服务器。不要自动采信包内自报摘要、切换未知镜像源或将大镜像包下载到安装人员电脑。
 
 按欢迎问题填写组织、主机、项目、SKU、审核人及模型意图。先把已安装前缀下 `release/templates/products.json` 复制到客户私有目录并填入实际商品，勿修改校验包；SKU 终端输入使用副本的 JSON 文件绝对路径。确认安装摘要后，密码与 App Secret 隐藏输入，App Secret 在客户 vault 中加密保存。向导默认新建 Base，也可绑定已有表。新建模式选择用途（测试会放入两条测试任务）、位置及提交人，授权并核对清单后才创建和绑定；无需预建测试 Base。创建回执未知时停止并读取状态，不盲目重建。
 
