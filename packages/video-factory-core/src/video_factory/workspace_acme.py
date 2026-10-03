@@ -250,7 +250,8 @@ def schedule(stack,project,enable,*,units=Path('/etc/systemd/system'),runner=run
     if enable:
         receipt=load(root/'production/receipt.json');check_context(stack,receipt['plan'])
         if receipt['status']!='issued':raise RuntimeFault('ACME_ISSUED_CERTIFICATE_REQUIRED')
-        workspace_tls.current(stack,project)
+        _,current=workspace_tls.current(stack,project)
+        if current['origin']!=receipt['plan']['origin']:raise RuntimeFault('ACME_WORKSPACE_ORIGIN_CHANGED')
     for suffix,text in (('service',service),('timer',timer)):
         path=units/(name+'.'+suffix)
         if path.exists() or path.is_symlink():
@@ -269,7 +270,9 @@ def status(stack,project):
         path=root/name/'receipt.json'
         if path.exists():
             receipt=load(path)
-            result['environments'][name]={'status':receipt['status'],'requires_context_review':receipt['plan']['stack_instance']!=stack.config['instance']}
+            try:check_context(stack,receipt['plan']);changed=False
+            except Exception:changed=True
+            result['environments'][name]={'status':receipt['status'],'requires_context_review':changed}
     path=root/'schedule.json'
     result['schedule']=load(path) if path.exists() else {'enabled':False}
     result['schedule']['active']=False

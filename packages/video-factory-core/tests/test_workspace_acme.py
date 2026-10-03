@@ -146,3 +146,21 @@ class ACMETests(unittest.TestCase):
         self.assertEqual(result['last_renewal']['error'],'ACME_RENEWAL_FAILED')
         self.assertNotIn('private provider diagnostic',json.dumps(result))
         self.assertEqual((self.root/'tls/certificate.pem').read_bytes(),self.oldcert.read_bytes())
+
+    def test_missing_client_and_ipv6_only_plan_fail_without_order(self):
+        self.client.stop()
+        with patch.object(acme,'CLIENT',self.parent/'missing-client'):
+            with self.assertRaisesRegex(RuntimeFault,'TRUSTED_CERTBOT'):acme.client_digest()
+        with self.assertRaisesRegex(RuntimeFault,'PUBLIC_IPV4'):
+            acme.plan(self.stack,self.project,self.staging['origin'],self.staging['email'],['2606:4700:4700::1111'],'staging')
+        self.assertFalse(acme.folder(self.stack,self.project).exists())
+
+    def test_client_change_is_visible_in_status_and_origin_change_blocks_timer(self):
+        self.issue(self.staging);self.issue(self.production)
+        with patch.object(acme,'client_digest',return_value='b'*64):
+            self.assertTrue(acme.status(self.stack,self.project)['environments']['production']['requires_context_review'])
+        units=self.parent/'units';units.mkdir();runner=Mock()
+        with patch.object(tls,'current',return_value=(self.root,{'origin':'https://other.example'})):
+            with self.assertRaisesRegex(RuntimeFault,'ORIGIN_CHANGED'):
+                acme.schedule(self.stack,self.project,True,units=units,runner=runner)
+        runner.assert_not_called();self.assertEqual(list(units.iterdir()),[])
