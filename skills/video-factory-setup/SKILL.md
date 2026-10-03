@@ -37,4 +37,4 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## a32 候选注意
 
-仅在实际 CLI 支持 `base-results` 时，按 [回写候选说明](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/BASE_RESULTS.md) 检查版本、项目和最小权限。公开 a31 不含此能力。候选回写默认关闭，未知上传或恢复检查点须停止并核对，不能清日志重试；未完成真实验收前不向客户承诺已支持。
+仅在实际 CLI 支持 `base-results` 时，按安装包内 `docs/product/BASE_RESULTS.md` 检查版本、项目和最小权限。公开 a31 不含此能力。候选回写默认关闭，未知上传或恢复检查点须停止并核对，不能清日志重试；未完成真实验收前不向客户承诺已支持。
