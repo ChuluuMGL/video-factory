@@ -65,7 +65,7 @@ def plan(stack,project,public_origin,email,ips,environment):
     if not isinstance(email,str) or not re.fullmatch(r'[^\s@\x00-\x1f]{1,128}@[^\s@\x00-\x1f]{1,128}\.[a-zA-Z]{2,63}',email):
         raise RuntimeFault('ACME_EMAIL_REQUIRED')
     expected=sorted(set(str(ipaddress.ip_address(v)) for v in ips))
-    if not expected or not all(ipaddress.ip_address(v).is_global for v in expected):raise RuntimeFault('ACME_PUBLIC_IP_REQUIRED')
+    if not expected or not all(ipaddress.ip_address(v).is_global and ipaddress.ip_address(v).version==4 for v in expected):raise RuntimeFault('ACME_PUBLIC_IPV4_REQUIRED')
     if environment not in DIRECTORIES:raise RuntimeFault('ACME_ENVIRONMENT_INVALID')
     return {'schema':1,'project':project,'origin':public_origin,'email':email,'expected_ips':expected,
             'environment':environment,'stack_instance':stack.config['instance'],
@@ -225,7 +225,7 @@ def renew(stack,project,*,issuer=issue,deployer=deploy):
     except Exception as error:
         # Only fixed fault codes, never provider output, addresses or secrets.
         code=str(error) if isinstance(error,RuntimeFault) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,100}',str(error)) else 'ACME_RENEWAL_FAILED'
-        write_json(root/'renewal.json',{'status':'failed','error':code,'at':datetime.now(timezone.utc).isoformat()})
+        if root.is_dir():write_json(root/'renewal.json',{'status':'failed','error':code,'at':datetime.now(timezone.utc).isoformat()})
         raise
 
 

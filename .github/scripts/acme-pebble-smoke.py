@@ -24,6 +24,9 @@ process=None
 try:
     stack=fixture.prepare();stack.config['runtime_image']='sha256:'+'a'*64
     config=json.loads((source/'test/config/pebble-config.json').read_text())
+    # Pebble randomly chooses a profile when Certbot omits one. Keep a
+    # single 90-day fixture profile; the product still rejects short certificates.
+    config['pebble']['profiles']={'default':{'description':'90-day fixture','validityPeriod':7776000}}
     config['pebble'].update(listenAddress='127.0.0.1:14000',managementListenAddress='127.0.0.1:15000',httpPort=80)
     config_path=fixture.parent/'pebble.json';config_path.write_text(json.dumps(config))
     ca=source/'test/certs/pebble.minica.pem'

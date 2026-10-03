@@ -22,7 +22,7 @@
 
 Agent 操作顺序：
 
-1. `workspace-acme plan --stack-root <私有目录> --project <项目> --origin https://<域名> --email <证书负责人邮箱> --expected-ip <本机公网IP> --environment staging`。所有 A/AAAA 解析必须与确认的 IP 集合一致；HTTP-01 验证使用 IPv4。计划绑定当前服务器实例、域名及 Certbot 文件摘要。
+1. `workspace-acme plan --stack-root <私有目录> --project <项目> --origin https://<域名> --email <证书负责人邮箱> --expected-ip <本机公网IP> --environment staging`。仅支持已确认的公网 IPv4；所有解析必须与计划一致，有 AAAA 时先核对部署，不会忽略 IPv6 指向。计划绑定当前服务器实例、域名及 Certbot 文件摘要。
 2. 客户已同意 CA 服务条款后，使用相同参数执行 `issue --accept-ca-terms --expect-plan <刚返回的摘要>`。先成功完成 staging，再重新生成 production 计划并执行一次签发。测试证书不能部署为正式员工入口。
 3. `workspace-acme deploy --stack-root … --project …`。首次创建工作区；已有入口使用原子 TLS 轮换和失败回退。随后分别检查工作区状态和公网可信 HTTPS。
 4. `workspace-acme enable --stack-root … --project …` 创建仅属于这个 stack/项目的 systemd 定时任务，每日检查，分散执行。到期不足 30 天才签发；已签发但未部署的证书先复用。停用用 `disable`，不影响其他站点的任务。
@@ -30,6 +30,6 @@ Agent 操作顺序：
 
 超时或签发失败会保留 `in_flight` 回执，定时器不得再次提交。使用同一环境的 `recover` 只读取那次私有签发输出；若 CA 未完成签发，保持待核对，由实施方检查原日志和 CA 状态，不能删回执自动重试。续期失败保留正在使用的旧证书；轮换故障另用 `workspace-tls recover`。
 
-Certbot 的临时日志和符号链接只在 `acme-work`，不进入冷备。账户、证书、私钥规范化成私有普通文件后进入现有加密冷备。恢复到新实例后禁止直接续期，必须重新核对域名、计划及定时任务；备份不会搬运系统定时器。
+Certbot 的临时日志和符号链接只在 `acme-work`，不进入冷备。账户、证书、私钥规范化成私有普通文件后进入现有加密冷备。恢复到新实例后禁止直接续期，必须重新核对域名、计划及定时任务；备份不会搬运系统定时器。升级前先用旧版 CLI 停用旧定时器，升级后核对新版 CLI 路径再启用；不会覆盖内容不同的系统 unit。
 
 云端测试使用 [Pebble 测试 CA](https://github.com/letsencrypt/pebble)，验证实际 Certbot 的 HTTP-01、账户复用和中断恢复；它不能替代真实域名的 Let's Encrypt staging / production 验收。真实域名签发、实际续期和公网访问完成前，#10 保持打开。
