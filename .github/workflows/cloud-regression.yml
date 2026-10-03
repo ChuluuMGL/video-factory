@@ -355,7 +355,7 @@ jobs:
         run: |
           python3 .github/scripts/safe-ci.py cloud-check-146 <<'VF_CI_SCRIPT'
           set -euo pipefail
-          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json
+          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json || { cat ci-stack/diagnostics.log >&2; exit 1; }
           VF_CI_SCRIPT
       - name: Reuse the exact checked archive for offline image verification
         run: |
