@@ -121,11 +121,6 @@ class StackTests(unittest.TestCase):
         self.assertIn('BIGSERIAL',PG_SCHEMA)
         self.assertIn('DOUBLE PRECISION',PG_SCHEMA)
 
-
-if __name__=='__main__':unittest.main()
-
-
-@unittest.skipUnless(sys.platform == 'linux', 'Linux gateway port semantics')
     def test_restore_rejects_unbound_tls_pointers_before_writing(self):
         key=Fernet.generate_key()
         for target in ('../../../../secrets','/tmp','generations/'+'a'*32):
@@ -140,6 +135,11 @@ if __name__=='__main__':unittest.main()
                 Stack.restore(source,self.root,key)
             self.assertEqual(list(self.root.iterdir()),[])
 
+
+if __name__=='__main__':unittest.main()
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux gateway port semantics')
 
 class PortPreflightTests(unittest.TestCase):
     def check_ports(self, root, first, second):
@@ -176,4 +176,3 @@ class PortPreflightTests(unittest.TestCase):
                 port = listener.getsockname()[1]
                 with self.assertRaisesRegex(RuntimeFault, '^STACK_PORT_ALREADY_IN_USE$'):
                     self.check_ports(Path(root), port, 5678 if port != 5678 else 8787)
-
