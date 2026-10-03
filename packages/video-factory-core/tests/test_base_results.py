@@ -184,3 +184,71 @@ class ResultsTests(unittest.TestCase):
         self.remote.callback = None
         self.assertEqual(self.sync()['status'], 'synced')
         self.assertEqual(self.remote.calls.count('record'), 1)
+
+    def test_reviewed_retry_reuses_record_ticket_and_never_auto_retries(self):
+        self.enable(); self.remote.lose = 'record'
+        with self.assertRaises(RuntimeFault): self.sync()
+        self.remote.rows = {}; self.remote.lose = None
+        blocked = self.results.status(self.admin, 'brand')['blocked'][0]
+        with self.store.connect() as db:
+            item = meta(db, item_prefix('brand')+blocked['event']); ticket = item['steps']['record']['ticket']
+        plan = self.results.repair_plan(self.admin, 'brand', blocked['event'], 'record')
+        self.results.repair(self.admin, 'brand', blocked['event'], 'record', plan['plan_sha256'])
+        self.sync(); self.sync()
+        with self.store.connect() as db:
+            item = meta(db, item_prefix('brand')+blocked['event'])
+        self.assertEqual(item['steps']['record']['ticket'], ticket)
+        self.assertEqual(len(item['steps']['record']['history']), 1)
+        self.assertTrue(item['complete'])
+
+    def test_retry_plan_expiry_changed_plan_and_retry_cap(self):
+        self.enable(); self.remote.lose = 'record'
+        with self.assertRaises(RuntimeFault): self.sync()
+        self.remote.rows = {}
+        blocked = self.results.status(self.admin, 'brand')['blocked'][0]; event = blocked['event']
+        plan = self.results.repair_plan(self.admin, 'brand', event, 'record')
+        with self.assertRaisesRegex(RuntimeFault, 'PLAN_CHANGED'):
+            self.results.repair(self.admin, 'brand', event, 'record', '0'*64)
+        self.results.repair(self.admin, 'brand', event, 'record', plan['plan_sha256'])
+        with patch('video_factory.base_results.time.time', return_value=10**12):
+            with self.assertRaisesRegex(RuntimeFault, 'AUTH|EXPIRED'): self.sync()
+        for attempt in range(2):
+            with self.assertRaises(RuntimeFault): self.sync()
+            self.remote.rows = {}
+            if attempt == 0:
+                plan = self.results.repair_plan(self.admin, 'brand', event, 'record')
+                self.results.repair(self.admin, 'brand', event, 'record', plan['plan_sha256'])
+        with self.assertRaisesRegex(RuntimeFault, 'REPAIR_LIMIT'):
+            self.results.repair_plan(self.admin, 'brand', event, 'record')
+
+    def test_finished_checkpoint_recovers_only_after_remote_readback_and_stays_paused(self):
+        self.enable(); self.sync(); self.sync()
+        with self.store.connect() as db:
+            self.store.invalidate_worker_approvals(db)
+            db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:brand',))  # fixture simulates existing binding re-verification
+        plan = self.results.recovery_plan(self.admin, 'brand')
+        self.assertEqual(plan['plan']['verified_rows'], 1)
+        self.results.recover(self.admin, 'brand', plan['plan_sha256'])
+        self.assertEqual(self.sync()['status'], 'disabled')
+        self.enable(); self.assertEqual(self.sync()['status'], 'idle')
+        self.assertEqual(self.remote.calls, ['table', 'record'])
+
+    def test_checkpoint_recovery_rejects_remote_edits_and_unfinished_record(self):
+        self.enable(); self.sync(); self.sync()
+        with self.store.connect() as db:
+            self.store.invalidate_worker_approvals(db)
+            db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:brand',))
+        self.remote.rows['recResult0']['fields']['脚本'] = 'Modified'
+        with self.assertRaisesRegex(RuntimeFault, 'REMOTE_MISMATCH'):
+            self.results.recovery_plan(self.admin, 'brand')
+
+    def test_completed_video_checkpoint_rechecks_attachment(self):
+        self.video(); self.enable()
+        for _ in range(5): self.sync()
+        with self.store.connect() as db:
+            self.store.invalidate_worker_approvals(db)
+            db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:brand',))
+        self.results.recovery_plan(self.admin, 'brand')
+        self.remote.rows['recResult0']['fields']['视频'][0]['file_token'] = 'boxcnOther'
+        with self.assertRaisesRegex(RuntimeFault, 'REMOTE_MISMATCH'):
+            self.results.recovery_plan(self.admin, 'brand')

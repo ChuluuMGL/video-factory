@@ -96,7 +96,7 @@ class SetupAdmin:
         fields = {'open': {'action','session','password'}, 'close': {'action','token'},
                   'configure': {'action','token','session','app_id','app_secret','expected_profile'},
                   'status': {'action','token','draft'}, 'video': {'action','token','session','secret','billing_owner','region','assets'}, 'script': {'action','token','session','secret','billing_owner'},
-                  'base_results': {'action','token','session','operation','expected_plan'},
+                  'base_results': {'action','token','session','operation','expected_plan','event','step'},
                   'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
         if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
@@ -106,6 +106,10 @@ class SetupAdmin:
             project = inspect_project(self.store, payload['token'], payload['session'])['project']
             helper = BaseResults(self.store, self.master_key)
             operation = payload['operation']
+            if operation == 'repair_plan': return helper.repair_plan(payload['token'], project, payload['event'], payload['step'])
+            if operation == 'repair': return helper.repair(payload['token'], project, payload['event'], payload['step'], payload['expected_plan'])
+            if operation == 'recovery_plan': return helper.recovery_plan(payload['token'], project)
+            if operation == 'recover': return helper.recover(payload['token'], project, payload['expected_plan'])
             if operation == 'plan': return helper.prepare(payload['token'], project)
             if operation == 'enable': return helper.enable(payload['token'], project, payload['expected_plan'])
             if operation == 'pause': return helper.pause(payload['token'], project)

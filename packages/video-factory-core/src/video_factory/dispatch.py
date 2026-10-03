@@ -82,9 +82,15 @@ def dispatch_with_results(store, token, project, master_key, media_root):
     try:
         result['base_results'] = BaseResults(store, master_key).sync(
             project, media_root, lambda db: authorize(db, token, project))
-    except Exception:
+    except Exception as error:
+        import re
+        code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'BASE_RESULTS_SYNC_FAILED'
         # A Base outage must neither repeat a paid request nor erase its receipt.
-        result['base_results'] = {'status': 'attention_required', 'automatic_resubmit': False}
+        result['base_results'] = {'status': 'attention_required', 'error': code, 'automatic_resubmit': False}
+    from .feishu_bridge import save
+    with store.connect() as db:
+        authorize(db, token, project)
+        save(db, 'results:last:'+project, result['base_results'])
     return result
 
 

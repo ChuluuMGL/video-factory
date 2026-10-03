@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import secrets
+import time
 import uuid
 
 from .feishu_bridge import FeishuBridge, meta, save, target, plain_text
@@ -176,7 +177,7 @@ class BaseResults:
                 'blocked': [{'task': item['task'], 'revision': item['revision'], 'event': item['fields']['同步标识'],
                              'step': step} for item in items if not item['complete']
                             for step, receipt in item['steps'].items() if receipt['status'] == 'in_flight'],
-                'writes_input_table': False}
+                'writes_input_table': False, 'last_sync': meta(db, 'results:last:'+project)}
 
     def fence(self, db, project, context, authorize):
         authorize(db)
@@ -187,14 +188,91 @@ class BaseResults:
             raise RuntimeFault('BASE_RESULTS_CONFIGURATION_CHANGED')
         return value
 
+    def repair_plan(self, token, project, event, step):
+        if not isinstance(event, str) or not re.fullmatch('[a-f0-9]{64}', event):
+            raise RuntimeFault('BASE_RESULTS_EVENT_INVALID')
+        with self.store.connect() as db:
+            self.store.authorize(db, token, 'admin')
+            config = meta(db, control_key(project))
+            if not config: raise RuntimeFault('BASE_RESULTS_NOT_CONFIGURED')
+            self.fence(db, project, config['context'], lambda db: self.store.authorize(db, token, 'admin'))
+            item = meta(db, item_prefix(project)+event)
+            old = item['steps'].get(step) if item else None
+            if (not old or old['status'] != 'in_flight' or item['complete']
+                    or not (step in ('prepare', 'finish', 'record') or re.fullmatch('part_[0-9]{1,2}', step))):
+                raise RuntimeFault('BASE_RESULTS_UNKNOWN_STEP_REQUIRED')
+            if old.get('attempt', 1) >= 3: raise RuntimeFault('BASE_RESULTS_REPAIR_LIMIT')
+        plan = {'project': project, 'event': event, 'step': step, 'task': item['task'],
+                'config_sha256': fingerprint(config), 'journal_sha256': fingerprint(item),
+                'same_record_ticket': step == 'record', 'same_upload_transaction': step != 'prepare',
+                'may_leave_unused_upload_transaction': step == 'prepare', 'max_additional_attempts': 1}
+        return {'plan': plan, 'plan_sha256': fingerprint(plan)}
+
+    def repair(self, token, project, event, step, expected_plan):
+        prepared = self.repair_plan(token, project, event, step)
+        if prepared['plan_sha256'] != expected_plan: raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
+        with self.store.connect() as db:
+            actor = self.store.authorize(db, token, 'admin')
+            config = meta(db, control_key(project)); key = item_prefix(project)+event; item = meta(db, key)
+            if (fingerprint(config) != prepared['plan']['config_sha256']
+                    or fingerprint(item) != prepared['plan']['journal_sha256']):
+                raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
+            old = item['steps'][step]
+            history = old.get('history', [])+[{'ticket': old['ticket'], 'started_at': old['started_at'], 'status': old['status']}]
+            old.update(status='retry_authorized', expires_at=time.time()+900, attempt=old.get('attempt', 1)+1, history=history)
+            save(db, key, item); self.store.audit(db, actor, 'base_results_retry_once', project, item['task'], item['revision'])
+        return {'status': 'one_retry_authorized', 'step': step, 'project': project, 'model_calls': 0}
+
+    def recovery_plan(self, token, project):
+        # Feishu binding must first be reverified by the existing setup flow.
+        with self.store.connect() as db:
+            self.store.authorize(db, token, 'admin'); context = self.context(db, project)
+            config = meta(db, control_key(project)); prefix = item_prefix(project)
+            if not config or not config.get('recovery_required') or not config['table_id']:
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
+            if config['context'] != context: raise RuntimeFault('BASE_RESULTS_CONFIGURATION_CHANGED')
+            rows = db.execute('SELECT key,value FROM meta WHERE key>=? AND key<? ORDER BY key LIMIT 10001', (prefix, prefix+'~')).fetchall()
+            if len(rows) > 1000: raise RuntimeFault('BASE_RESULTS_RECOVERY_REQUIRES_BATCH_REVIEW')
+            items = [(row['key'], json.loads(row['value'])) for row in rows]
+            if any(not item['complete'] for _, item in items):
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_UNFINISHED_UPLOAD_OR_RECORD')
+        client = self.client(context); base = context['target']['base_token']; table = config['table_id']
+        if schema(client, base, table) != config['schema']: raise RuntimeFault('BASE_RESULTS_SCHEMA_CHANGED')
+        for _, item in items:
+            fields = dict(item['fields'])
+            if item['artifact']: fields['视频'] = [{'file_token': item['steps']['finish']['receipt']}]
+            rows = client.find(base, table, fields['同步标识'])
+            if len(rows) != 1 or rows[0]['record_id'] != item['record_id'] or not matches(rows[0], fields):
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_REMOTE_MISMATCH')
+        plan = {'project': project, 'config_sha256': fingerprint(config), 'journal_sha256': fingerprint(items),
+                'verified_rows': len(items), 'enable_automatically': False, 'feishu_writes': 0}
+        return {'plan': plan, 'plan_sha256': fingerprint(plan)}
+
+    def recover(self, token, project, expected_plan):
+        prepared = self.recovery_plan(token, project)
+        if prepared['plan_sha256'] != expected_plan: raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
+        with self.store.connect() as db:
+            actor = self.store.authorize(db, token, 'admin'); config = meta(db, control_key(project))
+            prefix = item_prefix(project)
+            rows = db.execute('SELECT key,value FROM meta WHERE key>=? AND key<? ORDER BY key LIMIT 10001', (prefix, prefix+'~')).fetchall()
+            if (fingerprint(config) != prepared['plan']['config_sha256'] or self.context(db, project) != config['context']
+                    or fingerprint([(row['key'], json.loads(row['value'])) for row in rows]) != prepared['plan']['journal_sha256']):
+                raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
+            config.update(recovery_required=False, enabled=False); save(db, control_key(project), config)
+            self.store.audit(db, actor, 'base_results_recovery_readback', project)
+        return {'status': 'reconciled_still_paused', 'project': project, 'feishu_writes': 0}
+
     def step(self, key, name, operation, project, context, authorize):
         with self.store.connect() as db:
             self.fence(db, project, context, authorize)
             item = meta(db, key); old = item['steps'].get(name)
             if old:
                 if old['status'] == 'done': return old['receipt']
-                raise RuntimeFault('BASE_RESULTS_WRITE_UNKNOWN_READ_STATUS')
-            item['steps'][name] = {'status': 'in_flight', 'ticket': str(uuid.uuid4())}
+                if old['status'] != 'retry_authorized': raise RuntimeFault('BASE_RESULTS_WRITE_UNKNOWN_READ_STATUS')
+                if old['expires_at'] < time.time(): raise RuntimeFault('BASE_RESULTS_RETRY_AUTHORIZATION_EXPIRED')
+                old.update(status='in_flight', started_at=time.time())
+            else:
+                item['steps'][name] = {'status': 'in_flight', 'ticket': str(uuid.uuid4()), 'started_at': time.time()}
             save(db, key, item)
         receipt = operation(item['steps'][name]['ticket'])
         with self.store.connect() as db:
@@ -242,7 +320,7 @@ class BaseResults:
                 current = meta(db, key); current.update(complete=True, record_id=records[0]['record_id'])
                 save(db, key, current); self.store.audit(db, 'automation:'+project, 'base_results_readback', project, item['task'], item['revision'])
             return {'status': 'synced', 'task': item['task'], 'revision': item['revision'], 'feishu_writes': 0}
-        if 'record' in item['steps']:
+        if 'record' in item['steps'] and item['steps']['record']['status'] != 'retry_authorized':
             raise RuntimeFault('BASE_RESULTS_RECORD_UNKNOWN_OR_REMOVED')
         if item['artifact'] and '视频' not in fields:
             from .review_service import open_media
@@ -250,13 +328,25 @@ class BaseResults:
             with stream:
                 prepared = item['steps'].get('prepare', {})
                 if prepared.get('status') != 'done':
-                    self.step(key, 'prepare', lambda _: client.upload_prepare(base, item['task']+'-v'+str(item['revision'])+'.mp4', size), project, context, authorize)
+                    hashes = []; digest = hashlib.sha256()
+                    while chunk := stream.read(BLOCK_SIZE):
+                        digest.update(chunk); hashes.append(hashlib.sha256(chunk).hexdigest())
+                    if digest.hexdigest() != item['artifact']['sha256']:
+                        raise RuntimeFault('BASE_RESULTS_MEDIA_CHANGED')
+                    def prepare_upload(_):
+                        receipt = client.upload_prepare(base, item['task']+'-v'+str(item['revision'])+'.mp4', size)
+                        return {**receipt, 'chunk_sha256': hashes}
+                    self.step(key, 'prepare', prepare_upload, project, context, authorize)
                     return {'status': 'upload_prepared', 'feishu_writes': 1}
                 receipt = prepared['receipt']
+                if time.time()-prepared['started_at'] >= 23*3600:
+                    raise RuntimeFault('BASE_RESULTS_UPLOAD_EXPIRED_RECONCILE')
                 for seq in range(receipt['block_num']):
                     step = 'part_'+str(seq)
                     if item['steps'].get(step, {}).get('status') != 'done':
                         stream.seek(seq*BLOCK_SIZE); chunk = stream.read(BLOCK_SIZE)
+                        if hashlib.sha256(chunk).hexdigest() != receipt['chunk_sha256'][seq]:
+                            raise RuntimeFault('BASE_RESULTS_MEDIA_CHANGED')
                         self.step(key, step, lambda _: client.upload_part(receipt['upload_id'], seq, chunk), project, context, authorize)
                         return {'status': 'upload_part_saved', 'feishu_writes': 1}
                 self.step(key, 'finish', lambda _: client.upload_finish(receipt['upload_id'], receipt['block_num']), project, context, authorize)
