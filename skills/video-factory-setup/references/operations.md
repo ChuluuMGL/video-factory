@@ -16,7 +16,7 @@ Skill 本身由客户在其 Agent 支持的自定义 Skill 目录中安装：复
 
 ## 2. 启动欢迎向导
 
-先检查 Python、Docker、Compose、CPU、磁盘、实际连接主机。当前经过云端验证的是 Linux x86_64 / Python 3.12；Docker 本地 Unix socket、Compose 至少 2.24，服务至少 4 GiB 内存与可用磁盘。默认在线镜像首次获取需要网络；网络受限时使用 a22 的独立离线镜像包。离线 CLI 包本身不含服务镜像。
+先检查 Python、Docker、Compose、CPU、磁盘、实际连接主机。当前经过云端验证的是 Linux x86_64 / Python 3.12；Docker 本地 Unix socket、Compose 至少 2.24，服务至少 4 GiB 内存与可用磁盘。默认在线镜像首次获取需要网络；网络受限时使用与当前发行 wheels 匹配的独立离线镜像包。离线 CLI 包本身不含服务镜像。
 
 session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。人工在客户私有终端运行：
 
@@ -26,7 +26,7 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 
 若提供离线镜像包，先读发行包 `docs/product/OFFLINE_IMAGES.md`，取得可信交付记录中的清单摘要，在上述命令增加 `--image-bundle /root/vf-image-bundle --image-manifest-sha256 TRUSTED_IMAGE_MANIFEST_SHA256`。包目录 700、文件 600、归 root 所有；必须与当前发行 wheels 匹配。不要自动采信包内自报摘要、切换未知镜像源或将大镜像包下载到安装人员电脑。
 
-按欢迎问题填写组织、主机、项目、SKU、审核人及模型意图。先把已安装前缀下 `release/templates/products.json` 复制到客户私有目录并填入实际商品，勿修改校验包；SKU 终端输入使用副本的 JSON 文件绝对路径。确认安装摘要后，密码与 App Secret 隐藏输入，App Secret 在客户 vault 中加密保存。a25 默认新建 Base，也可绑定已有表。新建模式选择用途（测试会放入两条测试任务）、位置及提交人，授权并核对清单后才创建和绑定；无需预建测试 Base。创建回执未知时停止并读取状态，不盲目重建。
+按欢迎问题填写组织、主机、项目、SKU、审核人及模型意图。先把已安装前缀下 `release/templates/products.json` 复制到客户私有目录并填入实际商品，勿修改校验包；SKU 终端输入使用副本的 JSON 文件绝对路径。确认安装摘要后，密码与 App Secret 隐藏输入，App Secret 在客户 vault 中加密保存。向导默认新建 Base，也可绑定已有表。新建模式选择用途（测试会放入两条测试任务）、位置及提交人，授权并核对清单后才创建和绑定；无需预建测试 Base。创建回执未知时停止并读取状态，不盲目重建。
 
 管理员接入和员工审核窗口分别默认 8791/8790，仅回环监听、限时开放。浏览器在操作员电脑时，经既有可信 SSH 建同端口隧道；不得改成公网裸露端口。管理员一次性地址只交付当前管理员。
 

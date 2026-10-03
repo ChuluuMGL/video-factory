@@ -15,13 +15,18 @@ from video_factory.stack import Stack
 from video_factory.runtime_store import RuntimeFault
 
 
-def smoke(stack,root,session):
-    with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
+def certificate_files(root, prefix):
     key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
     name=x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME,'localhost')]);now=datetime.now(timezone.utc)
     cert=x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-timedelta(minutes=1)).not_valid_after(now+timedelta(days=30)).add_extension(x509.SubjectAlternativeName([x509.DNSName('localhost')]),False).sign(key,hashes.SHA256())
-    c,k=root/'workspace-test-cert',root/'workspace-test-key'
+    c,k=root/(prefix+'-cert'),root/(prefix+'-key')
     c.write_bytes(cert.public_bytes(serialization.Encoding.PEM));k.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()));c.chmod(0o600);k.chmod(0o600)
+    return c,k
+
+
+def smoke(stack,root,session):
+    with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
+    c,k=certificate_files(root,'workspace-test')
     value=plan(stack,'fs_brand','https://localhost:'+str(port),c,k)
     context=ssl.create_default_context(cafile=str(c))
     def request(path,headers=None):
@@ -74,17 +79,46 @@ def smoke(stack,root,session):
         renewed=schedule(stack,session,admin,activate=False)
         assert renewed['workflow_id']==scheduled['workflow_id'] and renewed['status']=='imported_disabled'
         assert renewed['key_id']!=scheduled['key_id']
+        # Real nginx, mounted private generations, SNI readback and rollback.
+        from video_factory import workspace_tls as tls
+        def identities():
+            ids=compose(stack,'fs_brand','ps','-q').decode().split()
+            rows=json.loads(subprocess.check_output(['docker','inspect',*ids]))
+            return sorted((row['Id'],row['State']['StartedAt']) for row in rows)
+        before=identities()
+        nextcert,nextkey=certificate_files(root,'workspace-renewed')
+        rotation=tls.apply(stack,tls.plan(stack,'fs_brand',nextcert,nextkey),nextcert,nextkey)
+        assert rotation['status']=='rotated'
+        context=ssl.create_default_context(cafile=str(nextcert))
+        assert request('/api/session')[0]==200
+        assert identities()==before, 'TLS_ROTATION_RESTARTED_COMPONENT'
+        reads=[]
+        def refuse_first_readback(value, expected):
+            # Both candidate and rollback must actually serve the expected leaf.
+            assert tls.served_leaf(value,expected)
+            reads.append(expected)
+            return len(reads)>1
+        try:
+            tls.apply(stack,tls.plan(stack,'fs_brand',c,k),c,k,readback=refuse_first_readback)
+        except RuntimeFault as error:assert str(error)=='TLS_ROTATION_ROLLED_BACK'
+        else:raise AssertionError('TLS_ROLLBACK_NOT_EXERCISED')
+        assert len(reads)==2 and request('/api/session')[0]==200
+        assert identities()==before, 'TLS_ROLLBACK_RESTARTED_COMPONENT'
+        current=tls.generation_target(tls.current(stack,'fs_brand')[0])
         # A real cold backup stops both public ingress and the DB consumers.
         from cryptography.fernet import Fernet
         backup=root/'workspace-complete.vfb';backup_key=Fernet.generate_key();stack.backup(backup,backup_key)
         with socket.socket() as s:assert s.connect_ex(('127.0.0.1',port))!=0
         restored=root/'workspace-restored';restored.mkdir(mode=0o700)
         recovered=Stack.restore(backup,restored,backup_key)
-        assert (restored/'data/workspaces/fs_brand/tls/key.pem').read_bytes()==k.read_bytes()
+        pointer=restored/'data/workspaces/fs_brand/tls/current'
+        assert pointer.is_symlink() and pointer.readlink().as_posix()==current
+        assert (pointer/'key.pem').read_bytes()==nextkey.read_bytes()
+        assert (pointer/'certificate.pem').read_bytes()==nextcert.read_bytes()
         try:status(recovered,'fs_brand')
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
-        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
+        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','live_certificate_rotation':'PASS','live_certificate_rollback':'PASS','no_component_restart_on_rotation':True,'generation_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
     except Exception:
         try:print('SERVICE_LOGS_OMITTED_FROM_CI_EVIDENCE',file=__import__('sys').stderr)
         except Exception:pass

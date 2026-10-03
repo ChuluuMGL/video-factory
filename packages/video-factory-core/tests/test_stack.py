@@ -121,11 +121,26 @@ class StackTests(unittest.TestCase):
         self.assertIn('BIGSERIAL',PG_SCHEMA)
         self.assertIn('DOUBLE PRECISION',PG_SCHEMA)
 
+    def test_restore_rejects_unbound_tls_pointers_before_writing(self):
+        key=Fernet.generate_key()
+        for target in ('../../../../secrets','/tmp','generations/'+'a'*32):
+            buffer=io.BytesIO()
+            with tarfile.open(fileobj=buffer,mode='w:gz') as archive:
+                info=tarfile.TarInfo('data/workspaces/fixture/tls/current')
+                info.type=tarfile.SYMTYPE;info.linkname=target;info.mode=0o777
+                archive.addfile(info)
+            source=self.parent/'bad-pointer.vfb'
+            source.write_bytes(Fernet(key).encrypt(buffer.getvalue()));source.chmod(0o600)
+            with self.assertRaisesRegex(RuntimeFault,'MEMBER_UNSAFE'):
+                Stack.restore(source,self.root,key)
+            self.assertEqual(list(self.root.iterdir()),[])
+
 
 if __name__=='__main__':unittest.main()
 
 
 @unittest.skipUnless(sys.platform == 'linux', 'Linux gateway port semantics')
+
 class PortPreflightTests(unittest.TestCase):
     def check_ports(self, root, first, second):
         info = json.dumps({'OSType':'linux', 'Architecture':'x86_64',
