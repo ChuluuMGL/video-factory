@@ -17,6 +17,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  base-results:
+    name: Base result writeback failure and isolation checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: synthetic-ci-only-password
+          POSTGRES_DB: vf_results
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fixture -d vf_results"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Install candidate and run isolated writeback checks
+        run: |
+          python3 .github/scripts/safe-ci.py base-results-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_base_results*.py' -v
+          python .github/scripts/base-results-postgres-smoke.py
+          VF_CI_SCRIPT
   host-bootstrap:
     name: Fresh Ubuntu virtual machine bootstrap
     runs-on: ubuntu-24.04
@@ -100,7 +131,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres]
+    needs: [host-bootstrap, feishu-postgres, base-results]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
