@@ -35,6 +35,6 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 输出阶段证据：`CLI 安装 / 服务启动 / 项目导入 / 飞书真实接入 / 任务执行 / 真人验收`。逐项记已通过、失败或未执行，并注明证据来源。绿色 CI、Mock OAuth、`plan_ready` 或 `business_ready=false` 不表示客户业务已验收。
 - 结束给出当前版本、确切对象、完成步骤、剩余缺口和可续接命令；不输出秘密、一次性管理员链接或完整敏感日志。
 
-## 证书轮换候选
+## a32 候选注意
 
-仅在当前 CLI 确实支持 `workspace-tls` 时，按 安装包内 `docs/product/WORKSPACE_TLS.md` 检查到期状态并核对计划。轮换只操作本项目私有证书；失败先核对旧证书和回执。此入口不代表 ACME 自动签发或定时续期已实现。公开 a31 不包含该候选。
+仅在实际 CLI 支持 `base-results` 时，按安装包内 `docs/product/BASE_RESULTS.md` 检查版本、项目和最小权限。公开 a31 不含此能力。候选回写默认关闭，未知上传或恢复检查点须停止并核对，不能清日志重试；未完成真实验收前不向客户承诺已支持。

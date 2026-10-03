@@ -1,0 +1,132 @@
+"""Fixed-origin application client for opt-in, append-only Base results.
+
+No employee token fallback, environment proxy, redirects or upstream diagnostics.
+The application token stays in memory and is never returned in a receipt.
+"""
+import json
+import os
+import secrets
+import zlib
+from urllib.parse import urlencode
+from urllib.request import Request, ProxyHandler, build_opener
+
+from .feishu_client import FeishuClient, FeishuHandler, resource
+from .feishu_oauth import DeviceOAuth, text_value
+from .h3_provider import NoRedirect
+from .runtime_store import RuntimeFault, canonical
+
+FIELDS = {'同步标识': 1, '项目': 1, '任务': 1, '版本': 1, 'SKU': 1,
+          '状态': 1, '脚本': 1, '视频摘要': 1, '视频': 17}
+BLOCK_SIZE = 4*1024*1024
+
+
+def request(path, body, token=None, content_type='application/json; charset=utf-8'):
+    handlers = [ProxyHandler({}), NoRedirect()]
+    if os.environ.get('VF_WORKER_EGRESS') == '1':
+        if os.environ.get('VF_CONTAINER_MODE') != '1': raise RuntimeFault('EGRESS_REQUIRES_CONTAINER')
+        handlers.append(FeishuHandler())
+    headers = {'Content-Type': content_type}
+    if token: headers['Authorization'] = 'Bearer '+token
+    try:
+        req = Request('https://open.feishu.cn/open-apis'+path, data=body, headers=headers, method='POST')
+        with build_opener(*handlers).open(req, timeout=30) as response:
+            raw = response.read(2*1024*1024+1)
+            if response.status != 200 or len(raw) > 2*1024*1024: raise ValueError
+            value = json.loads(raw)
+            if type(value.get('code')) is not int or value['code'] != 0: raise ValueError
+            return value
+    except Exception:
+        # A failed POST is not evidence that the upstream did nothing.
+        raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_READ_STATUS') from None
+
+
+class ResultClient(FeishuClient):
+    @classmethod
+    def application(cls, app_id, secret):
+        DeviceOAuth(app_id, secret)  # validate only; no employee authorization
+        value = request('/auth/v3/tenant_access_token/internal',
+                        canonical({'app_id': app_id, 'app_secret': secret}).encode())
+        if type(value.get('expire')) is not int or value['expire'] < 60:
+            raise RuntimeFault('BASE_RESULTS_APP_AUTH_FAILED')
+        return cls(value.get('tenant_access_token'))
+
+    def post(self, path, body):
+        value = request(path, canonical(body).encode(), self.token)
+        if not isinstance(value.get('data'), dict): raise RuntimeFault('BASE_RESULTS_RESPONSE_INVALID')
+        return value['data']
+
+    def tables(self, base):
+        resource(base); page = None; seen = set(); result = []
+        for _ in range(10):
+            query = {'page_size': 100}
+            if page: query['page_token'] = page
+            data = self.get(f'/bitable/v1/apps/{base}/tables?'+urlencode(query))
+            if not isinstance(data.get('items'), list) or type(data.get('has_more')) is not bool:
+                raise RuntimeFault('BASE_RESULTS_TABLES_INVALID')
+            result.extend(data['items'])
+            if not data['has_more']: return result
+            page = data.get('page_token')
+            if not isinstance(page, str) or not 1 <= len(page) <= 2048 or page in seen:
+                raise RuntimeFault('FEISHU_PAGINATION_INVALID')
+            seen.add(page)
+        raise RuntimeFault('FEISHU_PAGINATION_INCOMPLETE')
+
+    def create_result_table(self, base, name):
+        resource(base)
+        value = self.post(f'/bitable/v1/apps/{base}/tables', {'table': {
+            'name': name, 'default_view_name': '生成结果',
+            'fields': [{'field_name': name, 'type': kind} for name, kind in FIELDS.items()]}})
+        return resource(value.get('table_id'), 'tbl')
+
+    def find(self, base, table, event):
+        resource(base); resource(table, 'tbl')
+        data = self.post(f'/bitable/v1/apps/{base}/tables/{table}/records/search?page_size=2', {
+            'field_names': list(FIELDS), 'automatic_fields': False,
+            'filter': {'conjunction': 'and', 'conditions': [
+                {'field_name': '同步标识', 'operator': 'is', 'value': [event]}]}})
+        items = data.get('items')
+        if not isinstance(items, list) or type(data.get('has_more')) is not bool:
+            raise RuntimeFault('BASE_RESULTS_SEARCH_INVALID')
+        if data['has_more'] or len(items) > 1: raise RuntimeFault('BASE_RESULTS_DUPLICATE_CONFLICT')
+        for row in items:
+            resource(row.get('record_id'), 'rec')
+            if not isinstance(row.get('fields'), dict): raise RuntimeFault('BASE_RESULTS_SEARCH_INVALID')
+        return items
+
+    def append(self, base, table, fields, ticket):
+        import uuid
+        resource(base); resource(table, 'tbl')
+        if str(uuid.UUID(ticket)) != ticket or uuid.UUID(ticket).version != 4:
+            raise RuntimeFault('BASE_RESULTS_TICKET_INVALID')
+        value = self.post(f'/bitable/v1/apps/{base}/tables/{table}/records/batch_create?'+
+                          urlencode({'client_token': ticket, 'ignore_consistency_check': 'false'}),
+                          {'records': [{'fields': fields}]})
+        rows = value.get('records')
+        if not isinstance(rows, list) or len(rows) != 1: raise RuntimeFault('BASE_RESULTS_RESPONSE_INVALID')
+        return resource(rows[0].get('record_id'), 'rec')
+
+    def upload_prepare(self, base, name, size):
+        resource(base)
+        value = self.post('/drive/v1/medias/upload_prepare', {
+            'file_name': name, 'parent_type': 'bitable_file', 'parent_node': base, 'size': size})
+        upload_id = text_value(value.get('upload_id'), 256)
+        if value.get('block_size') != BLOCK_SIZE or value.get('block_num') != (size+BLOCK_SIZE-1)//BLOCK_SIZE:
+            raise RuntimeFault('BASE_RESULTS_UPLOAD_STRATEGY_INVALID')
+        return {'upload_id': upload_id, 'block_size': BLOCK_SIZE, 'block_num': value['block_num']}
+
+    def upload_part(self, upload_id, seq, data):
+        text_value(upload_id, 256)
+        boundary = 'vf'+secrets.token_hex(24)
+        pieces = []
+        for name, value in {'upload_id': upload_id, 'seq': str(seq), 'size': str(len(data)),
+                            'checksum': str(zlib.adler32(data) & 0xffffffff)}.items():
+            pieces.append(('--'+boundary+'\r\nContent-Disposition: form-data; name="'+name+'"\r\n\r\n'+value+'\r\n').encode())
+        pieces.extend([('--'+boundary+'\r\nContent-Disposition: form-data; name="file"; filename="part.bin"\r\nContent-Type: application/octet-stream\r\n\r\n').encode(),
+                       data, ('\r\n--'+boundary+'--\r\n').encode()])
+        request('/drive/v1/medias/upload_part', b''.join(pieces), self.token, 'multipart/form-data; boundary='+boundary)
+        return {'seq': seq, 'size': len(data)}
+
+    def upload_finish(self, upload_id, block_num):
+        text_value(upload_id, 256)
+        value = self.post('/drive/v1/medias/upload_finish', {'upload_id': upload_id, 'block_num': block_num})
+        return resource(value.get('file_token'))

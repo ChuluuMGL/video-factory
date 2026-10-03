@@ -84,22 +84,27 @@ class ReviewService:
             artifact = json.loads(row['artifact']) if row['artifact'] else None
             if not artifact or artifact['sha256'] != expected_hash:
                 raise RuntimeFault('REVIEW_MEDIA_NOT_BOUND')
-        path = Path(artifact['location'])
-        if not path.is_absolute() or not path.is_relative_to(self.media_root) or path.resolve() != path:
-            raise RuntimeFault('REVIEW_MEDIA_PATH_INVALID')
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        stream = os.fdopen(fd, 'rb')
-        try:
-            info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1
-                    or info.st_mode & 0o077 or not 0 < info.st_size <= 128*1024*1024):
-                raise RuntimeFault('REVIEW_MEDIA_FILE_INVALID')
-            digest = hashlib.sha256()
-            while chunk := stream.read(1024*1024): digest.update(chunk)
-            if digest.hexdigest() != expected_hash:
-                raise RuntimeFault('REVIEW_MEDIA_HASH_CHANGED')
-            stream.seek(0)
-            return stream, info.st_size
-        except BaseException:
-            stream.close()
-            raise
+        return open_media(self.media_root, artifact, expected_hash)
+
+
+def open_media(media_root, artifact, expected_hash):
+    media_root = private_directory(media_root)
+    path = Path(artifact['location'])
+    if not path.is_absolute() or not path.is_relative_to(media_root) or path.resolve() != path:
+        raise RuntimeFault('REVIEW_MEDIA_PATH_INVALID')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    stream = os.fdopen(fd, 'rb')
+    try:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1
+                or info.st_mode & 0o077 or not 0 < info.st_size <= 128*1024*1024):
+            raise RuntimeFault('REVIEW_MEDIA_FILE_INVALID')
+        digest = hashlib.sha256()
+        while chunk := stream.read(1024*1024): digest.update(chunk)
+        if digest.hexdigest() != expected_hash:
+            raise RuntimeFault('REVIEW_MEDIA_HASH_CHANGED')
+        stream.seek(0)
+        return stream, info.st_size
+    except BaseException:
+        stream.close()
+        raise
