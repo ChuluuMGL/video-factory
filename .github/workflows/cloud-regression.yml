@@ -45,6 +45,10 @@ jobs:
         run: |
           python3 .github/scripts/safe-ci.py base-results-check <<'VF_CI_SCRIPT'
           python -m pip install ./packages/video-factory-core
+          vfctl --help
+          vfctl workspace-acme --help
+          vfctl workspace-tls --help
+          vfctl base-results --help
           sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_base_results*.py' -v
           python .github/scripts/base-results-postgres-smoke.py
           VF_CI_SCRIPT
@@ -64,7 +68,35 @@ jobs:
         run: |
           python3 .github/scripts/safe-ci.py workspace-tls-check <<'VF_CI_SCRIPT'
           python -m pip install ./packages/video-factory-core
+          vfctl --help
+          vfctl workspace-acme --help
+          vfctl workspace-tls --help
+          vfctl base-results --help
           sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_tls.py' -v
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_acme.py' -v
+          VF_CI_SCRIPT
+  workspace-acme:
+    name: Real Certbot HTTP-01 against isolated test CA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Issue and recover real ACME orders on loopback only
+        run: |
+          python3 .github/scripts/safe-ci.py workspace-acme-check <<'VF_CI_SCRIPT'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq certbot
+          python -m pip install ./packages/video-factory-core
+          git clone --quiet https://github.com/letsencrypt/pebble.git /tmp/vf-pebble
+          git -C /tmp/vf-pebble checkout --quiet d52948ce25e7c1576bcd18ff0e20a1c24ec7c44b
+          (cd /tmp/vf-pebble && go build -o pebble ./cmd/pebble)
+          sudo "$(command -v python)" .github/scripts/acme-pebble-smoke.py /tmp/vf-pebble
           VF_CI_SCRIPT
   host-bootstrap:
     name: Fresh Ubuntu virtual machine bootstrap
@@ -149,7 +181,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres, workspace-tls, base-results]
+    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
