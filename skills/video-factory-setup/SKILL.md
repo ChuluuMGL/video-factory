@@ -37,4 +37,4 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## 证书轮换候选
 
-仅在当前 CLI 确实支持 `workspace-tls` 时，按 [证书轮换说明](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/WORKSPACE_TLS.md) 检查到期状态并核对计划。轮换只操作本项目私有证书；失败先核对旧证书和回执。此入口不代表 ACME 自动签发或定时续期已实现。公开 a31 不包含该候选。
+仅在当前 CLI 确实支持 `workspace-tls` 时，按 安装包内 `docs/product/WORKSPACE_TLS.md` 检查到期状态并核对计划。轮换只操作本项目私有证书；失败先核对旧证书和回执。此入口不代表 ACME 自动签发或定时续期已实现。公开 a31 不包含该候选。
