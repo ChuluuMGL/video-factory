@@ -70,7 +70,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information and existing task imports |
 | Employee workspace | Customer-hosted task and review interface |
 
-New tasks and generated videos are not automatically written back to Base. A unified project portal and automatic certificate renewal are not built in. See [capabilities and limitations](docs/product/NEW_INSTALL_CAPABILITIES.md).
+The public a31 package does not write generated results back to Base or include a unified project portal and automatic certificate renewal. These capabilities are being verified in the a32 development candidate and have not been released for installation. See [capabilities and limitations](docs/product/NEW_INSTALL_CAPABILITIES.md).
 
 ## Documentation and repository scope
 
