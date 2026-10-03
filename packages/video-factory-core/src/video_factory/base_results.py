@@ -27,6 +27,13 @@ def control_key(project): return 'results:config:'+identifier(project)
 def item_prefix(project): return 'results:item:'+identifier(project)+':'
 
 
+def journal_rows(db, project, limit=10001):
+    # Text range ordering differs between SQLite and PostgreSQL locales. Escape
+    # LIKE metacharacters so a project containing '_' cannot match a neighbour.
+    pattern = item_prefix(project).replace('\\', '\\\\').replace('_', '\\_')+'%'
+    return db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' ORDER BY key LIMIT ?", (pattern, limit)).fetchall()
+
+
 def schema(client, base, table):
     fields = client.fields(base, table); found = {}
     for field in fields:
@@ -167,8 +174,8 @@ class BaseResults:
     @staticmethod
     def summary(db, project):
         value = meta(db, control_key(project)); prefix = item_prefix(project)
-        rows = db.execute('SELECT value FROM meta WHERE key>=? AND key<? LIMIT 10001', (prefix, prefix+'~')).fetchall()
-        items = [json.loads(row[0]) for row in rows]
+        rows = journal_rows(db, project)
+        items = [json.loads(row['value']) for row in rows]
         return {'project': project, 'enabled': bool(value and value['enabled']),
                 'table_id': value.get('table_id') if value else None,
                 'recovery_required': bool(value and value.get('recovery_required')),
@@ -231,7 +238,7 @@ class BaseResults:
             if not config or not config.get('recovery_required') or not config['table_id']:
                 raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
             if config['context'] != context: raise RuntimeFault('BASE_RESULTS_CONFIGURATION_CHANGED')
-            rows = db.execute('SELECT key,value FROM meta WHERE key>=? AND key<? ORDER BY key LIMIT 10001', (prefix, prefix+'~')).fetchall()
+            rows = journal_rows(db, project)
             if len(rows) > 1000: raise RuntimeFault('BASE_RESULTS_RECOVERY_REQUIRES_BATCH_REVIEW')
             items = [(row['key'], json.loads(row['value'])) for row in rows]
             if any(not item['complete'] for _, item in items):
@@ -254,7 +261,7 @@ class BaseResults:
         with self.store.connect() as db:
             actor = self.store.authorize(db, token, 'admin'); config = meta(db, control_key(project))
             prefix = item_prefix(project)
-            rows = db.execute('SELECT key,value FROM meta WHERE key>=? AND key<? ORDER BY key LIMIT 10001', (prefix, prefix+'~')).fetchall()
+            rows = journal_rows(db, project)
             if (fingerprint(config) != prepared['plan']['config_sha256'] or self.context(db, project) != config['context']
                     or fingerprint([(row['key'], json.loads(row['value'])) for row in rows]) != prepared['plan']['journal_sha256']):
                 raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
@@ -289,7 +296,7 @@ class BaseResults:
             if not config or not config['enabled']: return {'status': 'disabled', 'feishu_writes': 0}
             context = config['context']; self.fence(db, project, context, authorize)
             prefix = item_prefix(project)
-            existing = db.execute('SELECT key,value FROM meta WHERE key>=? AND key<? ORDER BY key LIMIT 10001', (prefix, prefix+'~')).fetchall()
+            existing = journal_rows(db, project)
             if len(existing) > 10000: raise RuntimeFault('BASE_RESULTS_JOURNAL_CAPACITY')
             pending = [(row['key'], json.loads(row['value'])) for row in existing if not json.loads(row['value'])['complete']]
             if pending:
