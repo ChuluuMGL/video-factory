@@ -17,6 +17,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  project-portal:
+    name: Multi-project authorization and two-tab browser checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Verify project isolation and shipped browser
+        run: |
+          python3 .github/scripts/safe-ci.py project-portal-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core "playwright==1.55.0"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          sudo "$(command -v python)" -m playwright install --with-deps chrome
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_portal*.py' -v
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/portal-browser-smoke.py
+          VF_CI_SCRIPT
   base-results:
     name: Base result writeback failure and isolation checks
     runs-on: ubuntu-24.04
@@ -181,7 +203,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results]
+    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal]
     permissions:
       contents: write
     runs-on: ubuntu-24.04

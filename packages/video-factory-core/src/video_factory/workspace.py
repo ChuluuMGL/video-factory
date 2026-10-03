@@ -27,6 +27,7 @@ def register(commands):
     p.add_argument('--stack-root', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--origin')
+    p.add_argument('--include-project', action='append', default=[], help='additional project behind this HTTPS entry; same Feishu app and tenant')
     p.add_argument('--certificate', type=Path)
     p.add_argument('--private-key', type=Path)
     p.add_argument('--expect-plan')
@@ -51,12 +52,16 @@ def certificate(cert, key, host):
     return raw, keyraw
 
 
-def plan(stack, project, public_origin, cert, key):
+def plan(stack, project, public_origin, cert, key, projects=None):
     identifier(project); origin(public_origin)
     raw, keyraw = certificate(cert, key, urlsplit(public_origin).hostname)
     value = {'schema':1, 'project':project, 'origin':public_origin, 'stack_instance':stack.config['instance'],
              'runtime_image':stack.config['runtime_image'], 'certificate_sha256':hashlib.sha256(raw).hexdigest(),
              'private_key_sha256':hashlib.sha256(keyraw).hexdigest()}
+    if projects is not None:
+        from .portal_http import project_manifest
+        value['projects'] = project_manifest(projects)
+        if project not in value['projects']: raise RuntimeFault('PORTAL_PRIMARY_PROJECT_REQUIRED')
     return value
 
 
@@ -93,8 +98,19 @@ def document(stack, value):
               'networks':{'ledger':{'aliases':['vf-executor-'+hashlib.sha256(project.encode()).hexdigest()[:12]]},'review':{}},
               'volumes':[mount('data/runtime')+':/state',mount('data/media')+':/media',mount('data/worker')+':/work:ro'],
               'healthcheck':{'test':['CMD','python','-c',"from urllib.request import urlopen; assert urlopen('http://127.0.0.1:8793/healthz',timeout=3).status==200"],'interval':'5s','timeout':'5s','retries':12}}
+    services={'workspace':workspace,'edge':edge,'egress':egress,'executor':executor}
+    if 'projects' in value:
+        from .portal_http import project_manifest
+        projects=project_manifest(value['projects'])
+        if project not in projects: raise RuntimeFault('PORTAL_PRIMARY_PROJECT_REQUIRED')
+        for additional in projects:
+            if additional==project: continue
+            workspace['command'] += ['--include-project',additional]
+            suffix=hashlib.sha256(additional.encode()).hexdigest()[:12]
+            services['executor-'+suffix]={**executor,'command':['--project',additional],
+                'networks':{'ledger':{'aliases':['vf-executor-'+suffix]},'review':{}}}
     return {'name':prefix+'-ws-'+hashlib.sha256(project.encode()).hexdigest()[:12],
-            'services':{'workspace':workspace,'edge':edge,'egress':egress,'executor':executor},
+            'services':services,
             'networks':{'ledger':{'external':True,'name':prefix+'_private'},'review':{'internal':True},'public':{},'outbound':{}},
             'secrets':{name:{'file':mount('secrets/'+name)} for name in ('runtime_dsn','runtime_master')}}
 
@@ -153,11 +169,36 @@ def stop_all(stack):
                 compose(stack,path.name,'down','--timeout','15')
 
 
+def check_companions(stack, value):
+    """Never run two project dispatchers or bind a second edge to the same port."""
+    base=stack.root/'data/workspaces'
+    if not base.exists(): return
+    projects=set(value.get('projects',[value['project']]))
+    port=urlsplit(value['origin']).port or 443
+    for path in sorted(base.iterdir()):
+        if path.name==value['project'] or not (path/'workspace.json').exists(): continue
+        previous=json.loads((path/'workspace.json').read_text())
+        if previous['stack_instance']!=stack.config['instance']: continue
+        overlap=projects.intersection(previous.get('projects',[previous['project']]))
+        if not overlap and (urlsplit(previous['origin']).port or 443)!=port: continue
+        # Stopped companions may be migrated; resuming either checks the other again.
+        raw=compose(stack,path.name,'ps','--all','--format','json').decode()
+        rows=json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(row) for row in raw.splitlines() if row]
+        if any(row.get('State') not in ('exited','dead','created') for row in rows):
+            raise RuntimeFault('PORTAL_STOP_CONFLICTING_WORKSPACE_FIRST')
+
+
 def apply(stack, value, cert, key):
     project=value['project']; root=directory(stack,project)
     raw, keyraw=certificate(cert,key,urlsplit(value['origin']).hostname)
-    if plan(stack,project,value['origin'],cert,key)!=value: raise RuntimeFault('WORKSPACE_PLAN_CHANGED')
+    if plan(stack,project,value['origin'],cert,key,value.get('projects'))!=value: raise RuntimeFault('WORKSPACE_PLAN_CHANGED')
     if not stack.status()['infrastructure_ready']: raise RuntimeFault('WORKSPACE_HEALTHY_STACK_REQUIRED')
+    check_companions(stack,value)
+    if value.get('projects'):
+        # Validate application/tenant/bindings before stopping a working entry.
+        command=document(stack,value)['services']['workspace']['command']
+        stack.compose('run','--rm','--no-deps','--entrypoint','python','runtime',
+                      '-m','video_factory.workspace_http',*command,'--check-projects')
     root.mkdir(mode=0o700,parents=True,exist_ok=True)
     if root.resolve()!=root: raise RuntimeFault('WORKSPACE_DIRECTORY_UNSAFE')
     if (root/'workspace.json').exists():
@@ -182,7 +223,7 @@ def status(stack, project):
     value=json.loads((root/'workspace.json').read_text())
     raw=compose(stack,project,'ps','--all','--format','json').decode()
     rows=json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(row) for row in raw.splitlines() if row]
-    ready=len(rows)==4 and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
+    ready=sorted(row['Service'] for row in rows)==sorted(document(stack,value)['services']) and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
     return {'status':'running' if ready else 'incomplete', 'project':project,'url':value['origin'],
             'components':[{k:row.get(k) for k in ('Service','State','Health')} for row in rows],
             'https_external_readback':'required', 'human_acceptance':'not_run'}
@@ -193,7 +234,8 @@ def cli(args):
         stack=Stack(args.stack_root)
         with stack.lock():
             if args.action in ('plan','apply'):
-                value=plan(stack,args.project,args.origin,args.certificate,args.private_key)
+                projects=[args.project,*args.include_project] if args.include_project else None
+                value=plan(stack,args.project,args.origin,args.certificate,args.private_key,projects)
                 result={'plan':value,'plan_sha256':fingerprint(value),'business_ready':False}
                 if args.action=='apply':
                     if args.expect_plan != result['plan_sha256']: raise RuntimeFault('WORKSPACE_REVIEWED_PLAN_REQUIRED')

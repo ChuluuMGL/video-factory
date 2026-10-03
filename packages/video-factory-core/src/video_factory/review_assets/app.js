@@ -1,29 +1,64 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let scriptRevision = 0;
+let portal = false, activeProject = '', projectEpoch = 0;
+class StaleProject extends Error {}
 let csrf = '', current = null, pending = null, next = null, polling = null, expiry = null;
 const stateNames = {script_queued:'脚本生成已排队',script_submission_unknown:'脚本生成结果待核对，禁止自动重发',awaiting_script_review:'等待脚本审核', ready:'脚本已通过，等待生成', submitted:'生成中', submission_unknown:'生成状态待核对', awaiting_video_review:'等待视频审核', rejected:'已退回，待修订', accepted:'审核通过', failed:'执行失败，待处理'};
 function message(text) { $('message').textContent = text; }
 function cancelPlan() { pending = null; $('confirmation').hidden = true; }
 async function request(path, body) {
+  const business = portal && !['/api/session','/api/projects','/api/login','/api/logout','/api/poll'].includes(path);
+  const epoch = projectEpoch;
+  if (business) {
+    if (!activeProject) throw new Error('请先选择有权限的项目');
+    path='/p/'+encodeURIComponent(activeProject)+path;
+  }
   const options = {credentials:'same-origin', cache:'no-store'};
   if (body !== undefined) Object.assign(options, {method:'POST',headers:{'Content-Type':'application/json','X-VF-CSRF':csrf},body:JSON.stringify(body)});
   const response = await fetch(path, options), result = await response.json();
+  if (business && epoch !== projectEpoch) throw new StaleProject();
+  if (!response.ok && business && /AUTH_|DENIED|UNAVAILABLE|RECONFIRM/.test(result.error || '')) clearProject();
   if (!response.ok) throw new Error(result.error || '请求失败，请重新核对');
   return result;
 }
 async function act(button, work) {
   button.disabled = true;
-  try { await work(); } catch (error) { message('未完成：'+error.message); }
+  try { await work(); } catch (error) { if (!(error instanceof StaleProject)) message('未完成：'+error.message); }
   finally { button.disabled = false; }
 }
+function clearProject() {
+  projectEpoch++; cancelPlan(); current=null; next=null; scriptRevision=0;
+  $('detail').hidden=true; $('video').pause(); $('video').removeAttribute('src'); $('video').load();
+  $('download-video').removeAttribute('href'); $('download-video').hidden=true;
+  for (const id of ['script','history','task-title','task-state','video-hash','plan','script-context']) $(id).textContent='';
+  for (const id of ['script-form','review-form','import-form']) $(id).reset();
+  $('script-task').readOnly=false; $('script-sku').replaceChildren(); $('tasks').replaceChildren();
+  $('create-script').hidden=true; $('import-form').closest('details').hidden=true; $('more').hidden=true;
+}
+async function chooseProject(project) {
+  clearProject(); activeProject=project;
+  $('project-select').value=project; $('refresh').disabled=!project;
+  if (!project) { message('当前没有可访问的项目，请联系管理员。'); return; }
+  history.replaceState(null,'','#'+encodeURIComponent(project)); message('');
+  await tasks();
+}
+$('project-select').onchange=()=>chooseProject($('project-select').value).catch(error=>{if (!(error instanceof StaleProject)) message('无法切换：'+error.message);});
 async function boot() {
-  const result = await request('/api/session'); csrf = result.csrf;
+  const result = await request('/api/session'); csrf = result.csrf; portal=!!result.portal;
   clearTimeout(expiry);
-  if (!result.persistent) expiry=setTimeout(()=>{ clearTimeout(polling); cancelPlan(); current=null; $('workspace').hidden=true; $('login').hidden=true; $('video').pause(); $('video').removeAttribute('src'); $('video').load(); $('script').textContent=''; $('history').textContent=''; $('tasks').replaceChildren(); message('本次审核入口已到期，请联系管理员重新开启。'); },result.remaining_seconds*1000);
-  $('project').textContent = '项目：'+result.project+' · 应用：'+result.app_id+(result.persistent?' · 员工工作区':' · 本次剩余约 '+Math.ceil(result.remaining_seconds/60)+' 分钟');
+  if (!result.persistent) expiry=setTimeout(()=>{ clearTimeout(polling); clearProject(); $('workspace').hidden=true; $('login').hidden=true; message('本次审核入口已到期，请联系管理员重新开启。'); },result.remaining_seconds*1000);
+  $('project').textContent = portal ? '团队工作区 · 登录后选择项目' : '项目：'+result.project+' · 应用：'+result.app_id+(result.persistent?' · 员工工作区':' · 本次剩余约 '+Math.ceil(result.remaining_seconds/60)+' 分钟');
   $('login').hidden = result.authenticated; $('workspace').hidden = !result.authenticated;
-  if (result.authenticated) await tasks();
+  $('project-picker').hidden=!portal || !result.authenticated;
+  if (!result.authenticated) { clearProject(); activeProject=''; $('project-select').replaceChildren(); return; }
+  if (portal) {
+    const directory=await request('/api/projects'); $('project-select').replaceChildren();
+    for(const project of directory.items) {const option=document.createElement('option');option.value=project.id;option.textContent=project.name;$('project-select').append(option);}
+    let preferred=activeProject;
+    try {preferred=decodeURIComponent(location.hash.slice(1)) || preferred;} catch (_) {}
+    await chooseProject(directory.items.find(p=>p.id===preferred)?.id || directory.items[0]?.id || '');
+  } else await tasks();
 }
 async function poll() {
   try {
@@ -93,5 +128,5 @@ $('cancel').onclick=cancelPlan;
 $('video').addEventListener('error',()=>{cancelPlan();message('视频未能播放，请核对文件是否可读，并使用支持该视频格式的浏览器；不要在未检查视频时通过审核。');});
 $('refresh').onclick=()=>act($('refresh'),()=>tasks());
 $('more').onclick=()=>act($('more'),()=>tasks(next));
-$('logout').onclick=()=>act($('logout'),async()=>{await request('/api/logout',{});clearTimeout(polling);cancelPlan();current=null;$('detail').hidden=true;$('video').pause();$('video').removeAttribute('src');$('video').load();$('script').textContent='';$('history').textContent='';$('tasks').replaceChildren();message('已退出。');await boot();});
+$('logout').onclick=()=>act($('logout'),async()=>{await request('/api/logout',{});clearTimeout(polling);clearProject();activeProject='';message('已退出。');await boot();});
 boot().catch(error=>message('无法连接：'+error.message));
