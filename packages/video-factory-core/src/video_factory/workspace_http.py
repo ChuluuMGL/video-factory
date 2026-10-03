@@ -83,11 +83,12 @@ def main():
     with store.connect() as db:
         profile = meta(db, 'setup:feishu-app:'+args.project)
     if not profile: raise RuntimeFault('WORKSPACE_FEISHU_PROFILE_REQUIRED')
-    if args.check_projects:
-        print('{"status":"projects_validated"}', flush=True)
-        return
     secret = store.resolve_secret(profile['credential_ref'][7:], secret_input(Path('/run/secrets/runtime_master'), ''))
     oauth = DeviceOAuth(profile['app_id'], secret)
+    if args.check_projects:
+        origin(args.origin)
+        print('{"status":"projects_validated"}', flush=True)
+        return
     with server_type(('0.0.0.0', 8790), service, oauth, args.origin) as server:
         print(json.dumps({'status':'ready','scope':'employee_workspace','project':args.project}), flush=True)
         server.serve_forever()

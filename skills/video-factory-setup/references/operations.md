@@ -60,3 +60,5 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 - 升级先将新 CLI 安装到新版本前缀。再通过当前支持的 `stack upgrade`、新 stack 目录和冷备检查点进行服务迁移。仅安装新 CLI 不会升级运行中的服务；不得直接覆盖旧 wheel、旧数据库或旧部署。
 - 离线部署须将镜像包与业务备份分开留存。新机恢复先 `stack fetch` 加原镜像包的两个参数，再 `stack build` / `stack up`；离线升级必须提供候选版本的镜像包，缺包应在停原服务前拒绝。
 - 出现 `rolled_back` / `needs_attention` 按失败或待处理记录；核对哪个目录和端口实际运行。客户发布、付费调用与真人验收单独记录。
+
+常驻工作区替换前会验证单项目或多项目配置并留存私有恢复文件。失败自动停止候选入口、恢复旧配置及原运行状态；返回 `WORKSPACE_DEPLOYMENT_NEEDS_ATTENTION` 时先读 `workspace status`，再用同一 stack / 主项目执行 `workspace recover`。不要删 `deployment.json` 或重装来跳过恢复；跨实例恢复仍须重新核对并 apply。

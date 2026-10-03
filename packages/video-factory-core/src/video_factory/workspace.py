@@ -23,7 +23,7 @@ from .workspace_http import origin
 
 def register(commands):
     p = commands.add_parser('workspace', help='persistent HTTPS employee workspace, separate from administrator access')
-    p.add_argument('action', choices=['plan','apply','status','stop'])
+    p.add_argument('action', choices=['plan','apply','status','stop','recover'])
     p.add_argument('--stack-root', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--origin')
@@ -190,35 +190,34 @@ def check_companions(stack, value):
 
 def apply(stack, value, cert, key):
     project=value['project']; root=directory(stack,project)
+    from .workspace_deploy import pending
+    if pending(root):raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
+    rotation=root/'tls-rotation.json'
+    if rotation.exists():
+        private_file(rotation)
+        if json.loads(rotation.read_text())['status'] in ('in_flight','needs_attention'):
+            raise RuntimeFault('TLS_RECOVERY_REQUIRED')
     raw, keyraw=certificate(cert,key,urlsplit(value['origin']).hostname)
     if plan(stack,project,value['origin'],cert,key,value.get('projects'))!=value: raise RuntimeFault('WORKSPACE_PLAN_CHANGED')
     if not stack.status()['infrastructure_ready']: raise RuntimeFault('WORKSPACE_HEALTHY_STACK_REQUIRED')
     check_companions(stack,value)
-    if value.get('projects'):
-        # Validate application/tenant/bindings before stopping a working entry.
-        command=document(stack,value)['services']['workspace']['command']
-        stack.compose('run','--rm','--no-deps','--entrypoint','python','runtime',
-                      '-m','video_factory.workspace_http',*command,'--check-projects')
+    # Validate every entry, including a single project, before any downtime.
+    command=document(stack,value)['services']['workspace']['command']
+    stack.compose('run','--rm','--no-deps','--entrypoint','python','runtime',
+                  '-m','video_factory.workspace_http',*command,'--check-projects')
     root.mkdir(mode=0o700,parents=True,exist_ok=True)
     if root.resolve()!=root: raise RuntimeFault('WORKSPACE_DIRECTORY_UNSAFE')
-    if (root/'workspace.json').exists():
-        previous=json.loads((root/'workspace.json').read_text())
-        if previous['stack_instance']==stack.config['instance'] and previous['runtime_image']==stack.config['runtime_image']:
-            compose(stack,project,'down','--timeout','15')
-    tls=root/'tls';tls.mkdir(mode=0o700,exist_ok=True);os.chown(tls,10001,10001)
-    for name,data in [('certificate.pem',raw),('key.pem',keyraw)]:
-        path=tls/name
-        if path.is_symlink(): raise RuntimeFault('TLS_FILE_UNSAFE')
-        path.write_bytes(data);path.chmod(0o600);os.chown(path,10001,10001)
-    write_json(root/'workspace.json',value)
-    write_json(root/'compose.json',document(stack,value))
-    (root/'nginx.conf').write_text(nginx(value));(root/'nginx.conf').chmod(0o644)
-    compose(stack,project,'up','-d','--pull','never','--wait','--wait-timeout','90')
-    return status(stack, project)
+    from . import workspace_deploy
+    return workspace_deploy.apply(stack,value,raw,keyraw)
+
 
 
 def status(stack, project):
     root=directory(stack, project)
+    from .workspace_deploy import pending
+    if pending(root):
+        return {'status':'needs_attention','project':project,'recovery_required':True,
+                'https_external_readback':'required','human_acceptance':'not_run'}
     if not (root/'workspace.json').exists(): return {'status':'not_configured','project':project}
     value=json.loads((root/'workspace.json').read_text())
     raw=compose(stack,project,'ps','--all','--format','json').decode()
@@ -240,6 +239,9 @@ def cli(args):
                 if args.action=='apply':
                     if args.expect_plan != result['plan_sha256']: raise RuntimeFault('WORKSPACE_REVIEWED_PLAN_REQUIRED')
                     result=apply(stack,value,args.certificate,args.private_key)
+            elif args.action=='recover':
+                from .workspace_deploy import recover
+                result=recover(stack,args.project)
             elif args.action=='stop':
                 compose(stack,args.project,'down','--timeout','15');result={'status':'stopped','project':args.project}
             else: result=status(stack,args.project)

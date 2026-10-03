@@ -56,6 +56,25 @@ with s.connect() as db:
         save(db,prefix+'fs_secondary',meta(db,prefix+'fs_brand'))
 """)
         value=plan(stack,'fs_brand','https://localhost:'+str(port),c,k,['fs_brand','fs_secondary'])
+        # Start a real candidate, then simulate its post-start failure. Recovery
+        # must stop both candidate executors and restore the old single entry.
+        from unittest.mock import patch
+        from video_factory import workspace
+        original_compose=workspace.compose
+        failed=[False]
+        def fail_candidate_once(selected_stack,project,*args,**kwargs):
+            result=original_compose(selected_stack,project,*args,**kwargs)
+            if args[0]=='up' and not failed[0]:
+                failed[0]=True
+                raise RuntimeFault('FIXTURE_CANDIDATE_POST_START_FAILURE')
+            return result
+        with patch.object(workspace,'compose',side_effect=fail_candidate_once):
+            try:apply(stack,value,c,k)
+            except RuntimeFault as error:assert str(error)=='WORKSPACE_DEPLOYMENT_ROLLED_BACK'
+            else:raise AssertionError('WORKSPACE_DEPLOYMENT_FAILURE_NOT_EXERCISED')
+        assert request('/api/session')[0]==200
+        assert not json.loads(request('/api/session')[1]).get('portal',False)
+        assert len(status(stack,'fs_brand')['components'])==4
         assert apply(stack,value,c,k)['status']=='running'
         info=json.loads(request('/api/session')[1]);assert info['portal'] and info['project']==''
         assert request('/api/projects')[0]==401 and request('/p/fs_secondary/api/tasks')[0]==401
@@ -135,7 +154,7 @@ with s.connect() as db:
         try:status(recovered,'fs_brand')
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
-        return {'status':'PASS','multi_project_manifest_restore':True,'single_edge_two_executors':True,'https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','live_certificate_rotation':'PASS','live_certificate_rollback':'PASS','no_component_restart_on_rotation':True,'generation_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
+        return {'status':'PASS','multi_project_manifest_restore':True,'single_edge_two_executors':True,'failed_entry_replacement_restores_live_previous':True,'https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','live_certificate_rotation':'PASS','live_certificate_rollback':'PASS','no_component_restart_on_rotation':True,'generation_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
     except Exception:
         try:print('SERVICE_LOGS_OMITTED_FROM_CI_EVIDENCE',file=__import__('sys').stderr)
         except Exception:pass

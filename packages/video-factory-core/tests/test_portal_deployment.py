@@ -63,3 +63,76 @@ class PortalDeploymentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'PREFLIGHT_REFUSED'):
                 workspace.apply(self.stack,value,self.oldcert,self.oldkey)
             companion.assert_not_called()
+
+    def test_invalid_single_project_does_not_stop_existing_workspace(self):
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose',side_effect=RuntimeFault('FIXTURE_PREFLIGHT_REFUSED')), patch.object(workspace,'compose') as companion:
+            with self.assertRaisesRegex(RuntimeFault,'PREFLIGHT_REFUSED'):
+                workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+            companion.assert_not_called()
+
+    def healthy_rows(self, value=None):
+        return json.dumps([{'Service':name,'State':'running','Health':'healthy'}
+                          for name in workspace.document(self.stack,value or self.value)['services']]).encode()
+
+    def test_failed_replacement_restores_old_config_certificate_and_running_entry(self):
+        value=workspace.plan(self.stack,self.project,self.value['origin'],self.cert,self.key,[self.project,'second_project'])
+        starts=[]
+        def execute(stack,project,*args,**kwargs):
+            if args[0]=='up':
+                starts.append(json.loads((self.root/'workspace.json').read_text()))
+                if len(starts)==1: raise RuntimeFault('FIXTURE_CANDIDATE_FAILED')
+            return self.healthy_rows()
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=execute):
+            with self.assertRaisesRegex(RuntimeFault,'DEPLOYMENT_ROLLED_BACK'):
+                workspace.apply(self.stack,value,self.cert,self.key)
+        self.assertEqual(starts,[value,self.value])
+        self.assertEqual(json.loads((self.root/'workspace.json').read_text()),self.value)
+        self.assertEqual((self.root/'tls/key.pem').read_bytes(),self.oldkey.read_bytes())
+        self.assertEqual(json.loads((self.root/'deployment.json').read_text())['status'],'rolled_back')
+
+    def test_failed_rollback_is_fenced_and_can_be_recovered(self):
+        from video_factory.workspace_deploy import recover
+        def execute(stack,project,*args,**kwargs):
+            if args[0]=='up': raise RuntimeFault('FIXTURE_START_FAILED')
+            return self.healthy_rows()
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=execute):
+            with self.assertRaisesRegex(RuntimeFault,'NEEDS_ATTENTION'):
+                workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+        self.assertTrue(workspace.status(self.stack,self.project)['recovery_required'])
+        with self.assertRaisesRegex(RuntimeFault,'RECOVERY_REQUIRED'):
+            workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+        with self.assertRaisesRegex(RuntimeFault,'RECOVERY_REQUIRED'):
+            workspace_tls.plan(self.stack,self.project,self.cert,self.key)
+        with patch.object(workspace,'compose',return_value=self.healthy_rows()):
+            self.assertEqual(recover(self.stack,self.project)['previous_status'],'running')
+
+    def test_interrupted_replacement_retains_private_snapshot_and_rejects_tampering(self):
+        from video_factory.workspace_deploy import recover
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=lambda *a,**k:self.healthy_rows() if a[2]=='ps' else (_ for _ in ()).throw(RuntimeFault('FIXTURE_DOWN_FAILED'))):
+            with self.assertRaisesRegex(RuntimeFault,'NEEDS_ATTENTION'):
+                workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+        receipt=json.loads((self.root/'deployment.json').read_text())
+        (self.root/receipt['backup']/'0').write_text('{}')
+        with patch.object(workspace,'compose') as command:
+            with self.assertRaisesRegex(RuntimeFault,'FILES_CHANGED'):recover(self.stack,self.project)
+            command.assert_not_called()
+        self.assertNotIn('PRIVATE KEY',json.dumps(receipt))
+
+    def test_stopped_previous_entry_is_not_started_by_rollback(self):
+        def execute(stack,project,*args,**kwargs):
+            if args[0]=='up': raise RuntimeFault('FIXTURE_START_FAILED')
+            return b'[]'
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=execute) as command:
+            with self.assertRaisesRegex(RuntimeFault,'DEPLOYMENT_ROLLED_BACK'):
+                workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+        self.assertEqual(sum(c.args[2]=='up' for c in command.call_args_list),1)
+
+    def test_new_failed_entry_returns_to_unconfigured(self):
+        value=workspace.plan(self.stack,'new_project',self.value['origin'],self.cert,self.key)
+        def execute(stack,project,*args,**kwargs):
+            if args[0]=='up': raise RuntimeFault('FIXTURE_START_FAILED')
+            return b'[]'
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=execute):
+            with self.assertRaisesRegex(RuntimeFault,'DEPLOYMENT_ROLLED_BACK'):
+                workspace.apply(self.stack,value,self.cert,self.key)
+        self.assertEqual(workspace.status(self.stack,'new_project')['status'],'not_configured')

@@ -37,6 +37,8 @@ def register(commands):
 
 def current(stack, project):
     root = workspace.directory(stack, project)
+    from .workspace_deploy import pending
+    if pending(root): raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
     if root.resolve() != root or (root/'tls').resolve() != root/'tls':
         raise RuntimeFault('TLS_WORKSPACE_DIRECTORY_UNSAFE')
     private_file(root/'workspace.json')
