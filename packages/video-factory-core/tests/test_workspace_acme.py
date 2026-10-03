@@ -164,3 +164,14 @@ class ACMETests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'ORIGIN_CHANGED'):
                 acme.schedule(self.stack,self.project,True,units=units,runner=runner)
         runner.assert_not_called();self.assertEqual(list(units.iterdir()),[])
+
+    def test_tls_status_reads_actual_acme_timer_state(self):
+        self.issue(self.staging);self.issue(self.production)
+        units=self.parent/'units';units.mkdir()
+        acme.schedule(self.stack,self.project,True,units=units,runner=Mock())
+        with patch.object(acme,'run',return_value=b''):
+            self.assertTrue(tls.status(self.stack,self.project)['automatic_acme'])
+        with patch.object(acme,'run',side_effect=RuntimeFault('STACK_COMMAND_FAILED')):
+            state=tls.status(self.stack,self.project)
+            self.assertFalse(state['automatic_acme'])
+            self.assertTrue(state['acme']['schedule']['enabled'])

@@ -90,10 +90,12 @@ def status(stack, project):
         if pending['status'] in ('in_flight', 'needs_attention'):
             return {'project': project, 'status': pending['status'], 'recovery_required': True, 'external_https_verified': False}
     root, value = current(stack, project); raw, _ = pair(root, value)
+    from .workspace_acme import status as acme_status
+    acme = acme_status(stack, project)
     return {'project': project, 'url': value['origin'], 'certificate': describe(raw),
             'renewal_due': describe(raw)['days_remaining'] < 30,
             'last_rotation': json.loads(receipt.read_text()) if receipt.exists() else None,
-            'automatic_acme': False, 'external_https_verified': False}
+            'automatic_acme': acme['schedule']['active'], 'acme': acme, 'external_https_verified': False}
 
 
 def plan(stack, project, cert, key):
