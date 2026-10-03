@@ -23,10 +23,11 @@ from .workspace_http import origin
 
 def register(commands):
     p = commands.add_parser('workspace', help='persistent HTTPS employee workspace, separate from administrator access')
-    p.add_argument('action', choices=['plan','apply','status','stop'])
+    p.add_argument('action', choices=['plan','apply','status','stop','recover'])
     p.add_argument('--stack-root', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--origin')
+    p.add_argument('--include-project', action='append', default=[], help='additional project behind this HTTPS entry; same Feishu app and tenant')
     p.add_argument('--certificate', type=Path)
     p.add_argument('--private-key', type=Path)
     p.add_argument('--expect-plan')
@@ -51,12 +52,16 @@ def certificate(cert, key, host):
     return raw, keyraw
 
 
-def plan(stack, project, public_origin, cert, key):
+def plan(stack, project, public_origin, cert, key, projects=None):
     identifier(project); origin(public_origin)
     raw, keyraw = certificate(cert, key, urlsplit(public_origin).hostname)
     value = {'schema':1, 'project':project, 'origin':public_origin, 'stack_instance':stack.config['instance'],
              'runtime_image':stack.config['runtime_image'], 'certificate_sha256':hashlib.sha256(raw).hexdigest(),
              'private_key_sha256':hashlib.sha256(keyraw).hexdigest()}
+    if projects is not None:
+        from .portal_http import project_manifest
+        value['projects'] = project_manifest(projects)
+        if project not in value['projects']: raise RuntimeFault('PORTAL_PRIMARY_PROJECT_REQUIRED')
     return value
 
 
@@ -93,14 +98,26 @@ def document(stack, value):
               'networks':{'ledger':{'aliases':['vf-executor-'+hashlib.sha256(project.encode()).hexdigest()[:12]]},'review':{}},
               'volumes':[mount('data/runtime')+':/state',mount('data/media')+':/media',mount('data/worker')+':/work:ro'],
               'healthcheck':{'test':['CMD','python','-c',"from urllib.request import urlopen; assert urlopen('http://127.0.0.1:8793/healthz',timeout=3).status==200"],'interval':'5s','timeout':'5s','retries':12}}
+    services={'workspace':workspace,'edge':edge,'egress':egress,'executor':executor}
+    if 'projects' in value:
+        from .portal_http import project_manifest
+        projects=project_manifest(value['projects'])
+        if project not in projects: raise RuntimeFault('PORTAL_PRIMARY_PROJECT_REQUIRED')
+        for additional in projects:
+            if additional==project: continue
+            workspace['command'] += ['--include-project',additional]
+            suffix=hashlib.sha256(additional.encode()).hexdigest()[:12]
+            services['executor-'+suffix]={**executor,'command':['--project',additional],
+                'networks':{'ledger':{'aliases':['vf-executor-'+suffix]},'review':{}}}
     return {'name':prefix+'-ws-'+hashlib.sha256(project.encode()).hexdigest()[:12],
-            'services':{'workspace':workspace,'edge':edge,'egress':egress,'executor':executor},
+            'services':services,
             'networks':{'ledger':{'external':True,'name':prefix+'_private'},'review':{'internal':True},'public':{},'outbound':{}},
             'secrets':{name:{'file':mount('secrets/'+name)} for name in ('runtime_dsn','runtime_master')}}
 
 
 def nginx(value):
     host=urlsplit(value['origin']).netloc
+    tls_prefix='/tls/current/' if value.get('tls_layout')=='generations' else '/tls/'
     return '''pid /tmp/nginx.pid;
 error_log /dev/stderr warn;
 events { worker_connections 128; }
@@ -113,7 +130,7 @@ http {
  server { listen 127.0.0.1:8082; location = /healthz { return 200 "ready"; } }
  server {
   listen 8443 ssl; server_name HOST;
-  ssl_certificate /tls/certificate.pem; ssl_certificate_key /tls/key.pem;
+  ssl_certificate TLS_PREFIXcertificate.pem; ssl_certificate_key TLS_PREFIXkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
   client_max_body_size 64k; client_body_timeout 10s; keepalive_timeout 15s;
   limit_req zone=requests burst=20 nodelay; limit_conn connections 12;
@@ -125,10 +142,10 @@ http {
   }
  }
 }
-'''.replace('HOST',host)
+'''.replace('HOST',host).replace('TLS_PREFIX',tls_prefix)
 
 
-def compose(stack, project, *args):
+def compose(stack, project, *args, data=None):
     root=directory(stack,project); private_file(root/'workspace.json')
     value=json.loads((root/'workspace.json').read_text())
     if value['stack_instance'] != stack.config['instance'] or value['runtime_image'] != stack.config['runtime_image']:
@@ -137,7 +154,7 @@ def compose(stack, project, *args):
     if json.loads((root/'compose.json').read_text()) != expected or (root/'nginx.conf').read_text()!=nginx(value):
         raise RuntimeFault('WORKSPACE_GENERATED_FILES_CHANGED')
     local_engine()
-    return run(['docker','compose','--project-directory',str(root),'-f',str(root/'compose.json'),*args],timeout=180)
+    return run(['docker','compose','--project-directory',str(root),'-f',str(root/'compose.json'),*args],timeout=180,data=data)
 
 
 def stop_all(stack):
@@ -152,36 +169,60 @@ def stop_all(stack):
                 compose(stack,path.name,'down','--timeout','15')
 
 
+def check_companions(stack, value):
+    """Never run two project dispatchers or bind a second edge to the same port."""
+    base=stack.root/'data/workspaces'
+    if not base.exists(): return
+    projects=set(value.get('projects',[value['project']]))
+    port=urlsplit(value['origin']).port or 443
+    for path in sorted(base.iterdir()):
+        if path.name==value['project'] or not (path/'workspace.json').exists(): continue
+        previous=json.loads((path/'workspace.json').read_text())
+        if previous['stack_instance']!=stack.config['instance']: continue
+        overlap=projects.intersection(previous.get('projects',[previous['project']]))
+        if not overlap and (urlsplit(previous['origin']).port or 443)!=port: continue
+        # Stopped companions may be migrated; resuming either checks the other again.
+        raw=compose(stack,path.name,'ps','--all','--format','json').decode()
+        rows=json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(row) for row in raw.splitlines() if row]
+        if any(row.get('State') not in ('exited','dead','created') for row in rows):
+            raise RuntimeFault('PORTAL_STOP_CONFLICTING_WORKSPACE_FIRST')
+
+
 def apply(stack, value, cert, key):
     project=value['project']; root=directory(stack,project)
+    from .workspace_deploy import pending
+    if pending(root):raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
+    rotation=root/'tls-rotation.json'
+    if rotation.exists():
+        private_file(rotation)
+        if json.loads(rotation.read_text())['status'] in ('in_flight','needs_attention'):
+            raise RuntimeFault('TLS_RECOVERY_REQUIRED')
     raw, keyraw=certificate(cert,key,urlsplit(value['origin']).hostname)
-    if plan(stack,project,value['origin'],cert,key)!=value: raise RuntimeFault('WORKSPACE_PLAN_CHANGED')
+    if plan(stack,project,value['origin'],cert,key,value.get('projects'))!=value: raise RuntimeFault('WORKSPACE_PLAN_CHANGED')
     if not stack.status()['infrastructure_ready']: raise RuntimeFault('WORKSPACE_HEALTHY_STACK_REQUIRED')
+    check_companions(stack,value)
+    # Validate every entry, including a single project, before any downtime.
+    command=document(stack,value)['services']['workspace']['command']
+    stack.compose('run','--rm','--no-deps','--entrypoint','python','runtime',
+                  '-m','video_factory.workspace_http',*command,'--check-projects')
     root.mkdir(mode=0o700,parents=True,exist_ok=True)
     if root.resolve()!=root: raise RuntimeFault('WORKSPACE_DIRECTORY_UNSAFE')
-    if (root/'workspace.json').exists():
-        previous=json.loads((root/'workspace.json').read_text())
-        if previous['stack_instance']==stack.config['instance'] and previous['runtime_image']==stack.config['runtime_image']:
-            compose(stack,project,'down','--timeout','15')
-    tls=root/'tls';tls.mkdir(mode=0o700,exist_ok=True);os.chown(tls,10001,10001)
-    for name,data in [('certificate.pem',raw),('key.pem',keyraw)]:
-        path=tls/name
-        if path.is_symlink(): raise RuntimeFault('TLS_FILE_UNSAFE')
-        path.write_bytes(data);path.chmod(0o600);os.chown(path,10001,10001)
-    write_json(root/'workspace.json',value)
-    write_json(root/'compose.json',document(stack,value))
-    (root/'nginx.conf').write_text(nginx(value));(root/'nginx.conf').chmod(0o644)
-    compose(stack,project,'up','-d','--pull','never','--wait','--wait-timeout','90')
-    return status(stack, project)
+    from . import workspace_deploy
+    return workspace_deploy.apply(stack,value,raw,keyraw)
+
 
 
 def status(stack, project):
     root=directory(stack, project)
+    from .workspace_deploy import pending
+    if pending(root):
+        return {'status':'needs_attention','project':project,'recovery_required':True,
+                'https_external_readback':'required','human_acceptance':'not_run'}
     if not (root/'workspace.json').exists(): return {'status':'not_configured','project':project}
     value=json.loads((root/'workspace.json').read_text())
     raw=compose(stack,project,'ps','--all','--format','json').decode()
     rows=json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(row) for row in raw.splitlines() if row]
-    ready=len(rows)==4 and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
+    ready=sorted(row['Service'] for row in rows)==sorted(document(stack,value)['services']) and all(row['State']=='running' and row.get('Health','') in ('','healthy') for row in rows)
     return {'status':'running' if ready else 'incomplete', 'project':project,'url':value['origin'],
             'components':[{k:row.get(k) for k in ('Service','State','Health')} for row in rows],
             'https_external_readback':'required', 'human_acceptance':'not_run'}
@@ -192,11 +233,15 @@ def cli(args):
         stack=Stack(args.stack_root)
         with stack.lock():
             if args.action in ('plan','apply'):
-                value=plan(stack,args.project,args.origin,args.certificate,args.private_key)
+                projects=[args.project,*args.include_project] if args.include_project else None
+                value=plan(stack,args.project,args.origin,args.certificate,args.private_key,projects)
                 result={'plan':value,'plan_sha256':fingerprint(value),'business_ready':False}
                 if args.action=='apply':
                     if args.expect_plan != result['plan_sha256']: raise RuntimeFault('WORKSPACE_REVIEWED_PLAN_REQUIRED')
                     result=apply(stack,value,args.certificate,args.private_key)
+            elif args.action=='recover':
+                from .workspace_deploy import recover
+                result=recover(stack,args.project)
             elif args.action=='stop':
                 compose(stack,args.project,'down','--timeout','15');result={'status':'stopped','project':args.project}
             else: result=status(stack,args.project)

@@ -96,10 +96,27 @@ class SetupAdmin:
         fields = {'open': {'action','session','password'}, 'close': {'action','token'},
                   'configure': {'action','token','session','app_id','app_secret','expected_profile'},
                   'status': {'action','token','draft'}, 'video': {'action','token','session','secret','billing_owner','region','assets'}, 'script': {'action','token','session','secret','billing_owner'},
+                  'base_results': {'action','token','session','operation','expected_plan','event','step'},
                   'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
         if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
         action = payload['action']
+        if action == 'base_results':
+            from .base_results import BaseResults
+            project = inspect_project(self.store, payload['token'], payload['session'])['project']
+            helper = BaseResults(self.store, self.master_key)
+            operation = payload['operation']
+            if operation == 'repair_plan': return helper.repair_plan(payload['token'], project, payload['event'], payload['step'])
+            if operation == 'repair': return helper.repair(payload['token'], project, payload['event'], payload['step'], payload['expected_plan'])
+            if operation == 'recovery_plan': return helper.recovery_plan(payload['token'], project)
+            if operation == 'recover': return helper.recover(payload['token'], project, payload['expected_plan'])
+            if operation == 'plan': return helper.prepare(payload['token'], project)
+            if operation == 'enable': return helper.enable(payload['token'], project, payload['expected_plan'])
+            if operation == 'pause': return helper.pause(payload['token'], project)
+            if operation == 'status': return helper.status(payload['token'], project)
+            if operation == 'sync':
+                return helper.sync(project, Path('/media'), lambda db: self.store.authorize(db, payload['token'], 'admin'))
+            raise RuntimeFault('BASE_RESULTS_ACTION_INVALID')
         if action == 'video':return self.video(payload['token'],payload['session'],payload['secret'],payload['billing_owner'],payload['region'],payload['assets'])
         if action == 'script':return self.script(payload['token'],payload['session'],payload['secret'],payload['billing_owner'])
         if action == 'execution_key':
@@ -120,8 +137,15 @@ class SetupAdmin:
 def rpc(stack, payload):
     # The container's result (including a short-lived token on open) is consumed
     # in memory by the local OS administrator, never printed by the wizard.
-    result = json.loads(stack.compose('exec', '-T', 'runtime', 'python', '-m', 'video_factory.setup_admin',
-                                     data=json.dumps(payload).encode()))
+    if payload.get('action') == 'base_results':
+        from .workspace import compose
+        project = payload['session']['configuration']['project']['id']
+        raw = compose(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',
+                      data=json.dumps(payload).encode())
+    else:
+        raw = stack.compose('exec', '-T', 'runtime', 'python', '-m', 'video_factory.setup_admin',
+                            data=json.dumps(payload).encode())
+    result = json.loads(raw)
     if 'error' in result:
         code = result['error']
         raise RuntimeFault(code if isinstance(code, str) and re.fullmatch('[A-Z0-9_]{1,100}', code) else 'SETUP_ADMIN_FAILED')

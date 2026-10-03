@@ -74,7 +74,7 @@ class ReviewServer(ThreadingHTTPServer):
             raise RuntimeFault('AUTH_REQUIRED')
         return session['token']
 
-    def operation(self, session, action, body):
+    def operation(self, session, action, body, *, service=None):
         now = self.clock()
         if action == '/api/logout':
             if body: raise RuntimeFault('FIELDS_INVALID')
@@ -116,7 +116,8 @@ class ReviewServer(ThreadingHTTPServer):
                 session.update(token=None, device=None, pending=None)
                 raise
         user = self.authorize(session)
-        service, bridge, project = self.service, self.service.bridge, self.service.project
+        service = service or self.service
+        bridge, project = service.bridge, service.project
         if action == '/api/video/prepare':
             if set(body) != {'task','revision'}: raise RuntimeFault('FIELDS_INVALID')
             from .video_jobs import prepare
@@ -216,6 +217,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
         else:
             self.reply(400, {'error': 'REVIEW_REQUEST_FAILED'})
 
+    def service_for(self, session):
+        return self.server.service
+
+    def session_metadata(self):
+        return {}
+
     def do_GET(self):
         try:
             sid = self.gate()
@@ -235,7 +242,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                         authenticated = bool(session['token']) and self.server.clock() < session.get('expires', 0)
                         self.reply(200, {'csrf': session['csrf'], 'project': self.server.service.project,
                                          'app_id': self.server.oauth.app_id, 'authenticated': authenticated,
-                                         'persistent': self.server.persistent,
+                                         'persistent': self.server.persistent, **self.session_metadata(),
                                          'remaining_seconds': self.server.cookie_seconds if self.server.persistent else max(0, int(self.server.deadline-self.server.clock()))}, cookie)
             elif self.path in ('/app.js', '/style.css'):
                 name, mime = ('app.js', 'text/javascript') if self.path == '/app.js' else ('style.css', 'text/css')
@@ -247,12 +254,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     if path.path == '/api/tasks':
                         query = parse_qs(path.query, keep_blank_values=True)
                         if set(query)-{'after'} or any(len(v)!=1 for v in query.values()): raise RuntimeFault('REQUEST_INVALID')
-                        self.reply(200, self.server.service.tasks(user, query.get('after', [''])[0]))
+                        self.reply(200, self.service_for(session).tasks(user, query.get('after', [''])[0]))
                     else:
                         match = re.fullmatch(r'/media/([A-Za-z0-9_-]{1,96})/([1-9][0-9]{0,8})/([a-f0-9]{64})\.mp4', self.path)
                         if not match: raise RuntimeFault('ROUTE_NOT_FOUND')
                         task, revision, digest = match.groups()
-                        stream, size = self.server.service.media(user, task, int(revision), digest)
+                        stream, size = self.service_for(session).media(user, task, int(revision), digest)
                         with stream:
                             start, end, status = 0, size-1, 200
                             extra = [('Accept-Ranges', 'bytes')]

@@ -17,6 +17,109 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  project-portal:
+    name: Multi-project authorization and two-tab browser checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Verify project isolation and shipped browser
+        run: |
+          python3 .github/scripts/safe-ci.py project-portal-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core "playwright==1.55.0"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          sudo "$(command -v python)" -m playwright install --with-deps chrome
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_portal*.py' -v
+          sudo unshare --net -- bash -c 'ip link set lo up && exec "$@"' bash "$(command -v python)" .github/scripts/portal-browser-smoke.py
+          VF_CI_SCRIPT
+  base-results:
+    name: Base result writeback failure and isolation checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652
+        env:
+          POSTGRES_USER: fixture
+          POSTGRES_PASSWORD: synthetic-ci-only-password
+          POSTGRES_DB: vf_results
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fixture -d vf_results"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Install candidate and run isolated writeback checks
+        run: |
+          python3 .github/scripts/safe-ci.py base-results-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core
+          vfctl --help
+          vfctl workspace-acme --help
+          vfctl workspace-tls --help
+          vfctl base-results --help
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_base_results*.py' -v
+          python .github/scripts/base-results-postgres-smoke.py
+          VF_CI_SCRIPT
+  workspace-tls:
+    name: Workspace TLS rotation and rollback checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Verify private certificate generations without network
+        run: |
+          python3 .github/scripts/safe-ci.py workspace-tls-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core
+          vfctl --help
+          vfctl workspace-acme --help
+          vfctl workspace-tls --help
+          vfctl base-results --help
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_tls.py' -v
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_acme.py' -v
+          VF_CI_SCRIPT
+  workspace-acme:
+    name: Real Certbot HTTP-01 against isolated test CA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Issue and recover real ACME orders on loopback only
+        run: |
+          python3 .github/scripts/safe-ci.py workspace-acme-check <<'VF_CI_SCRIPT'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq certbot
+          python -m pip install ./packages/video-factory-core
+          git clone --quiet https://github.com/letsencrypt/pebble.git /tmp/vf-pebble
+          git -C /tmp/vf-pebble checkout --quiet d52948ce25e7c1576bcd18ff0e20a1c24ec7c44b
+          (cd /tmp/vf-pebble && go build -o pebble ./cmd/pebble)
+          sudo "$(command -v python)" .github/scripts/acme-pebble-smoke.py /tmp/vf-pebble
+          VF_CI_SCRIPT
   host-bootstrap:
     name: Fresh Ubuntu virtual machine bootstrap
     runs-on: ubuntu-24.04
@@ -100,7 +203,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres]
+    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
@@ -252,7 +355,7 @@ jobs:
         run: |
           python3 .github/scripts/safe-ci.py cloud-check-146 <<'VF_CI_SCRIPT'
           set -euo pipefail
-          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json
+          sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json || { cat ci-stack/diagnostics.log >&2; exit 1; }
           VF_CI_SCRIPT
       - name: Reuse the exact checked archive for offline image verification
         run: |

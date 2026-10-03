@@ -41,6 +41,12 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     from .workspace import register as register_workspace, cli as workspace_cli
     register_workspace(commands)
+    from .workspace_tls import register as register_tls, cli as tls_cli
+    register_tls(commands)
+    from .base_results_cli import register as register_results, cli as results_cli
+    register_results(commands)
+    from .workspace_acme import register as register_acme, cli as acme_cli
+    register_acme(commands)
     from .production_setup import register as register_production, cli as production_cli
     register_production(commands)
     register_runtime(commands)
@@ -93,6 +99,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'production-setup':
         return production_cli(args)
+    if args.command == 'workspace-acme':
+        return acme_cli(args)
+    if args.command == 'base-results':
+        return results_cli(args)
+    if args.command == 'workspace-tls':
+        return tls_cli(args)
     if args.command == 'workspace':
         return workspace_cli(args)
     if args.command == 'setup-run':

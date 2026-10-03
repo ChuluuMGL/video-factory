@@ -32,9 +32,9 @@ class WorkspaceHandler(ReviewHandler):
 
 
 class WorkspaceServer(ReviewServer):
-    def __init__(self, address, service, oauth, public_origin, *, clock=time.monotonic):
+    def __init__(self, address, service, oauth, public_origin, *, clock=time.monotonic, handler=None):
         origin(public_origin)
-        super().__init__(address, service, oauth, container_network=True, clock=clock, handler=WorkspaceHandler)
+        super().__init__(address, service, oauth, container_network=True, clock=clock, handler=handler or WorkspaceHandler)
         self.origin = public_origin
         self.persistent = True
         self.cookie_seconds = 28800
@@ -68,15 +68,28 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--project', required=True)
     p.add_argument('--origin', required=True)
+    p.add_argument('--include-project', action='append', default=[])
+    p.add_argument('--check-projects', action='store_true')
     args = p.parse_args()
     store = selected_store()('/state')
-    service = ReviewService(store, args.project, '/media')
+    projects = [args.project, *args.include_project]
+    if args.include_project:
+        from .portal_http import PortalDirectory, PortalServer
+        service = PortalDirectory(store, projects, '/media')
+        server_type = PortalServer
+    else:
+        service = ReviewService(store, args.project, '/media')
+        server_type = WorkspaceServer
     with store.connect() as db:
         profile = meta(db, 'setup:feishu-app:'+args.project)
     if not profile: raise RuntimeFault('WORKSPACE_FEISHU_PROFILE_REQUIRED')
     secret = store.resolve_secret(profile['credential_ref'][7:], secret_input(Path('/run/secrets/runtime_master'), ''))
     oauth = DeviceOAuth(profile['app_id'], secret)
-    with WorkspaceServer(('0.0.0.0', 8790), service, oauth, args.origin) as server:
+    if args.check_projects:
+        origin(args.origin)
+        print('{"status":"projects_validated"}', flush=True)
+        return
+    with server_type(('0.0.0.0', 8790), service, oauth, args.origin) as server:
         print(json.dumps({'status':'ready','scope':'employee_workspace','project':args.project}), flush=True)
         server.serve_forever()
 

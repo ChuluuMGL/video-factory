@@ -16,7 +16,7 @@ Skill 本身由客户在其 Agent 支持的自定义 Skill 目录中安装：复
 
 ## 2. 启动欢迎向导
 
-先检查 Python、Docker、Compose、CPU、磁盘、实际连接主机。当前经过云端验证的是 Linux x86_64 / Python 3.12；Docker 本地 Unix socket、Compose 至少 2.24，服务至少 4 GiB 内存与可用磁盘。默认在线镜像首次获取需要网络；网络受限时使用 a22 的独立离线镜像包。离线 CLI 包本身不含服务镜像。
+先检查 Python、Docker、Compose、CPU、磁盘、实际连接主机。当前经过云端验证的是 Linux x86_64 / Python 3.12；Docker 本地 Unix socket、Compose 至少 2.24，服务至少 4 GiB 内存与可用磁盘。默认在线镜像首次获取需要网络；网络受限时使用与当前发行 wheels 匹配的独立离线镜像包。离线 CLI 包本身不含服务镜像。
 
 session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。人工在客户私有终端运行：
 
@@ -24,9 +24,9 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 /opt/vf-cli-VERSION/venv/bin/vfctl setup-run --session /root/vf-private/customer.setup.json --root /opt/video-factory --wheelhouse /opt/vf-cli-VERSION/release/wheels
 ```
 
-若提供离线镜像包，先读发行包 `docs/product/OFFLINE_IMAGES.md`，取得可信交付记录中的清单摘要，在上述命令增加 `--image-bundle /root/vf-image-bundle --image-manifest-sha256 TRUSTED_IMAGE_MANIFEST_SHA256`。包目录 700、文件 600、归 root 所有；必须与当前发行 wheels 匹配。不要自动采信包内自报摘要、切换未知镜像源或将大镜像包下载到安装人员电脑。
+若提供离线镜像包，先读发行包 `docs/product/OFFLINE_IMAGES.md`，取得可信交付记录中的清单摘要，在上述命令增加 `--image-bundle /root/vf-image-bundle --image-manifest-sha256 TRUSTED_IMAGE_MANIFEST_SHA256`。包目录 700、文件 600、归 root 所有；使用同批交付的 CLI 和镜像，核对完整 wheels 哈希，不能只比较版本号。公开发行不含整套镜像，应由部署方准备并经私有渠道直传服务器。不要自动采信包内自报摘要、切换未知镜像源或将大镜像包下载到安装人员电脑。
 
-按欢迎问题填写组织、主机、项目、SKU、审核人及模型意图。先把已安装前缀下 `release/templates/products.json` 复制到客户私有目录并填入实际商品，勿修改校验包；SKU 终端输入使用副本的 JSON 文件绝对路径。确认安装摘要后，密码与 App Secret 隐藏输入，App Secret 在客户 vault 中加密保存。a25 默认新建 Base，也可绑定已有表。新建模式选择用途（测试会放入两条测试任务）、位置及提交人，授权并核对清单后才创建和绑定；无需预建测试 Base。创建回执未知时停止并读取状态，不盲目重建。
+按欢迎问题填写组织、主机、项目、SKU、审核人及模型意图。先把已安装前缀下 `release/templates/products.json` 复制到客户私有目录并填入实际商品，勿修改校验包；SKU 终端输入使用副本的 JSON 文件绝对路径。确认安装摘要后，密码与 App Secret 隐藏输入，App Secret 在客户 vault 中加密保存。向导默认新建 Base，也可绑定已有表。新建模式选择用途（测试会放入两条测试任务）、位置及提交人，授权并核对清单后才创建和绑定；无需预建测试 Base。创建回执未知时停止并读取状态，不盲目重建。
 
 管理员接入和员工审核窗口分别默认 8791/8790，仅回环监听、限时开放。浏览器在操作员电脑时，经既有可信 SSH 建同端口隧道；不得改成公网裸露端口。管理员一次性地址只交付当前管理员。
 
@@ -60,3 +60,5 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 - 升级先将新 CLI 安装到新版本前缀。再通过当前支持的 `stack upgrade`、新 stack 目录和冷备检查点进行服务迁移。仅安装新 CLI 不会升级运行中的服务；不得直接覆盖旧 wheel、旧数据库或旧部署。
 - 离线部署须将镜像包与业务备份分开留存。新机恢复先 `stack fetch` 加原镜像包的两个参数，再 `stack build` / `stack up`；离线升级必须提供候选版本的镜像包，缺包应在停原服务前拒绝。
 - 出现 `rolled_back` / `needs_attention` 按失败或待处理记录；核对哪个目录和端口实际运行。客户发布、付费调用与真人验收单独记录。
+
+常驻工作区替换前会验证单项目或多项目配置并留存私有恢复文件。失败自动停止候选入口、恢复旧配置及原运行状态；返回 `WORKSPACE_DEPLOYMENT_NEEDS_ATTENTION` 时先读 `workspace status`，再用同一 stack / 主项目执行 `workspace recover`。不要删 `deployment.json` 或重装来跳过恢复；跨实例恢复仍须重新核对并 apply。
