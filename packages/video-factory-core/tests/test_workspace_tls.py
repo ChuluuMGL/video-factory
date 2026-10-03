@@ -71,6 +71,8 @@ class WorkspaceTLSTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault, 'NEEDS_ATTENTION'):
                 tls.apply(self.stack, self.plan, self.cert, self.key, readback=lambda *_: False)
         self.assertTrue(tls.status(self.stack, self.project)['recovery_required'])
+        with self.assertRaisesRegex(RuntimeFault, 'RECOVERY_REQUIRED'):
+            tls.plan(self.stack, self.project, self.cert, self.key)
         with patch.object(workspace, 'compose'):
             self.assertEqual(tls.recover(self.stack, self.project, readback=lambda *_: True)['status'], 'rolled_back')
 

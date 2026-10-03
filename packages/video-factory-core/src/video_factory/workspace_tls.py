@@ -97,7 +97,13 @@ def status(stack, project):
 
 
 def plan(stack, project, cert, key):
-    root, value = current(stack, project); previous, previous_key = pair(root, value)
+    root, value = current(stack, project)
+    receipt = root/'tls-rotation.json'
+    if receipt.exists():
+        private_file(receipt)
+        if json.loads(receipt.read_text())['status'] in ('in_flight', 'needs_attention'):
+            raise RuntimeFault('TLS_RECOVERY_REQUIRED')
+    previous, previous_key = pair(root, value)
     raw, keyraw = workspace.certificate(cert, key, urlsplit(value['origin']).hostname)
     return {'project': project, 'origin': value['origin'], 'workspace_sha256': fingerprint(value),
             'previous_certificate_sha256': hashlib.sha256(previous).hexdigest(),
