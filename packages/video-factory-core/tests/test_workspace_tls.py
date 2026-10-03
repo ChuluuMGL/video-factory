@@ -95,3 +95,27 @@ class WorkspaceTLSTests(unittest.TestCase):
             result = tls.apply(self.stack, self.plan, self.cert, self.key, readback=lambda *_: True)
         self.assertNotIn('PRIVATE KEY', json.dumps(result))
         self.assertNotIn('PRIVATE KEY', json.dumps(tls.status(self.stack, self.project)))
+
+    def test_rotated_generation_survives_cold_backup_restore(self):
+        from cryptography.fernet import Fernet
+        from video_factory.stack import Stack
+        with patch.object(workspace, 'compose'):
+            tls.apply(self.stack, self.plan, self.cert, self.key, readback=lambda *_: True)
+        write_json(self.stack.root/'initialized.json', {'schema':1})
+        target = self.parent/'checkpoint.vfb'; key = Fernet.generate_key()
+        with patch.object(workspace, 'stop_all'), patch.object(self.stack, 'compose'), patch.object(self.stack, 'status', return_value={'components':{'postgres':{'state':'exited','exit_code':0}}}):
+            self.stack.backup(target,key)
+        restored = self.parent/'restored'; restored.mkdir(mode=0o700)
+        Stack.restore(target,restored,key)
+        pointer = restored/'data/workspaces'/self.project/'tls/current'
+        self.assertTrue(pointer.is_symlink())
+        self.assertEqual((pointer/'key.pem').read_bytes(),self.key.read_bytes())
+        self.assertEqual((pointer/'certificate.pem').read_bytes(),self.cert.read_bytes())
+
+    def test_backup_rejects_pointer_outside_its_generations(self):
+        from cryptography.fernet import Fernet
+        write_json(self.stack.root/'initialized.json', {'schema':1})
+        (self.root/'tls/current').symlink_to('/tmp')
+        with patch.object(workspace, 'stop_all'), patch.object(self.stack, 'compose'), patch.object(self.stack, 'status', return_value={'components':{'postgres':{'state':'exited','exit_code':0}}}):
+            with self.assertRaisesRegex(RuntimeFault,'SPECIAL_FILE'):
+                self.stack.backup(self.parent/'bad.vfb',Fernet.generate_key())

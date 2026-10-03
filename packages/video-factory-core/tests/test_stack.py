@@ -161,3 +161,17 @@ class PortPreflightTests(unittest.TestCase):
                 port = listener.getsockname()[1]
                 with self.assertRaisesRegex(RuntimeFault, '^STACK_PORT_ALREADY_IN_USE$'):
                     self.check_ports(Path(root), port, 5678 if port != 5678 else 8787)
+
+    def test_restore_rejects_unbound_tls_pointers_before_writing(self):
+        key=Fernet.generate_key()
+        for target in ('../../../../secrets','/tmp','generations/'+'a'*32):
+            buffer=io.BytesIO()
+            with tarfile.open(fileobj=buffer,mode='w:gz') as archive:
+                info=tarfile.TarInfo('data/workspaces/fixture/tls/current')
+                info.type=tarfile.SYMTYPE;info.linkname=target;info.mode=0o777
+                archive.addfile(info)
+            source=self.parent/'bad-pointer.vfb'
+            source.write_bytes(Fernet(key).encrypt(buffer.getvalue()));source.chmod(0o600)
+            with self.assertRaisesRegex(RuntimeFault,'MEMBER_UNSAFE'):
+                Stack.restore(source,self.root,key)
+            self.assertEqual(list(self.root.iterdir()),[])

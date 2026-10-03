@@ -31,6 +31,12 @@ MAX_ARCHIVE = 256 * 1024 * 1024
 MAX_UNPACKED = 1024 * 1024 * 1024
 
 
+def tls_generation_link(name, target):
+    # The sole allowed archive link is the product's atomic certificate pointer.
+    return bool(re.fullmatch(r'data/workspaces/[A-Za-z0-9_-]{1,96}/tls/current', name)
+                and re.fullmatch(r'generations/[a-f0-9]{32}', target))
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -419,7 +425,18 @@ class Stack:
                     raise RuntimeFault('BACKUP_COMPONENT_MISSING')
                 for path in [parent]+(sorted(parent.rglob('*')) if parent.is_dir() else []):
                     info=path.lstat()
-                    if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)) or (stat.S_ISREG(info.st_mode) and info.st_nlink!=1):
+                    link = stat.S_ISLNK(info.st_mode)
+                    if link:
+                        target = os.readlink(path)
+                        if (not tls_generation_link(path.relative_to(self.root).as_posix(), target)
+                                or (path.parent/target).resolve() != path.parent/target
+                                or not (path.parent/target).is_dir()):
+                            raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
+                        for name in ('certificate.pem', 'key.pem'):
+                            part = (path.parent/target/name).lstat()
+                            if not stat.S_ISREG(part.st_mode) or part.st_nlink != 1:
+                                raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
+                    if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode) or link) or (stat.S_ISREG(info.st_mode) and info.st_nlink!=1):
                         raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
                     total+=info.st_size
                     if total>MAX_UNPACKED:
@@ -520,12 +537,21 @@ class Stack:
             for member in members:
                 path=PurePosixPath(member.name)
                 if (path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] not in {'stack.json','initialized.json','release','secrets','data'}
-                        or member.name in seen or not (member.isfile() or member.isdir()) or member.mode & 0o7000
+                        or member.name in seen or not (member.isfile() or member.isdir() or (member.issym() and tls_generation_link(member.name, member.linkname))) or member.mode & 0o7000
                         or member.uid not in (0,999,1000,10001) or member.gid not in (0,999,1000,10001)):
                     raise RuntimeFault('BACKUP_MEMBER_UNSAFE')
                 seen.add(member.name);total+=member.size
                 if total>MAX_UNPACKED or len(members)>100000:
                     raise RuntimeFault('BACKUP_TOO_LARGE')
+            indexed = {member.name: member for member in members}
+            links = [member for member in members if member.issym()]
+            for member in links:
+                target = (PurePosixPath(member.name).parent/member.linkname).as_posix()
+                if (target not in indexed or not indexed[target].isdir()
+                        or any(name.startswith(member.name+'/') for name in indexed)
+                        or any(target+'/'+name not in indexed or not indexed[target+'/'+name].isfile()
+                               for name in ('certificate.pem', 'key.pem'))):
+                    raise RuntimeFault('BACKUP_MEMBER_UNSAFE')
             config=json.load(archive.extractfile('stack.json'));validate_config(config)
             # Deployment identity is immutable; use a new compose name through the
             # explicit clone option only, preserving product ledger identity.
@@ -534,7 +560,7 @@ class Stack:
             if runtime_port is not None:config['runtime_port']=runtime_port
             if n8n_port is not None:config['n8n_port']=n8n_port
             validate_config(config)
-            for member in sorted(members,key=lambda m:(len(PurePosixPath(m.name).parts),m.name)):
+            for member in sorted((m for m in members if not m.issym()),key=lambda m:(len(PurePosixPath(m.name).parts),m.name)):
                 path=root/member.name
                 if member.isdir():
                     path.mkdir(mode=0o700,exist_ok=True)
@@ -543,6 +569,12 @@ class Stack:
                     with archive.extractfile(member) as stream:
                         exclusive_write(path,stream.read())
                 path.chmod(member.mode & 0o777);os.chown(path,member.uid,member.gid)
+            # All regular members are validated and written before any link exists.
+            for member in links:
+                path = root/member.name
+                path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                os.symlink(member.linkname, path)
+                os.lchown(path, member.uid, member.gid)
         # Rebuild product image from pinned base and unchanged wheel hashes on a
         # new host; registry images must be pulled by their locked digests.
         config['runtime_image']=None
