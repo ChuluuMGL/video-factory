@@ -101,6 +101,7 @@ def document(stack, value):
 
 def nginx(value):
     host=urlsplit(value['origin']).netloc
+    tls_prefix='/tls/current/' if value.get('tls_layout')=='generations' else '/tls/'
     return '''pid /tmp/nginx.pid;
 error_log /dev/stderr warn;
 events { worker_connections 128; }
@@ -113,7 +114,7 @@ http {
  server { listen 127.0.0.1:8082; location = /healthz { return 200 "ready"; } }
  server {
   listen 8443 ssl; server_name HOST;
-  ssl_certificate /tls/certificate.pem; ssl_certificate_key /tls/key.pem;
+  ssl_certificate TLS_PREFIXcertificate.pem; ssl_certificate_key TLS_PREFIXkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
   client_max_body_size 64k; client_body_timeout 10s; keepalive_timeout 15s;
   limit_req zone=requests burst=20 nodelay; limit_conn connections 12;
@@ -125,7 +126,7 @@ http {
   }
  }
 }
-'''.replace('HOST',host)
+'''.replace('HOST',host).replace('TLS_PREFIX',tls_prefix)
 
 
 def compose(stack, project, *args):

@@ -34,3 +34,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 模型提交、付费重试、员工审核、外部发布分别遵循用户授权；安装或修复指令本身不包含这些动作。未知模型提交不得重发，先查询已有供应商回执。
 - 输出阶段证据：`CLI 安装 / 服务启动 / 项目导入 / 飞书真实接入 / 任务执行 / 真人验收`。逐项记已通过、失败或未执行，并注明证据来源。绿色 CI、Mock OAuth、`plan_ready` 或 `business_ready=false` 不表示客户业务已验收。
 - 结束给出当前版本、确切对象、完成步骤、剩余缺口和可续接命令；不输出秘密、一次性管理员链接或完整敏感日志。
+
+## 证书轮换候选
+
+仅在当前 CLI 确实支持 `workspace-tls` 时，按 [证书轮换说明](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/WORKSPACE_TLS.md) 检查到期状态并核对计划。轮换只操作本项目私有证书；失败先核对旧证书和回执。此入口不代表 ACME 自动签发或定时续期已实现。公开 a31 不包含该候选。
