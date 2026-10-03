@@ -73,7 +73,7 @@ def apply(stack, value, raw, keyraw):
     write_json(root/'deployment.json', receipt)
     try:
         if previous and previous['stack_instance'] == stack.config['instance'] and previous['runtime_image'] == stack.config['runtime_image']:
-            workspace.compose(stack, project, 'down', '--timeout', '15')
+            workspace.compose(stack, project, 'down', '--remove-orphans', '--timeout', '15')
         write_files(root, generated(stack, value, raw, keyraw))
         workspace.compose(stack, project, 'up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '90')
         # Compose success alone is not the final health readback.
@@ -114,9 +114,10 @@ def recover(stack, project):
         write_json(root/'workspace.json', value)
         write_json(root/'compose.json', workspace.document(stack, value))
         write_files(root, {'nginx.conf':workspace.nginx(value).encode()})
-        workspace.compose(stack, project, 'down', '--timeout', '15')
+        workspace.compose(stack, project, 'down', '--remove-orphans', '--timeout', '15')
         write_files(root, files)
         if receipt['restart_previous']:
+            workspace.check_companions(stack, json.loads(files['workspace.json']))
             workspace.compose(stack, project, 'up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '90')
         receipt['status'] = 'rolled_back'; write_json(path, receipt)
         try: state = workspace.status(stack, project)

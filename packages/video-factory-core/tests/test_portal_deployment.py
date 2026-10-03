@@ -136,3 +136,16 @@ class PortalDeploymentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'DEPLOYMENT_ROLLED_BACK'):
                 workspace.apply(self.stack,value,self.cert,self.key)
         self.assertEqual(workspace.status(self.stack,'new_project')['status'],'not_configured')
+
+    def test_recovery_refuses_a_new_conflicting_entry_before_restarting_old(self):
+        from video_factory.workspace_deploy import recover
+        def fail_start(stack,project,*args,**kwargs):
+            if args[0]=='up': raise RuntimeFault('FIXTURE_START_FAILED')
+            return self.healthy_rows()
+        with patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(self.stack,'compose'), patch.object(workspace,'compose',side_effect=fail_start):
+            with self.assertRaisesRegex(RuntimeFault,'NEEDS_ATTENTION'):
+                workspace.apply(self.stack,self.value,self.oldcert,self.oldkey)
+        with patch.object(workspace,'compose',return_value=self.healthy_rows()) as command, patch.object(workspace,'check_companions',side_effect=RuntimeFault('PORTAL_STOP_CONFLICTING_WORKSPACE_FIRST')):
+            with self.assertRaisesRegex(RuntimeFault,'CONFLICTING'):recover(self.stack,self.project)
+            self.assertFalse(any(c.args[2]=='up' for c in command.call_args_list))
+        self.assertTrue(workspace.status(self.stack,self.project)['recovery_required'])
