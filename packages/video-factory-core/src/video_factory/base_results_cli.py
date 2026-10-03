@@ -1,0 +1,62 @@
+"""Private administrator entry; shares the existing setup and secret channel."""
+import getpass
+import json
+from pathlib import Path
+import sys
+
+from .onboarding import SessionStore
+from .runtime_store import RuntimeFault
+from .setup_admin import rpc
+from .stack import Stack
+from .setup_run import choice
+
+
+def register(commands):
+    parser = commands.add_parser('base-results', help='opt-in append-only Feishu result table')
+    parser.add_argument('action', choices=['enable', 'pause', 'status', 'sync'])
+    parser.add_argument('--stack-root', type=Path, required=True)
+    parser.add_argument('--session', type=Path, required=True)
+    parser.add_argument('--browser-input', action='store_true')
+    parser.add_argument('--input-port', type=int, default=8792)
+
+
+def welcome(args, read=input, hidden=getpass.getpass, write=print):
+    stack = Stack(args.stack_root); session = SessionStore(args.session).read()
+    project = session['configuration']['project']['id']
+    write('Video Factory · 飞书结果同步 · '+project)
+    opened = rpc(stack, {'action': 'open', 'session': session, 'password': hidden('产品管理员密码: ')})
+    token = opened['token']
+    def call(operation, expected=None):
+        return rpc(stack, {'action': 'base_results', 'token': token, 'session': session,
+                           'operation': operation, 'expected_plan': expected})
+    try:
+        if args.action != 'enable': return call(args.action)
+        write('在本项目绑定的 Base 中新增专用结果表，追加任务状态、脚本和视频附件。原始任务表不会改写。')
+        write('使用本项目自建飞书应用；请先把应用加入该 Base 并授予文档管理权限。员工登录权限不因此扩大。')
+        write('应用需开放表创建、字段读取、记录读取/创建和素材上传权限；不需要记录编辑或删除权限。')
+        prepared = call('plan')
+        write('目标 Base：'+prepared['plan']['context']['target']['base_token'])
+        write('后续由已启用的 n8n 调度自动推进；提交结果不明时暂停该条同步，不重复提交。')
+        if not choice('确认开启本项目结果同步', read, write): return {'status': 'unchanged'}
+        return call('enable', prepared['plan_sha256'])
+    finally: rpc(stack, {'action': 'close', 'token': token})
+
+
+def cli(args):
+    browser = None
+    try:
+        if args.browser_input:
+            from .setup_browser import BrowserInput
+            browser = BrowserInput(args.input_port)
+            print(json.dumps({'status': 'awaiting_human_input', 'url': browser.url, 'expires_in': 1800}), flush=True)
+            result = welcome(args, browser.read, browser.hidden, browser.write)
+        else:
+            if not all(stream.isatty() for stream in (sys.stdin, sys.stdout, sys.stderr)):
+                raise RuntimeFault('PRIVATE_INPUT_REQUIRED')
+            result = welcome(args)
+        print(json.dumps(result, ensure_ascii=False)); return 0
+    except (KeyboardInterrupt, EOFError): return 130
+    except Exception as error:
+        print(json.dumps({'error': str(error) if isinstance(error, RuntimeFault) else 'BASE_RESULTS_OPERATION_FAILED'})); return 2
+    finally:
+        if browser: browser.close()

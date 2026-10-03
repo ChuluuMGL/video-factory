@@ -76,6 +76,18 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
     return {'project':project,'task':selected['id'],'revision':selected['revision'],'result':result,'automatic_resubmit':False}
 
 
+def dispatch_with_results(store, token, project, master_key, media_root):
+    result = dispatch_one(store, token, project, master_key, media_root)
+    from .base_results import BaseResults
+    try:
+        result['base_results'] = BaseResults(store, master_key).sync(
+            project, media_root, lambda db: authorize(db, token, project))
+    except Exception:
+        # A Base outage must neither repeat a paid request nor erase its receipt.
+        result['base_results'] = {'status': 'attention_required', 'automatic_resubmit': False}
+    return result
+
+
 def template(project,credential_id):
     from .automation import template as queue_template
     value=queue_template(project,credential_id)
@@ -127,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             with self.server.store.connect() as db:authorize(db,token,self.server.project)
             acquired=self.server.busy.acquire(blocking=False)
             if not acquired:self.reply(200,{'status':'busy','provider_requests':0});return
-            result=dispatch_one(self.server.store,token,self.server.project,self.server.master_key,self.server.media_root)
+            result=dispatch_with_results(self.server.store,token,self.server.project,self.server.master_key,self.server.media_root)
             self.reply(200,result)
         except RuntimeFault as error:self.reply(403,{'error':str(error),'automatic_resubmit':False})
         except Exception:self.reply(409,{'error':'DISPATCH_INCOMPLETE_READ_TASK_STATUS','automatic_resubmit':False})
