@@ -55,6 +55,10 @@ class PortalTests(unittest.TestCase):
         a=self.request('/p/alpha/api/task',body)[1];b=self.request('/p/beta/api/task',body)[1]
         self.assertNotEqual(a['input']['script'],b['input']['script'])
         status,plan,_=self.prepare('alpha');self.assertEqual(status,200)
+        original=dict(self.f.f.fields);self.f.f.fields['script']='Other project script'
+        beta_status,beta_plan,_=self.prepare('beta');self.assertEqual(beta_status,200)
+        self.f.f.fields=original
+        self.assertNotEqual(beta_plan['plan_sha256'],plan['plan_sha256'])
         self.assertEqual(self.request('/p/beta/api/commit',{'plan_sha256':plan['plan_sha256']})[1]['error'],'REVIEW_PLAN_REQUIRED')
         # A second tab reading another project does not replace the first tab's scope.
         self.request('/p/beta/api/tasks')

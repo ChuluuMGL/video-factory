@@ -44,6 +44,22 @@ def smoke(stack,root,session):
         compose(stack,'fs_brand','restart','workspace')
         compose(stack,'fs_brand','up','-d','--wait','--wait-timeout','90')
         assert request('/api/session')[0]==200
+        # Add a second synthetic project in the real PostgreSQL stack, then
+        # migrate the existing single entry to a portal without a second edge.
+        stack.compose('exec','-T','runtime','python','-c',"""
+from video_factory.runtime_cli import selected_store
+from video_factory.feishu_bridge import meta,save
+s=selected_store()('/state');a=s.login('admin','cloud-stack-fixture-password')['token']
+s.put_project(a,'fs_secondary',{'video_route':'deferred','credential_ref':'secret:fixture','billing_owner':'fixture'})
+with s.connect() as db:
+    for prefix in ('setup:feishu-app:','feishu:binding:'):
+        save(db,prefix+'fs_secondary',meta(db,prefix+'fs_brand'))
+""")
+        value=plan(stack,'fs_brand','https://localhost:'+str(port),c,k,['fs_brand','fs_secondary'])
+        assert apply(stack,value,c,k)['status']=='running'
+        info=json.loads(request('/api/session')[1]);assert info['portal'] and info['project']==''
+        assert request('/api/projects')[0]==401 and request('/p/fs_secondary/api/tasks')[0]==401
+        assert len(status(stack,'fs_brand')['components'])==5
         # Exercise the actual installed n8n HTTP node against the persistent
         # executor. The fixture has no newly approved paid tasks.
         from video_factory.dispatch import template
@@ -113,12 +129,13 @@ def smoke(stack,root,session):
         recovered=Stack.restore(backup,restored,backup_key)
         pointer=restored/'data/workspaces/fs_brand/tls/current'
         assert pointer.is_symlink() and pointer.readlink().as_posix()==current
+        assert json.loads((restored/'data/workspaces/fs_brand/workspace.json').read_text())['projects']==['fs_brand','fs_secondary']
         assert (pointer/'key.pem').read_bytes()==nextkey.read_bytes()
         assert (pointer/'certificate.pem').read_bytes()==nextcert.read_bytes()
         try:status(recovered,'fs_brand')
         except RuntimeFault as e:assert str(e)=='WORKSPACE_REAPPLY_AFTER_STACK_CHANGE'
         else:raise AssertionError('STALE_COMPANION_STARTED_AFTER_RESTORE')
-        return {'status':'PASS','https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','live_certificate_rotation':'PASS','live_certificate_rollback':'PASS','no_component_restart_on_rotation':True,'generation_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
+        return {'status':'PASS','multi_project_manifest_restore':True,'single_edge_two_executors':True,'https_certificate_verified':True,'secure_cookie':True,'anonymous_and_bad_host_denied':True,'container_restart':'PASS','cold_backup_stops_ingress':'PASS','certificate_restore':'PASS','live_certificate_rotation':'PASS','live_certificate_rollback':'PASS','no_component_restart_on_rotation':True,'generation_restore':'PASS','n8n_approved_dispatch':'PASS','guided_scheduler_publish_renew_disable':'PASS','human_acceptance':'not_run'}
     except Exception:
         try:print('SERVICE_LOGS_OMITTED_FROM_CI_EVIDENCE',file=__import__('sys').stderr)
         except Exception:pass

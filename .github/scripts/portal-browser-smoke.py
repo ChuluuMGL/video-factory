@@ -55,6 +55,7 @@ with tempfile.TemporaryDirectory() as tmp:
             assert held
             other.select_option('#project-select','beta');expect(other.locator('#tasks button')).to_have_count(1)
             held.pop().fulfill(status=200,content_type='application/json',body=json.dumps({'items':[{'id':'STALE_ALPHA','revision':1,'state':'failed'}],'skus':[],'can_import':True,'has_more':False}))
+            expect(other.locator('#refresh')).to_be_enabled()
             expect(other.locator('#tasks')).not_to_contain_text('STALE_ALPHA')
             other.unroute('**/p/alpha/api/tasks')
             # Real H264 playback uses an explicitly project-scoped media request.
