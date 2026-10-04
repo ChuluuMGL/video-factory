@@ -152,12 +152,17 @@ def served_leaf(value, expected):
     parsed = urlsplit(value['origin'])
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False; context.verify_mode = ssl.CERT_NONE
-    for _ in range(15):
+    # During a graceful reload, a retiring worker can briefly serve the old
+    # leaf. One matching handshake can therefore falsely confirm a rollback.
+    # Require a stable sequence of fresh connections, resetting on any mismatch.
+    matched=0
+    for _ in range(25):
         try:
             with socket.create_connection(('127.0.0.1', parsed.port or 443), timeout=2) as connection:
                 with context.wrap_socket(connection, server_hostname=parsed.hostname) as stream:
-                    if hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest() == expected: return True
-        except (OSError, ssl.SSLError): pass
+                    matched=matched+1 if hashlib.sha256(stream.getpeercert(binary_form=True)).hexdigest()==expected else 0
+                    if matched>=5: return True
+        except (OSError, ssl.SSLError): matched=0
         time.sleep(.2)
     return False
 

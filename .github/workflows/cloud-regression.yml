@@ -115,6 +115,7 @@ jobs:
           vfctl base-results --help
           sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_tls.py' -v
           sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_workspace_acme.py' -v
+          sudo "$(command -v python)" .github/scripts/nginx-tls-smoke.py
           VF_CI_SCRIPT
   workspace-acme:
     name: Real Certbot HTTP-01 against isolated test CA

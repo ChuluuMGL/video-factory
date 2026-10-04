@@ -98,6 +98,17 @@ class WorkspaceTLSTests(unittest.TestCase):
         self.assertNotIn('PRIVATE KEY', json.dumps(result))
         self.assertNotIn('PRIVATE KEY', json.dumps(tls.status(self.stack, self.project)))
 
+    def test_leaf_readback_requires_stable_fresh_connections(self):
+        from unittest.mock import MagicMock
+        context=MagicMock();stream=context.wrap_socket.return_value.__enter__.return_value
+        stream.getpeercert.side_effect=[b'expected',b'old',*([b'expected']*5)]
+        with patch.object(tls.ssl,'SSLContext',return_value=context),patch.object(tls.socket,'create_connection'),patch.object(tls.time,'sleep'):
+            self.assertTrue(tls.served_leaf(self.value,hashlib.sha256(b'expected').hexdigest()))
+        self.assertEqual(stream.getpeercert.call_count,7)
+        stream.getpeercert.reset_mock();stream.getpeercert.side_effect=[b'expected',b'old']*13
+        with patch.object(tls.ssl,'SSLContext',return_value=context),patch.object(tls.socket,'create_connection'),patch.object(tls.time,'sleep'):
+            self.assertFalse(tls.served_leaf(self.value,hashlib.sha256(b'expected').hexdigest()))
+
     def test_rotated_generation_survives_cold_backup_restore(self):
         from cryptography.fernet import Fernet
         from video_factory.stack import Stack
