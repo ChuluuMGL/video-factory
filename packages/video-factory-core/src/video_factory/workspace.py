@@ -195,8 +195,9 @@ def project_status(stack, project):
     if len(matches)>1: raise RuntimeFault('WORKSPACE_PROJECT_ENTRY_AMBIGUOUS')
     if not matches: return {'status':'not_configured','project':project}
     value,state=matches[0]
-    return {**state,'project':project,'entry_project':value['project'],
-            'url':value['origin']+('/p/'+project+'/' if 'projects' in value else '')}
+    # /p/<project>/ is an API/media namespace, not an HTML landing route.
+    # The portal homepage lists the projects authorized for the real identity.
+    return {**state,'project':project,'entry_project':value['project'],'url':value['origin']}
 
 
 def running_entries(stack):

@@ -160,9 +160,9 @@ class PortalDeploymentTests(unittest.TestCase):
         with patch.object(workspace,'compose',side_effect=execute):
             state=workspace.project_status(self.stack,'second_project')
         self.assertEqual(state['entry_project'],self.project)
-        self.assertEqual(state['url'],self.value['origin']+'/p/second_project/')
+        self.assertEqual(state['url'],self.value['origin'])
 
-    def test_secondary_project_setup_reaches_schedule_and_returns_scoped_url(self):
+    def test_secondary_project_setup_reaches_schedule_and_returns_portal_url(self):
         from types import SimpleNamespace
         from video_factory import production_setup as setup
         self.portal();session={'configuration':{'project':{'id':'second_project'}}}
@@ -170,7 +170,7 @@ class PortalDeploymentTests(unittest.TestCase):
         with patch.object(setup,'Stack',return_value=self.stack), patch.object(setup,'SessionStore') as sessions, patch.object(setup,'rpc',return_value={'token':'fixture'}), patch.object(setup,'choice',side_effect=lambda *a:next(answer)), patch.object(setup,'schedule',return_value={'status':'imported_disabled','expires_at':123}) as schedule, patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(workspace,'compose',return_value=self.healthy_rows(self.portal())), patch('video_factory.maintenance.alerts',return_value=[]):
             sessions.return_value.read.return_value=session
             result=setup.welcome(SimpleNamespace(stack_root=self.stack.root,session=self.parent/'session'),hidden=lambda _: 'fixture',write=lambda _:None)
-        self.assertEqual(result['workspace_url'],self.value['origin']+'/p/second_project/')
+        self.assertEqual(result['workspace_url'],self.value['origin'])
         self.assertEqual(schedule.call_args.args[1],session)
 
     def test_ambiguous_or_recovering_portal_does_not_configure_schedule(self):
