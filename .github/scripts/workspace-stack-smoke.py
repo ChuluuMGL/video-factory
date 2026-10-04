@@ -79,6 +79,16 @@ with s.connect() as db:
         info=json.loads(request('/api/session')[1]);assert info['portal'] and info['project']==''
         assert request('/api/projects')[0]==401 and request('/p/fs_secondary/api/tasks')[0]==401
         assert len(status(stack,'fs_brand')['components'])==5
+        # A full stack upgrade stops public companions during its cold backup.
+        # Force failure after that real shutdown and verify the previous portal
+        # is brought back as well as PostgreSQL/n8n/runtime.
+        failed_root=root/'workspace-upgrade-failed';failed_root.mkdir(mode=0o700)
+        from cryptography.fernet import Fernet
+        with patch.object(Stack,'restore',side_effect=RuntimeFault('FIXTURE_AFTER_COLD_BACKUP')):
+            rollback=stack.upgrade(failed_root,stack.root/'release/wheels',root/'workspace-upgrade-checkpoint.vfb',Fernet.generate_key())
+        assert rollback['status']=='rolled_back' and rollback['workspaces_resumed']==['fs_brand'],rollback
+        assert request('/api/session')[0]==200 and json.loads(request('/api/session')[1])['portal']
+        assert len(status(stack,'fs_brand')['components'])==5
         # Exercise the actual installed n8n HTTP node against the persistent
         # executor. The fixture has no newly approved paid tasks.
         from video_factory.dispatch import template

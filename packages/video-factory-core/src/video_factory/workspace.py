@@ -23,7 +23,7 @@ from .workspace_http import origin
 
 def register(commands):
     p = commands.add_parser('workspace', help='persistent HTTPS employee workspace, separate from administrator access')
-    p.add_argument('action', choices=['plan','apply','status','stop','recover'])
+    p.add_argument('action', choices=['plan','apply','status','stop','recover','resume'])
     p.add_argument('--stack-root', type=Path, required=True)
     p.add_argument('--project', required=True)
     p.add_argument('--origin')
@@ -169,6 +169,65 @@ def stop_all(stack):
                 compose(stack,path.name,'down','--timeout','15')
 
 
+def entries(stack):
+    """Read only entries belonging to this stack; restored copies need reapply."""
+    base=stack.root/'data/workspaces'
+    if not base.exists(): return
+    for path in sorted(base.iterdir()):
+        if not (path/'workspace.json').exists(): continue
+        if path.resolve()!=path: raise RuntimeFault('WORKSPACE_DIRECTORY_UNSAFE')
+        private_file(path/'workspace.json')
+        value=json.loads((path/'workspace.json').read_text())
+        if value['project']!=path.name: raise RuntimeFault('WORKSPACE_DIRECTORY_UNSAFE')
+        if value['stack_instance']==stack.config['instance']: yield value
+
+
+def project_status(stack, project):
+    """Find a project's live entry, including a portal owned by another project."""
+    identifier(project); matches=[]
+    for value in entries(stack):
+        if project not in value.get('projects',[value['project']]): continue
+        state=status(stack,value['project'])
+        if state.get('recovery_required'): raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
+        if state['status']=='running': matches.append((value,state))
+        elif any(row['State'] not in ('exited','dead','created') for row in state.get('components',[])):
+            raise RuntimeFault('WORKSPACE_PROJECT_ENTRY_UNHEALTHY')
+    if len(matches)>1: raise RuntimeFault('WORKSPACE_PROJECT_ENTRY_AMBIGUOUS')
+    if not matches: return {'status':'not_configured','project':project}
+    value,state=matches[0]
+    return {**state,'project':project,'entry_project':value['project'],
+            'url':value['origin']+('/p/'+project+'/' if 'projects' in value else '')}
+
+
+def running_entries(stack):
+    selected=[]
+    for value in entries(stack):
+        state=status(stack,value['project'])
+        if state.get('recovery_required'): raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
+        if any(row['State'] not in ('exited','dead','created') for row in state.get('components',[])):
+            selected.append(value)
+    return selected
+
+
+def resume_entries(stack, selected):
+    from . import workspace_tls as tls
+    resumed=[]
+    for value in selected:
+        project=value['project']; root=directory(stack,project)
+        private_file(root/'workspace.json')
+        if json.loads((root/'workspace.json').read_text())!=value:
+            raise RuntimeFault('WORKSPACE_RESUME_CONFIGURATION_CHANGED')
+        tls.current(stack,project)  # Reject unresolved deployment recovery.
+        if tls.status(stack,project).get('recovery_required'): raise RuntimeFault('TLS_RECOVERY_REQUIRED')
+        check_companions(stack,value)
+        compose(stack,project,'up','-d','--pull','never','--wait','--wait-timeout','90')
+        raw,_=tls.pair(root,value)
+        if status(stack,project)['status']!='running' or not tls.served_leaf(value,tls.describe(raw)['leaf_sha256']):
+            raise RuntimeFault('WORKSPACE_RESUME_UNHEALTHY')
+        resumed.append(project)
+    return resumed
+
+
 def check_companions(stack, value):
     """Never run two project dispatchers or bind a second edge to the same port."""
     base=stack.root/'data/workspaces'
@@ -242,6 +301,11 @@ def cli(args):
             elif args.action=='recover':
                 from .workspace_deploy import recover
                 result=recover(stack,args.project)
+            elif args.action=='resume':
+                if not stack.status()['infrastructure_ready']: raise RuntimeFault('WORKSPACE_HEALTHY_STACK_REQUIRED')
+                path=directory(stack,args.project)/'workspace.json';private_file(path)
+                resumed=resume_entries(stack,[json.loads(path.read_text())])
+                result={'status':'resumed','workspaces':resumed,'https_external_readback':'required'}
             elif args.action=='stop':
                 compose(stack,args.project,'down','--timeout','15');result={'status':'stopped','project':args.project}
             else: result=status(stack,args.project)

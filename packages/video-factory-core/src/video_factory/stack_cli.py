@@ -14,7 +14,7 @@ from .stack import Stack, images, run, preflight, admin_host, local_engine, writ
 
 def register_stack(commands):
     p=commands.add_parser('stack',help='pinned runtime + n8n + PostgreSQL container deployment')
-    p.add_argument('action',choices=('export-images','install','preflight','prepare','fetch','build','up','status','stop','down','keygen','backup','restore','upgrade'))
+    p.add_argument('action',choices=('export-images','install','preflight','prepare','fetch','build','up','status','doctor','stop','down','keygen','backup','restore','upgrade'))
     p.add_argument('--root',type=Path,required=True)
     image_bundle.add_arguments(p)
     p.add_argument('--deployment')
@@ -116,6 +116,9 @@ def run_stack(args):
             elif args.action=='build':result=stack.build()
             elif args.action=='up':result=stack.up()
             elif args.action=='status':result=stack.status()
+            elif args.action=='doctor':
+                from .maintenance import doctor
+                result=doctor(stack)
             elif args.action=='stop':result=stack.stop()
             elif args.action=='down':
                 with stack.lock():stack.compose('down','--timeout','60',timeout=200)

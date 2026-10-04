@@ -17,6 +17,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  maintenance:
+    name: Maintenance backup and rollback checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Verify large backup compatibility and failed upgrade recovery
+        run: |
+          python3 .github/scripts/safe-ci.py maintenance-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_stack_lifecycle.py' -v
+          sudo unshare --net -- "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_maintenance.py' -v
+          VF_CI_SCRIPT
   project-portal:
     name: Multi-project authorization and two-tab browser checks
     runs-on: ubuntu-24.04
@@ -203,7 +222,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal]
+    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal, maintenance]
     permissions:
       contents: write
     runs-on: ubuntu-24.04

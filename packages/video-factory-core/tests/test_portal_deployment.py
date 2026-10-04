@@ -149,3 +149,47 @@ class PortalDeploymentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'CONFLICTING'):recover(self.stack,self.project)
             self.assertFalse(any(c.args[2]=='up' for c in command.call_args_list))
         self.assertTrue(workspace.status(self.stack,self.project)['recovery_required'])
+
+
+    def test_secondary_project_resolves_live_portal_despite_stopped_old_entry(self):
+        self.portal()
+        other=workspace.directory(self.stack,'second_project');other.mkdir(mode=0o700)
+        write_json(other/'workspace.json',dict(self.value,project='second_project',origin='https://old.example:9444'))
+        def execute(stack,project,*args,**kwargs):
+            return b'[]' if project=='second_project' else self.healthy_rows(self.portal())
+        with patch.object(workspace,'compose',side_effect=execute):
+            state=workspace.project_status(self.stack,'second_project')
+        self.assertEqual(state['entry_project'],self.project)
+        self.assertEqual(state['url'],self.value['origin']+'/p/second_project/')
+
+    def test_secondary_project_setup_reaches_schedule_and_returns_scoped_url(self):
+        from types import SimpleNamespace
+        from video_factory import production_setup as setup
+        self.portal();session={'configuration':{'project':{'id':'second_project'}}}
+        answer=iter([False,False,True,False])
+        with patch.object(setup,'Stack',return_value=self.stack), patch.object(setup,'SessionStore') as sessions, patch.object(setup,'rpc',return_value={'token':'fixture'}), patch.object(setup,'choice',side_effect=lambda *a:next(answer)), patch.object(setup,'schedule',return_value={'status':'imported_disabled','expires_at':123}) as schedule, patch.object(self.stack,'status',return_value={'infrastructure_ready':True}), patch.object(workspace,'compose',return_value=self.healthy_rows(self.portal())), patch('video_factory.maintenance.alerts',return_value=[]):
+            sessions.return_value.read.return_value=session
+            result=setup.welcome(SimpleNamespace(stack_root=self.stack.root,session=self.parent/'session'),hidden=lambda _: 'fixture',write=lambda _:None)
+        self.assertEqual(result['workspace_url'],self.value['origin']+'/p/second_project/')
+        self.assertEqual(schedule.call_args.args[1],session)
+
+    def test_ambiguous_or_recovering_portal_does_not_configure_schedule(self):
+        self.portal();other=workspace.directory(self.stack,'second_project');other.mkdir(mode=0o700)
+        write_json(other/'workspace.json',dict(self.value,project='second_project'))
+        with patch.object(workspace,'status',return_value={'status':'running','url':self.value['origin']}):
+            with self.assertRaisesRegex(RuntimeFault,'AMBIGUOUS'):workspace.project_status(self.stack,'second_project')
+        with patch.object(workspace,'status',return_value={'status':'needs_attention','recovery_required':True}):
+            with self.assertRaisesRegex(RuntimeFault,'RECOVERY_REQUIRED'):workspace.project_status(self.stack,'second_project')
+
+    def test_upgrade_entry_resume_keeps_stopped_entries_stopped_and_checks_https(self):
+        self.portal();other=workspace.directory(self.stack,'stopped_project');other.mkdir(mode=0o700)
+        write_json(other/'workspace.json',dict(self.value,project='stopped_project',origin='https://other.example:9445'))
+        def state(stack,project):
+            return {'status':'running' if project==self.project else 'incomplete','components':[{'State':'running'}] if project==self.project else []}
+        with patch.object(workspace,'status',side_effect=state), patch.object(workspace,'compose') as command, patch.object(workspace,'check_companions'), patch.object(workspace_tls,'status',return_value={}), patch.object(workspace_tls,'served_leaf',return_value=True) as https:
+            selected=workspace.running_entries(self.stack)
+            self.assertEqual(workspace.resume_entries(self.stack,selected),[self.project])
+            self.assertTrue(all(c.args[1]==self.project for c in command.call_args_list))
+            https.assert_called_once()
+        with patch.object(workspace,'compose'), patch.object(workspace,'check_companions'), patch.object(workspace,'status',side_effect=state), patch.object(workspace_tls,'status',return_value={}), patch.object(workspace_tls,'served_leaf',return_value=False):
+            with self.assertRaisesRegex(RuntimeFault,'RESUME_UNHEALTHY'):workspace.resume_entries(self.stack,selected)

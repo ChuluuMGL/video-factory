@@ -27,8 +27,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from .runtime_store import RuntimeFault, canonical, exclusive_write, private_directory, private_file
 
 ASSETS = Path(__file__).with_name('deployment')
-MAX_ARCHIVE = 256 * 1024 * 1024
-MAX_UNPACKED = 1024 * 1024 * 1024
+MAX_ARCHIVE = 34 * 1024 * 1024 * 1024
+MAX_UNPACKED = 32 * 1024 * 1024 * 1024
 
 
 def tls_generation_link(name, target):
@@ -407,6 +407,10 @@ class Stack:
         private_directory(destination.parent)
         if destination.exists() or destination.is_symlink() or destination.is_relative_to(self.root):
             raise RuntimeFault('BACKUP_REQUIRES_NEW_PATH_OUTSIDE_STACK')
+        from .backup_inventory import inventory
+        from .backup_stream import require_space, encrypted_output
+        _,_,required=inventory(self.root,MAX_UNPACKED,MAX_ARCHIVE)
+        require_space(destination.parent,required)
         from .workspace import stop_all
         stop_all(self)
         # Explicit cold backup; services deliberately remain stopped afterward.
@@ -416,37 +420,13 @@ class Stack:
             raise RuntimeFault('BACKUP_REQUIRES_STOPPED_COMPONENTS')
         if components.get('postgres',{}).get('state')!='exited' or components['postgres'].get('exit_code')!=0:
             raise RuntimeFault('BACKUP_REQUIRES_CLEAN_POSTGRES_SHUTDOWN')
-        selected=[self.root/'stack.json',self.root/'initialized.json',self.root/'release',self.root/'secrets',self.root/'data']
-        total=0
-        buffer=io.BytesIO()
-        with tarfile.open(fileobj=buffer,mode='w:gz') as archive:
-            for parent in selected:
-                if not parent.exists():
-                    raise RuntimeFault('BACKUP_COMPONENT_MISSING')
-                for path in [parent]+(sorted(parent.rglob('*')) if parent.is_dir() else []):
-                    info=path.lstat()
-                    link = stat.S_ISLNK(info.st_mode)
-                    if link:
-                        target = os.readlink(path)
-                        if (not tls_generation_link(path.relative_to(self.root).as_posix(), target)
-                                or (path.parent/target).resolve() != path.parent/target
-                                or not (path.parent/target).is_dir()):
-                            raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
-                        for name in ('certificate.pem', 'key.pem'):
-                            part = (path.parent/target/name).lstat()
-                            if not stat.S_ISREG(part.st_mode) or part.st_nlink != 1:
-                                raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
-                    if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode) or link) or (stat.S_ISREG(info.st_mode) and info.st_nlink!=1):
-                        raise RuntimeFault('BACKUP_SPECIAL_FILE_REJECTED')
-                    total+=info.st_size
-                    if total>MAX_UNPACKED:
-                        raise RuntimeFault('BACKUP_TOO_LARGE')
-                    archive.add(path,arcname=str(path.relative_to(self.root)),recursive=False)
-                    if buffer.tell()>MAX_ARCHIVE:
-                        raise RuntimeFault('BACKUP_TOO_LARGE')
-        encrypted=Fernet(key).encrypt(buffer.getvalue())
-        exclusive_write(destination,encrypted)
-        return {'backup':str(destination),'sha256':digest(encrypted),'encrypted':True,'components_stopped':True,
+        paths,total,required=inventory(self.root,MAX_UNPACKED,MAX_ARCHIVE)
+        require_space(destination.parent,required)
+        with encrypted_output(destination,key,MAX_ARCHIVE) as output:
+            with tarfile.open(fileobj=output,mode='w|gz') as archive:
+                for path in paths:archive.add(path,arcname=str(path.relative_to(self.root)),recursive=False)
+        return {'backup':str(destination),'sha256':output.hash.hexdigest(),'encrypted':True,'components_stopped':True,
+                'format':'v2-streaming-aes256gcm','unpacked_bytes':total,'restore_requires':'0.1.0a32-or-newer',
                 'includes':['postgres_databases','runtime_state','n8n_state','media','secret_keys','release_wheels'],
                 'backup_key_included':False,'portability':'same_pinned_images_linux_amd64'}
 
@@ -473,6 +453,8 @@ class Stack:
         with self.lock():
             if not self.status()['infrastructure_ready']:
                 raise RuntimeFault('UPGRADE_REQUIRES_HEALTHY_SOURCE')
+            from .workspace import running_entries, resume_entries
+            previous_entries=running_entries(self)
             try:
                 self._backup_unlocked(checkpoint,key)
                 candidate=Stack.restore(checkpoint,candidate_root,key)
@@ -502,19 +484,24 @@ class Stack:
                 if not status['infrastructure_ready']:
                     raise RuntimeFault('UPGRADE_CANDIDATE_NOT_HEALTHY')
                 return {'status':'upgraded','active_root':str(candidate_root),'previous_root':str(self.root),
-                        'checkpoint':str(checkpoint),'previous_data_preserved':True,'candidate':status}
+                        'checkpoint':str(checkpoint),'previous_data_preserved':True,'candidate':status,
+                        'workspace_reapply_required':[v['project'] for v in previous_entries]}
             except Exception:
                 if candidate is not None:
                     try:candidate.compose('down','--timeout','30',timeout=120)
-                    except RuntimeFault:pass
+                    except RuntimeFault:
+                        return {'status':'needs_attention','error':'UPGRADE_CANDIDATE_STOP_UNCONFIRMED',
+                                'previous_root':str(self.root),'checkpoint':str(checkpoint)}
                 try:
                     restored=self._up_unlocked()
+                    if not restored['infrastructure_ready']: raise RuntimeFault('UPGRADE_ORIGINAL_UNHEALTHY')
+                    resumed=resume_entries(self,previous_entries)
                 except Exception:
                     return {'status':'needs_attention','error':'UPGRADE_AND_ROLLBACK_FAILED',
                             'previous_root':str(self.root),'checkpoint':str(checkpoint)}
                 return {'status':'rolled_back' if restored['infrastructure_ready'] else 'needs_attention',
                         'error':'UPGRADE_FAILED','active_root':str(self.root),'checkpoint':str(checkpoint),
-                        'previous_data_preserved':True,'original':restored}
+                        'previous_data_preserved':True,'original':restored,'workspaces_resumed':resumed}
 
     @classmethod
     def restore(cls,source,root,key,*,deployment=None,runtime_port=None,n8n_port=None):
@@ -523,17 +510,15 @@ class Stack:
         root=private_directory(root)
         if any(root.iterdir()):
             raise RuntimeFault('RESTORE_REQUIRES_EMPTY_DIRECTORY')
-        if source.stat().st_size>MAX_ARCHIVE*2:
-            raise RuntimeFault('BACKUP_TOO_LARGE')
-        try:
-            raw=Fernet(key).decrypt(source.read_bytes())
-        except (InvalidToken,ValueError,TypeError):
-            raise RuntimeFault('BACKUP_AUTHENTICATION_FAILED') from None
-        if len(raw)>MAX_ARCHIVE:
-            raise RuntimeFault('BACKUP_TOO_LARGE')
-        # Validate all members before writing; never use tar.extractall().
-        with tarfile.open(fileobj=io.BytesIO(raw),mode='r:gz') as archive:
-            members=archive.getmembers();seen=set();total=0
+        from .backup_stream import decrypted_archive, require_space
+        # Authenticate the whole archive before parsing or extracting any member.
+        with decrypted_archive(source,key,root.parent,MAX_ARCHIVE) as raw, tarfile.open(fileobj=raw,mode='r:gz') as archive:
+            members=[];seen=set();total=0
+            for member in archive:
+                members.append(member)
+                total+=member.size
+                if total>MAX_UNPACKED or len(members)>100000: raise RuntimeFault('BACKUP_TOO_LARGE')
+            total=0
             for member in members:
                 path=PurePosixPath(member.name)
                 if (path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] not in {'stack.json','initialized.json','release','secrets','data'}
@@ -543,6 +528,7 @@ class Stack:
                 seen.add(member.name);total+=member.size
                 if total>MAX_UNPACKED or len(members)>100000:
                     raise RuntimeFault('BACKUP_TOO_LARGE')
+            require_space(root,total+len(members)*8192)
             indexed = {member.name: member for member in members}
             links = [member for member in members if member.issym()]
             for member in links:
@@ -552,6 +538,7 @@ class Stack:
                         or any(target+'/'+name not in indexed or not indexed[target+'/'+name].isfile()
                                for name in ('certificate.pem', 'key.pem'))):
                     raise RuntimeFault('BACKUP_MEMBER_UNSAFE')
+            if archive.getmember('stack.json').size>128*1024: raise RuntimeFault('BACKUP_MEMBER_UNSAFE')
             config=json.load(archive.extractfile('stack.json'));validate_config(config)
             # Deployment identity is immutable; use a new compose name through the
             # explicit clone option only, preserving product ledger identity.
@@ -566,8 +553,9 @@ class Stack:
                     path.mkdir(mode=0o700,exist_ok=True)
                 else:
                     path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-                    with archive.extractfile(member) as stream:
-                        exclusive_write(path,stream.read())
+                    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    with os.fdopen(fd,'wb') as output, archive.extractfile(member) as stream:
+                        shutil.copyfileobj(stream,output,length=1024*1024)
                 path.chmod(member.mode & 0o777);os.chown(path,member.uid,member.gid)
             # All regular members are validated and written before any link exists.
             for member in links:

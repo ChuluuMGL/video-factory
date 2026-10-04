@@ -14,7 +14,7 @@ from .stack import Stack,write_json
 from .setup_admin import rpc
 from .setup_run import choice
 from .dispatch import template
-from .workspace import status as workspace_status
+from .workspace import project_status as workspace_status
 
 
 def register(commands):
@@ -89,6 +89,9 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
         opened=rpc(stack,{'action':'open','session':session,'password':hidden('产品管理员密码: ')})
     token=opened['token']
     try:
+        from .maintenance import alerts
+        with stack.lock():notices=alerts(stack)
+        for notice in notices:write('维护提醒：'+notice['message']+' '+notice['next_step'])
         if choice('配置或更换本项目脚本 API Key',read,write):
             secret=hidden('DeepSeek API Key（隐藏输入）: ')
             billing=read('本客户费用账户标签> ').strip()
