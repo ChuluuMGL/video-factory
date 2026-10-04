@@ -426,7 +426,7 @@ class Stack:
             with tarfile.open(fileobj=output,mode='w|gz') as archive:
                 for path in paths:archive.add(path,arcname=str(path.relative_to(self.root)),recursive=False)
         return {'backup':str(destination),'sha256':output.hash.hexdigest(),'encrypted':True,'components_stopped':True,
-                'format':'v2-streaming-aes256gcm','unpacked_bytes':total,'restore_requires':'0.1.0a32-or-newer',
+                'format':'v2-streaming-aes256gcm','unpacked_bytes':total,'restore_requires':'backup-v2-aes256gcm-hkdf',
                 'includes':['postgres_databases','runtime_state','n8n_state','media','secret_keys','release_wheels'],
                 'backup_key_included':False,'portability':'same_pinned_images_linux_amd64'}
 

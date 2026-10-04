@@ -28,6 +28,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertTrue({'TLS_EXPIRED','TLS_RENEWAL_FAILED','TLS_TIMER_INACTIVE','SCHEDULE_EXPIRED'}<=codes)
         self.assertNotIn('private-provider-payload',str(result))
         self.assertFalse(result['external_notifications'])
+        self.assertEqual(result['backup_capabilities']['restore'],'backup-v2-aes256gcm-hkdf')
 
     def test_recovery_and_failed_inspection_are_not_reported_healthy(self):
         for state in ({'status':'needs_attention','recovery_required':True},RuntimeError('private content')):

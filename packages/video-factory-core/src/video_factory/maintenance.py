@@ -55,6 +55,7 @@ def alerts(stack):
 
 
 def doctor(stack):
+    from .stack import MAX_ARCHIVE, MAX_UNPACKED
     with stack.lock():
         found=alerts(stack)
         try: healthy=stack.status()['infrastructure_ready']
@@ -63,4 +64,6 @@ def doctor(stack):
             found.insert(0,{'code':'STACK_NOT_READY','severity':'critical','project':None,
                             'message':'基础服务未通过健康检查。','next_step':'先读取 stack status，核对是否为计划停机。'})
         return {'status':'needs_attention' if found else 'no_alerts','alerts':found,
+                'backup_capabilities':{'restore':'backup-v2-aes256gcm-hkdf','read_formats':['v1-fernet','v2-streaming-aes256gcm'],
+                                       'write_format':'v2-streaming-aes256gcm','max_archive_bytes':MAX_ARCHIVE,'max_unpacked_bytes':MAX_UNPACKED},
                 'delivery':'local_operator_only','external_notifications':False,'human_acceptance':'not_run'}
