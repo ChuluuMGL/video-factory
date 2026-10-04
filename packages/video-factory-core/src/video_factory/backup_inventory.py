@@ -1,6 +1,7 @@
 """Validate a cold-backup inventory before stopping customer services."""
 import os
 import stat
+from itertools import chain
 
 from .runtime_store import RuntimeFault
 
@@ -11,7 +12,7 @@ def inventory(root, max_unpacked, max_archive):
     paths=[];total=0;bound=10240
     for parent in selected:
         if not parent.exists(): raise RuntimeFault('BACKUP_COMPONENT_MISSING')
-        for path in [parent]+(sorted(parent.rglob('*')) if parent.is_dir() else []):
+        for path in chain((parent,),parent.rglob('*') if parent.is_dir() else ()):
             info=path.lstat();link=stat.S_ISLNK(info.st_mode)
             if link:
                 target=os.readlink(path)

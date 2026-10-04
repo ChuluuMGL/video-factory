@@ -91,7 +91,7 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
     try:
         from .maintenance import alerts
         with stack.lock():notices=alerts(stack)
-        for notice in notices:write('维护提醒：'+notice['message']+' '+notice['next_step'])
+        for notice in notices:write('维护提醒 ['+(notice.get('project') or '服务器')+']：'+notice['message']+' '+notice['next_step'])
         if choice('配置或更换本项目脚本 API Key',read,write):
             secret=hidden('DeepSeek API Key（隐藏输入）: ')
             billing=read('本客户费用账户标签> ').strip()
