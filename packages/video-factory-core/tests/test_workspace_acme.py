@@ -31,7 +31,7 @@ class ACMETests(unittest.TestCase):
         for name,source in [('fullchain',self.cert),('privkey',self.key)]:
             target=archive/(name+'1.pem');target.write_bytes(source.read_bytes());target.chmod(0o600)
             (live/(name+'.pem')).symlink_to('../../archive/workspace/'+target.name)
-        accounts=config/'accounts/fixture/directory/account';accounts.mkdir(parents=True)
+        accounts=config/'accounts/fixture/directory/account';accounts.mkdir(parents=True,exist_ok=True)
         (accounts/'meta.json').write_text('{"fixture":true}')
         return b''
 
