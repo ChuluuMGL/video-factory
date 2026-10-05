@@ -208,12 +208,14 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
             secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
         assert 'installed_credentials_saved' in transcript
         fourth=Stack(setup_root);stacks.append(fourth)
-        # Same command resumes without replaying questions or reentering the key.
-        resumed=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
+        # A short password re-prompts privately; resume retains saved configuration.
+        resumed=drive(wizard,[('确认在这台机器安装或继续','y'),('原产品管理员密码（14–256 位）: ','too-short'),
+            ('原产品管理员密码（14–256 位）: ','cloud-stack-fixture-password'),
             ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y')],
-            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
+            secrets=('too-short','cloud-stack-fixture-password','synthetic-wizard-secret'))
         assert 'connection_confirmation_pending' in resumed and '请打开本次私有入口' in resumed
-        interrupted=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
+        assert '尚未提交认证。请重新输入' in resumed
+        interrupted=drive(wizard,[('确认在这台机器安装或继续','y'),('原产品管理员密码（14–256 位）: ','cloud-stack-fixture-password'),
             ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y'),('请打开本次私有入口',None)],
             secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),expected_code=130)
         assert 'interrupted' in interrupted
@@ -336,7 +338,7 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         employee_connection=employee_session.with_name(employee_session.name+'.feishu.json')
         employee_connection.write_text(json.dumps(completed_draft));employee_connection.chmod(0o600)
         employee_wizard=wizard.copy();employee_wizard[employee_wizard.index('--session')+1]=str(employee_session)
-        transcript=drive(employee_wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
+        transcript=drive(employee_wizard,[('确认在这台机器安装或继续','y'),('原产品管理员密码（14–256 位）: ','cloud-stack-fixture-password'),
             ('App ID（:quit 保存退出）> ','cli_fixture'),('App Secret（隐藏输入）: ','synthetic-wizard-secret'),
             ('确认保存应用凭据','y'),('现在启动员工审核入口','y')],secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
         assert 'employee_window_closed' in transcript
@@ -353,6 +355,7 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         feishu_proof['release_archive_sha256']=release_receipt['archive_sha256']
         feishu_proof['release_manifest_sha256']=release_receipt['manifest_sha256']
         feishu_proof['terminal_welcome_install_resume_vault_and_employee_window']='PASS'
+        feishu_proof['terminal_password_length_retry_without_echo']='PASS'
         feishu_proof['terminal_sigterm_window_and_temporary_session_cleanup']='PASS'
 
 
