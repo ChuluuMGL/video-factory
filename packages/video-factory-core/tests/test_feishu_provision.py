@@ -167,6 +167,55 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(self.remote.writes, writes)
         self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
 
+    def test_completed_recovery_preserves_revised_records_and_reviews_current_contents(self):
+        self.apply(); writes = self.remote.writes.copy()
+        for row in self.remote.rows.values():
+            if '来源版本' in row['fields']:
+                row['fields'].update({'来源版本': 'test-v2', '脚本': 'Reviewed revised script'})
+            else:
+                row['fields']['规格'] = 'Updated product specification'
+        revised = copy.deepcopy(self.remote.rows)
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        plan = self.prepare()
+        self.assertEqual(plan['plan']['operation'], 'reconfirm_workspace')
+        current = plan['plan']['current_workspace']
+        self.assertTrue(current['products']['changed_since_initialization'])
+        self.assertTrue(current['test_tasks']['changed_since_initialization'])
+        result = self.service.apply(self.admin, self.draft, 'token', plan['plan_sha256'])
+        self.assertTrue(result['reused_workspace'])
+        self.assertEqual(result['feishu_writes'], 0)
+        self.assertEqual(self.remote.rows, revised)
+        self.assertEqual(self.remote.writes, writes)
+        self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_completed_recovery_rejects_content_change_after_review(self):
+        self.apply()
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        plan = self.prepare()
+        next(iter(self.remote.rows.values()))['fields']['规格'] = 'Changed after review'
+        with self.assertRaisesRegex(RuntimeFault, 'PLAN_CHANGED'):
+            self.service.apply(self.admin, self.draft, 'token', plan['plan_sha256'])
+        self.assertTrue(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_completed_recovery_rejects_replaced_field_id_or_missing_record(self):
+        self.apply()
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        tid = next(reversed(self.remote.tables)); previous = self.remote.tables[tid][0]['field_id']
+        self.remote.tables[tid][0]['field_id'] = 'fldReplacement'
+        with self.assertRaisesRegex(RuntimeFault, 'SCHEMA_CHANGED'): self.prepare()
+        self.remote.tables[tid][0]['field_id'] = previous
+        self.remote.break_read = True
+        with self.assertRaisesRegex(RuntimeFault, 'READ_OR_USER_AUTH'): self.prepare()
+        self.assertTrue(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_unfinished_initialization_still_requires_original_record_values(self):
+        self.remote.break_read = True
+        with self.assertRaisesRegex(RuntimeFault, 'READ_OR_USER_AUTH'): self.apply()
+        self.remote.break_read = False
+        next(iter(self.remote.rows.values()))['fields']['规格'] = 'Unexpected initial value'
+        with self.assertRaisesRegex(RuntimeFault, 'RECORD_READBACK_FAILED'): self.apply()
+        self.assertFalse(self.service.status(self.admin, self.draft)['binding_matches_draft'])
+
     def test_new_questions_need_no_remote_ids_and_reject_field_injection(self):
         new = ConnectionSession(self.root/'other.json'); new.start(self.setup)
         self.assertEqual(describe(new.snapshot())['next_question']['field'], 'workspace_kind')

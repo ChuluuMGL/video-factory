@@ -136,6 +136,12 @@ class Provisioner:
                 'specification': spec, 'draft_sha256': fingerprint(draft), 'journal_sha256': fingerprint(journal),
                 'completed_steps': list(journal['steps']) if journal else [],
                 'model_calls': 0, 'changes_existing_base': False}
+        if journal and journal.get('binding'):
+            # A completed workspace is live business data. Review its current
+            # contents instead of requiring the original installation fixtures.
+            plan['operation'] = 'reconfirm_workspace'
+            plan['current_workspace'] = self.completed_workspace(client=self.service.provision_client_factory(user),
+                                                                  journal=journal, draft=draft, spec=spec)
         return {'plan': plan, 'plan_sha256': fingerprint(plan), 'business_ready': False,
                 'feishu_writes': 0, 'model_calls': 0}
 
@@ -151,6 +157,25 @@ class Provisioner:
             journal = meta(db, key) or {'schema': 1, 'draft_sha256': fingerprint(draft),
                 'identity': plan['verified_operator'], 'steps': {}, 'binding': None}
             save(db, key, journal)
+
+        if plan['operation'] == 'reconfirm_workspace':
+            current = self.completed_workspace(client, journal, draft, spec)
+            if current != plan['current_workspace']:
+                raise RuntimeFault('SETUP_FEISHU_PLAN_CHANGED')
+            binding = journal['binding']
+            with store.connect() as db:
+                if self.service.context(db, admin, draft) != context or meta(db, key) != journal:
+                    raise RuntimeFault('SETUP_FEISHU_CONTEXT_CHANGED')
+                save(db, 'feishu:binding:'+context['project'], binding)
+                db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:'+context['project'],))
+                db.execute('DELETE FROM meta WHERE key=?', ('setup:provision-recovery:'+context['project'],))
+                store.audit(db, context['actor'], 'setup_feishu_reconfirmed_binding', context['project'])
+            return {'status': 'connection_binding_saved', 'project': context['project'],
+                    'reused_workspace': True, 'binding_sha256': fingerprint(binding),
+                    'plan_sha256': expected, 'operator_identity_verified': True,
+                    'field_schema_verified': True, 'records_verified': True,
+                    'reviewer_identity_acceptance': 'not_run', 'business_ready': False,
+                    'model_calls': 0, 'feishu_writes': 0}
 
         def step(name, operation):
             nonlocal journal
@@ -209,6 +234,45 @@ class Provisioner:
                 'operator_identity_verified': True, 'field_schema_verified': True, 'records_verified': True,
                 'reviewer_identity_acceptance': 'not_run', 'business_ready': False, 'model_calls': 0,
                 'feishu_writes': len(journal['steps'])-len(plan['completed_steps'])}
+
+    @staticmethod
+    def completed_workspace(client, journal, draft, spec):
+        steps = journal['steps']
+        required = {'base', 'product_table', 'products', 'task_table'}
+        if spec['test_rows']: required.add('test_tasks')
+        if set(steps) != required or any(s.get('status') != 'done' for s in steps.values()):
+            raise RuntimeFault('FEISHU_PROVISION_RESTORED_CHECKPOINT_REQUIRES_RECONCILIATION')
+        base = steps['base']['receipt']['app_token']
+        app = client.base(base)
+        if app.get('name') != spec['base']['name']:
+            raise RuntimeFault('FEISHU_PROVISION_BASE_CHANGED')
+        products = steps['product_table']['receipt']['table_id']
+        tasks = steps['task_table']['receipt']['table_id']
+        product_fields = Provisioner.verify_fields(client, base, products, PRODUCT_FIELDS)
+        task_fields = Provisioner.verify_fields(client, base, tasks, TASK_FIELDS.values())
+        binding = binding_for(draft, base, tasks, {k: task_fields[v] for k, v in TASK_FIELDS.items()})
+        if binding != journal['binding']:
+            raise RuntimeFault('FEISHU_PROVISION_SCHEMA_CHANGED')
+        FeishuBridge._schema(client, binding)
+
+        def records(step, table, rows):
+            ids = steps[step]['receipt']['record_ids']
+            if len(ids) != len(rows) or len(set(ids)) != len(ids):
+                raise RuntimeFault('FEISHU_PROVISION_RECEIPT_INVALID')
+            current = {}
+            for rid in ids:
+                row = client.record(base, table, resource(rid, 'rec'))
+                if row.get('record_id') != rid:
+                    raise RuntimeFault('FEISHU_PROVISION_RECORD_READBACK_FAILED')
+                current[rid] = {name: plain_text(row['fields'].get(name)) for name in rows[0]}
+            expected = sorted(map(fingerprint, rows))
+            return {'count': len(current), 'sha256': fingerprint(current),
+                    'changed_since_initialization': sorted(map(fingerprint, current.values())) != expected}
+
+        return {'base_token': base, 'product_table_id': products, 'task_table_id': tasks,
+                'product_fields': product_fields, 'task_fields': task_fields,
+                'products': records('products', products, spec['product_rows']),
+                'test_tasks': records('test_tasks', tasks, spec['test_rows']) if spec['test_rows'] else None}
 
     @staticmethod
     def verify_fields(client, base, table, names):

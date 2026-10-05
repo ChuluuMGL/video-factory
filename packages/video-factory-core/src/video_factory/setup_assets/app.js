@@ -49,7 +49,21 @@ click('prepare', async () => {
   const result = await request('/api/prepare', {}); if (closed) return;
   pending = result.plan_sha256;
   const p = result.plan, b = p.binding;
-  if (p.operation === 'create_workspace') {
+  if (p.operation === 'reconfirm_workspace') {
+    const s = p.specification, w = p.current_workspace;
+    $('plan').textContent = [
+      '项目：'+p.context.project, '现有 Base：'+s.base.name+'（'+w.base_token+'）',
+      '当前用户：'+p.verified_operator.open_id, '租户：'+p.verified_operator.tenant_key,
+      '提交人：'+p.submitters.join('、'),
+      '脚本审核人：'+p.script_reviewer+' / 视频审核人：'+p.video_reviewer,
+      '商品表：'+w.product_table_id+' / 任务表：'+w.task_table_id,
+      '已核对 '+w.products.count+' 条原始商品记录、'+(w.test_tasks?.count || 0)+' 条原始测试任务。',
+      w.products.changed_since_initialization || w.test_tasks?.changed_since_initialization
+        ? '记录已在初始化后修改，将保留现有内容。' : '原始记录内容未变化。'
+    ].join('\n');
+    $('write-summary').textContent = '确认后只恢复原项目绑定，不创建或覆盖飞书记录。保存前再次核对当前内容；若有变化，请重新确认。';
+    $('commit').textContent = '确认恢复现有工作区连接';
+  } else if (p.operation === 'create_workspace') {
     const s = p.specification;
     $('plan').textContent = [
       '项目：'+p.context.project, '当前用户：'+p.verified_operator.open_id,
@@ -85,7 +99,7 @@ click('commit', async () => {
   if (!pending) return;
   const result = await request('/api/commit', {plan_sha256:pending}); clear(); show('login', false); show('done', true);
   $('handoff').textContent = '在终端按安装方式运行 vfctl review-ui（本机）或 vfctl stack-review（容器），项目参数为 '+result.project+'。完整命令见 REVIEW_UI_USAGE.md。';
-  message(result.created_base ? '工作区已创建、记录已核验并保存绑定。Base 标识：'+result.created_base+'。真实业务验收尚未执行。' : '连接配置已保存。真实业务验收尚未执行。');
+  message(result.reused_workspace ? '现有工作区连接已恢复，飞书记录未改动。真实业务验收尚未执行。' : result.created_base ? '工作区已创建、记录已核验并保存绑定。Base 标识：'+result.created_base+'。真实业务验收尚未执行。' : '连接配置已保存。真实业务验收尚未执行。');
 });
 click('logout', async () => { await request('/api/logout', {}); clear(); show('login', false); message('已退出；请在终端重新开启连接向导。'); });
 (async () => {

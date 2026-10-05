@@ -99,6 +99,29 @@ for create in (False, True):
                     plan = fixture.service.prepare(fixture.admin, draft, user_token)
                     again = fixture.service.apply(fixture.admin, draft, user_token, plan['plan_sha256'])
                     assert again['feishu_writes'] == 0 and len(fixture.wire.writes) == 5
+                    # A used workspace no longer contains the installation seed
+                    # values. Its installed browser must review and preserve v2.
+                    revised_id = next(rid for rid, row in fixture.wire.created_records.items()
+                                      if row['fields'].get('任务编号') == 'VF_TEST_1')
+                    fixture.wire.created_records[revised_id]['fields']['来源版本'] = 'test-v2'
+                    browser_process = subprocess.Popen(live_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    resumed = json.loads(browser_process.stdout.readline())
+                    assert resumed.get('status') == 'ready'
+                    page.goto(resumed['url'])
+                    expect(page.locator('#login-button')).to_be_visible()
+                    page.click('#login-button')
+                    expect(page.locator('#workspace')).to_be_visible(timeout=15000)
+                    page.click('#prepare')
+                    expect(page.locator('#plan')).to_contain_text('将保留现有内容')
+                    expect(page.locator('#commit')).to_have_text('确认恢复现有工作区连接')
+                    expect(page.locator('#write-summary')).to_contain_text('不创建或覆盖飞书记录')
+                    page.click('#commit'); expect(page.locator('#done')).to_be_visible()
+                    expect(page.locator('#message')).to_contain_text('现有工作区连接已恢复')
+                    stdout, stderr = browser_process.communicate(timeout=10)
+                    assert browser_process.returncode == 0
+                    assert json.loads(stdout)['reused_workspace'] is True
+                    assert fixture.wire.created_records[revised_id]['fields']['来源版本'] == 'test-v2'
+                    assert len(fixture.wire.writes) == 5
                 with socket.socket() as sock: assert sock.connect_ex(('127.0.0.1', live_port)) != 0
                 assert all(secret not in '\n'.join(responses) for secret in (fixture.admin,capability,user_token,'synthetic-app-secret','private-device-code','must-discard-refresh'))
                 assert not failures,failures
