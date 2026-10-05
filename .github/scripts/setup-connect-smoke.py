@@ -107,6 +107,10 @@ for create in (False, True):
                     browser_process = subprocess.Popen(live_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     resumed = json.loads(browser_process.stdout.readline())
                     assert resumed.get('status') == 'ready'
+                    # The private URL differs only in its fragment. Leave the
+                    # completed document first so this exercises a fresh window,
+                    # as the installer handoff does, not same-document navigation.
+                    page.goto('about:blank')
                     page.goto(resumed['url'])
                     expect(page.locator('#login-button')).to_be_visible()
                     page.click('#login-button')
