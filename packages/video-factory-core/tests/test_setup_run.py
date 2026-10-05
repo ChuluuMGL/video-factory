@@ -54,6 +54,14 @@ class SetupRunTests(unittest.TestCase):
             install.assert_not_called()
         self.assertEqual(self.events,[])
 
+    def test_invalid_length_reprompts_without_authentication_or_secret_echo(self):
+        with self.environment(['y','cli_fixture','n'],['short-input','synthetic-password','synthetic-password','synthetic-app-secret']) as (go,install):
+            self.assertEqual(go()['status'],'installed_credentials_pending')
+            install.assert_called_once()
+        self.assertNotIn('short-input','\n'.join(self.output))
+        self.assertTrue(any('尚未提交认证' in line for line in self.output))
+        self.assertEqual([v['action'] for v in self.events],['open','close'])
+
     def test_save_credential_and_decline_window_revokes_token_and_hides_secrets(self):
         with self.environment(['y','cli_fixture','y','n'],['synthetic-password','synthetic-password','synthetic-app-secret']) as (go,install):
             self.assertEqual(go()['status'],'installed_credentials_saved');install.assert_called_once()
@@ -92,3 +100,11 @@ class SetupRunTests(unittest.TestCase):
         with patch('sys.stdin.isatty',return_value=False),contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(run(self.args),2)
         self.assertIn('REQUIRES_PRIVATE_TTY',output.getvalue())
+
+    def test_browser_failure_reports_receipt_before_closing_listener(self):
+        self.args.browser_input=True;self.args.input_port=8792
+        with patch('video_factory.setup_browser.BrowserInput') as bridge,patch('video_factory.setup_run.welcome',side_effect=RuntimeFault('AUTH_FAILED')),contextlib.redirect_stdout(io.StringIO()):
+            ui=bridge.return_value;ui.url='http://127.0.0.1:8792/#synthetic'
+            self.assertEqual(run(self.args),2)
+        self.assertEqual([call[0] for call in ui.method_calls],['finish','close'])
+        ui.finish.assert_called_once_with({'error':'AUTH_FAILED','resume_same_command':True,'business_ready':False})

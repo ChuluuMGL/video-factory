@@ -7,6 +7,8 @@ async function request(path,body) {
 async function poll(){
  if(stopped)return;
  try {const v=await request('/api/prompt'); csrf=v.csrf; $('messages').textContent=v.messages.join('\n');
+  if(v.completion){stopped=true;current=null;$('answer').value='';$('form').hidden=true;$('quit').hidden=true;
+   $('status').textContent=v.completion.message;await request('/api/ack',{}).catch(()=>{});return;}
   if(v.prompt?.id!==current?.id){current=v.prompt; $('answer').value='';$('form').hidden=!current;$('quit').hidden=!current;
    if(current){$('label').textContent=current.label;$('answer').type=current.hidden?'password':'text';$('answer').focus();}}
   $('status').textContent=current?'请填写当前问题。':'正在执行，请稍候…';

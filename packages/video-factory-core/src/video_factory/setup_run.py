@@ -119,8 +119,15 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     if not choice('确认在这台机器安装或继续', read, write):
         return {'status': 'installation_not_started', 'business_ready': False}
     fresh = not (args.root/'initialized.json').exists()
-    password = hidden('设置产品管理员密码（至少 14 位）: ' if fresh else '产品管理员密码: ')
-    RuntimeStore.validate_password(password)
+    while True:
+        password = hidden('设置产品管理员密码（14–256 位）: ' if fresh else '原产品管理员密码（14–256 位）: ')
+        try:
+            RuntimeStore.validate_password(password)
+            break
+        except RuntimeFault as error:
+            if str(error) != 'PASSWORD_LENGTH_14_TO_256_REQUIRED': raise
+            password = None
+            write('密码长度需要 14–256 位，尚未提交认证。请重新输入；忘记原密码时可保存退出，由 Agent 协助恢复。')
     if fresh and hidden('再次输入管理员密码: ') != password:
         raise RuntimeFault('SETUP_PASSWORD_CONFIRMATION_MISMATCH')
     installed = install(args, store, session, reviewed, password)
@@ -193,6 +200,9 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
 def run(args):
     previous = {}
     browser = None
+    def report(result):
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        if browser: browser.finish(result)
     try:
         if not getattr(args, 'browser_input', False) and not (sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()):
             raise RuntimeFault('SETUP_RUN_REQUIRES_PRIVATE_TTY')
@@ -212,14 +222,14 @@ def run(args):
                              read_products=lambda raw: read_json(io.StringIO(raw)))
         else:
             result = welcome(args)
-        print(json.dumps(result, ensure_ascii=False))
+        report(result)
         return 0
     except (KeyboardInterrupt, EOFError):
-        print(json.dumps({'status': 'interrupted', 'resume_same_command': True, 'business_ready': False})); return 130
+        report({'status': 'interrupted', 'resume_same_command': True, 'business_ready': False}); return 130
     except (RuntimeFault, SetupError) as error:
-        print(json.dumps({'error': str(error), 'resume_same_command': True, 'business_ready': False})); return 2
+        report({'error': str(error), 'resume_same_command': True, 'business_ready': False}); return 2
     except Exception:
-        print(json.dumps({'error': 'SETUP_RUN_INCOMPLETE_READ_STATUS', 'business_ready': False})); return 2
+        report({'error': 'SETUP_RUN_INCOMPLETE_READ_STATUS', 'business_ready': False}); return 2
     finally:
         if browser: browser.close()
         for signum, handler in previous.items(): signal.signal(signum, handler)

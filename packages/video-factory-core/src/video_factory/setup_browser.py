@@ -37,6 +37,8 @@ class BrowserInput:
         self.cookie = self.csrf = None
         self.messages, self.prompt, self.answer = [], None, None
         self.closed = False
+        self.completion = None
+        self.acknowledged = False
         self.deadline = time.monotonic()+seconds
         self.server = InputServer(('127.0.0.1', port), Handler)
         self.server.daemon_threads = True
@@ -70,6 +72,31 @@ class BrowserInput:
             return value
 
     def hidden(self, label): return self.read(label, hidden=True)
+
+    def finish(self, result, seconds=15):
+        """Deliver a safe terminal receipt before closing the private listener."""
+        errors = {
+            'PASSWORD_LENGTH_14_TO_256_REQUIRED': '密码需要 14–256 位。已有部署请使用原管理员密码；请让 Agent 重新打开向导。',
+            'SETUP_PASSWORD_CONFIRMATION_MISMATCH': '两次密码输入不一致，尚未安装。请让 Agent 重新打开向导。',
+            'AUTH_FAILED': '管理员密码未通过验证。请使用原密码；忘记密码时请让 Agent 协助恢复。',
+            'AUTH_RATE_LIMITED': '登录尝试过于频繁，请稍后再试。',
+        }
+        if result.get('error'):
+            message = errors.get(result['error'], '本次操作未完成，已保留配置。请让 Agent 检查服务器状态后继续。')
+        elif result.get('status') == 'connection_ready':
+            message = '飞书连接已确认。本次向导已结束，生成与审核验收仍需继续。'
+        elif result.get('status') == 'employee_window_closed':
+            message = '审核窗口已关闭。实际任务结果仍需单独核验。'
+        else:
+            message = '本次向导已结束，已有配置保留。可让 Agent 从原部署继续。'
+        with self.condition:
+            self.prompt = self.answer = None
+            self.completion = {'message': message, 'failed': bool(result.get('error'))}
+            until = min(self.deadline, time.monotonic()+seconds)
+            while not self.acknowledged and not self.closed:
+                remaining = until-time.monotonic()
+                if remaining <= 0: break
+                self.condition.wait(remaining)
 
     def close(self):
         with self.condition:
@@ -119,7 +146,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path != '/api/prompt': raise RuntimeFault('ROUTE_NOT_FOUND')
             with owner.condition:
                 self.auth(owner)
-                self.reply(200, {'messages': owner.messages, 'prompt': owner.prompt, 'csrf': owner.csrf})
+                self.reply(200, {'messages': owner.messages, 'prompt': owner.prompt, 'csrf': owner.csrf,
+                                 'completion': owner.completion})
         except Exception:
             self.reply(403, {'error': 'SETUP_INPUT_UNAVAILABLE'})
 
@@ -144,6 +172,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.reply(200, {'unlocked': True}, cookie=owner.cookie); return
                 self.auth(owner)
                 if self.headers.get_all('X-VF-CSRF', []) != [owner.csrf]: raise RuntimeFault('CSRF_DENIED')
+                if self.path == '/api/ack':
+                    if body != {} or owner.completion is None: raise RuntimeFault('RECEIPT_NOT_READY')
+                    self.reply(200, {'acknowledged': True})
+                    owner.acknowledged = True
+                    owner.condition.notify_all()
+                    return
                 if (self.path != '/api/answer' or not isinstance(body, dict) or set(body) != {'id','answer'}
                         or not owner.prompt or body['id'] != owner.prompt['id'] or owner.answer is not None
                         or not isinstance(body['answer'], str) or len(body['answer']) > 4096):

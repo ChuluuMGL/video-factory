@@ -44,3 +44,24 @@ class BrowserInputTests(unittest.TestCase):
         self.ui.deadline=0
         with self.assertRaises(EOFError):self.ui.read('Expired')
         self.assertEqual(self.req('/api/prompt')[0],403)
+
+    def test_terminal_receipt_is_safe_and_ack_requires_authenticated_session(self):
+        self.unlock()
+        self.assertEqual(self.req('/api/ack',{})[0],403)
+        t=threading.Thread(target=lambda:self.ui.finish({'error':'private-secret-in-unexpected-error'},seconds=3));t.start()
+        for _ in range(40):
+            value=self.req('/api/prompt')[1]
+            if value['completion']:break
+            time.sleep(.01)
+        self.assertTrue(value['completion']['failed'])
+        self.assertNotIn('private-secret',json.dumps(value))
+        self.assertIsNone(value['prompt'])
+        self.assertEqual(self.req('/api/ack',{},headers={'X-VF-CSRF':'wrong'})[0],403)
+        self.assertEqual(self.req('/api/ack',{'extra':True})[0],403)
+        self.assertEqual(self.req('/api/ack',{})[0],200)
+        t.join(1);self.assertFalse(t.is_alive())
+
+    def test_finishing_without_a_browser_remains_bounded(self):
+        self.ui.finish({'error':'AUTH_FAILED'},seconds=0)
+        self.assertIn('原密码',self.ui.completion['message'])
+        self.assertFalse(self.ui.acknowledged)

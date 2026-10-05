@@ -14,6 +14,8 @@ def wizard():
     answers.append(ui.read('项目名称'))
     answers.append(ui.hidden('管理员密码'))
     ui.write('配置已保存，等待下一阶段。')
+    ui.finish({'error':'AUTH_FAILED'})
+    ui.close()
 thread=threading.Thread(target=wizard,daemon=True);thread.start()
 try:
     with sync_playwright() as p:
@@ -26,12 +28,19 @@ try:
         expect(page.locator('#label')).to_have_text('管理员密码');expect(page.locator('#answer')).to_have_attribute('type','password')
         page.fill('#answer','synthetic-hidden-browser-password');page.locator('#form button').click()
         expect(page.locator('#messages')).to_contain_text('配置已保存')
+        expect(page.locator('#status')).to_contain_text('管理员密码未通过验证')
+        expect(page.locator('#answer')).to_have_value('')
+        expect(page.locator('#form')).to_be_hidden()
         thread.join(3);assert answers==['浏览器测试项目','synthetic-hidden-browser-password']
+        assert not thread.is_alive()
+        # The real listener has closed; the page must retain its terminal receipt.
+        page.wait_for_timeout(1000)
+        expect(page.locator('#status')).to_contain_text('管理员密码未通过验证')
         assert 'synthetic-hidden-browser-password' not in '\n'.join(responses)+page.locator('body').inner_text()
         assert not errors
         page.screenshot(path=str(out/'setup-browser.png'))
         page.set_viewport_size({'width':390,'height':844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(out/'setup-browser-mobile.png'));browser.close()
-    (out/'setup-browser.json').write_text(json.dumps({'status':'PASS','human_secret_input':'synthetic_browser_only','response_and_ui_secret_echo':False,'real_human':'not_run'}))
+    (out/'setup-browser.json').write_text(json.dumps({'status':'PASS','human_secret_input':'synthetic_browser_only','response_and_ui_secret_echo':False,'terminal_receipt_survives_listener_close':True,'real_human':'not_run'}))
 finally:ui.close()
