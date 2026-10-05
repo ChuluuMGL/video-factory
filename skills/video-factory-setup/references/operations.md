@@ -72,3 +72,5 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 a32 备份在停服前检查文件与容量，采用流式 v2 格式（32 GiB 原始数据、34 GiB 压缩归档、100,000 项上限）；本次 CLI 可读旧备份，a31 和较早 a32 候选不能读 v2；核对 `stack doctor` 的 `backup_capabilities.restore=backup-v2-aes256gcm-hkdf`，不要仅凭版本号判断。必须单独保留匹配恢复 CLI、固定镜像和密钥。恢复前留出压缩包临时文件加解包数据的空间；不自动上传、删除或清理历史备份。
 
 每次维护先运行 `stack doctor`。管理员 Setup 也显示磁盘、入口、证书、续期定时器和调度授权提醒；它只读且不发送外部通知，不能当成无人值守告警服务。
+
+停机重启后公网 IP 可能变化。先读取真实 IP 和 DNS，按同包 WORKSPACE_TLS.md 重新 staging 测试，再用 `workspace-acme reconfigure-plan/reconfigure` 复核；已有有效正式证书保持不变。入口恢复、公网 HTTPS、定时器启用仍需分别核对。未配置入口或续期也会显示维护提醒，不能将“已签发”当成部署完成。

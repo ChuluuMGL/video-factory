@@ -3,7 +3,7 @@ import time
 import unittest
 from unittest.mock import patch
 import test_stack as fixtures
-from video_factory import maintenance, workspace, workspace_tls
+from video_factory import maintenance, workspace, workspace_tls, workspace_acme
 from video_factory.stack import write_json
 
 
@@ -43,3 +43,22 @@ class MaintenanceTests(unittest.TestCase):
         with patch.object(workspace,'entries',return_value=iter([])),patch.object(maintenance.shutil,'disk_usage') as disk:
             disk.return_value.free=10*1024**3
             self.assertEqual(maintenance.doctor(self.stack)['alerts'],[])
+
+    def test_only_managed_certificates_require_a_renewal_timer(self):
+        for production,expected in (({},False),({'status':'issued'},True)):
+            tls={'certificate':{'days_remaining':60},'acme':{'environments':{'production':production},'schedule':{'enabled':False}}}
+            with patch.object(workspace,'entries',return_value=iter([{'project':'fixture'}])),patch.object(workspace,'status',return_value={'status':'running'}),patch.object(workspace_tls,'status',return_value=tls):
+                codes={v['code'] for v in maintenance.doctor(self.stack)['alerts']}
+            self.assertEqual('TLS_TIMER_NOT_CONFIGURED' in codes,expected)
+
+    def test_issued_certificate_without_workspace_is_visible_and_sanitized(self):
+        root=self.root/'data/acme/fixture';root.mkdir(parents=True,mode=0o700)
+        for production,expected in (({'status':'issued','requires_context_review':True},{'TLS_WORKSPACE_NOT_CONFIGURED','TLS_CONTEXT_REVIEW_REQUIRED'}),({'status':'in_flight'},{'TLS_ISSUANCE_INCOMPLETE'})):
+            with patch.object(workspace,'entries',return_value=iter([])),patch.object(workspace_acme,'status',return_value={'environments':{'production':production},'private':'secret fixture'}):
+                result=maintenance.doctor(self.stack)
+            self.assertTrue(expected<={v['code'] for v in result['alerts']})
+            self.assertNotIn('secret fixture',str(result))
+        with patch.object(workspace,'entries',return_value=iter([])),patch.object(workspace_acme,'status',side_effect=RuntimeError('private failure')):
+            result=maintenance.doctor(self.stack)
+        self.assertIn('TLS_INSPECTION_FAILED',{v['code'] for v in result['alerts']})
+        self.assertNotIn('private failure',str(result))

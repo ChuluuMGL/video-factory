@@ -41,4 +41,6 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 仅在同版 CLI 支持 `workspace-tls` / `workspace-acme` 时，读取 `docs/product/WORKSPACE_TLS.md`。按已授权主机准备 Certbot，先 staging 后 production；CA 条款、域名和联系邮箱须由客户确认。仅监控本 stack 的定时器，未知签发只恢复原回执；真实域名未验收不能标记公网入口完成。a31 仍由实施方提供与维护证书。
 
+停机后 IP、恢复实例或 Certbot 变化时，先停用旧续期任务，按 WORKSPACE_TLS.md 完成新 staging 验证和 `reconfigure-plan/reconfigure` 复核，保留仍有效的正式证书，不因配置变化重复正式签发。此流程不恢复员工身份、工作区或定时器；分别验证后再启用。`stack doctor` 的未部署、未续期提示须写入交接清单。
+
 同客户多项目统一入口仅在固定包支持 `workspace --include-project` 时启用，按 WORKSPACE_TLS.md 核对完整项目清单及共享飞书应用/租户。新增项目配置和加入入口是两个步骤；不自动扩大项目成员权限，不同时启动旧入口与新入口的同项目执行器。

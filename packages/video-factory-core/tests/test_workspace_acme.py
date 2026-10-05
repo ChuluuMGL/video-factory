@@ -49,6 +49,67 @@ class ACMETests(unittest.TestCase):
         self.assertEqual((root/'production/key.pem').stat().st_mode&0o777,0o600)
         self.assertNotIn('PRIVATE KEY',json.dumps(acme.status(self.stack,self.project)))
 
+    def reconfiguration(self):
+        self.issue(self.staging);self.issue(self.production)
+        self.stack.config['instance']='restored_instance'
+        args=(self.stack,self.project,self.production['origin'],self.production['email'],['1.1.1.1'])
+        self.issue(acme.plan(*args,'staging'))
+        return args
+
+    def test_reconfigure_preserves_certificate_accounts_and_issuance_history_without_ca_call(self):
+        args=self.reconfiguration();root=acme.folder(self.stack,self.project)/'production'
+        before={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file() and p.name!='receipt.json'}
+        reviewed=acme.reconfigure_plan(*args,network_check=lambda _:None);calls=len(self.calls)
+        result=acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)
+        self.assertEqual(len(self.calls),calls);self.assertFalse(result['certificate_reissued'])
+        self.assertFalse(result['schedule_enabled']);self.assertFalse(result['external_https_verified'])
+        self.assertTrue(result['workspace_reverification_required'])
+        self.assertEqual(before,{p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file() and p.name!='receipt.json'})
+        receipt=acme.load(root/'receipt.json')
+        self.assertEqual(receipt['issuance_plan'],self.production)
+        self.assertEqual(receipt['context_reviews'][0]['previous_context'],self.production)
+        acme.check_context(self.stack,receipt['plan'])
+        self.assertFalse(acme.status(self.stack,self.project)['environments']['production']['requires_context_review'])
+        with self.assertRaisesRegex(RuntimeFault,'PLAN_CHANGED'):
+            acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)
+
+    def test_reconfigure_plan_is_stable_as_certificate_days_remaining_changes(self):
+        args=self.reconfiguration();describe=tls.describe
+        with patch.object(tls,'describe',side_effect=lambda raw:{**describe(raw),'days_remaining':40.5}):
+            reviewed=acme.reconfigure_plan(*args,network_check=lambda _:None)
+        with patch.object(tls,'describe',side_effect=lambda raw:{**describe(raw),'days_remaining':40.4}):
+            self.assertEqual(acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)['status'],'context_reconfigured')
+
+    def test_reconfigure_requires_matching_staging_identity_and_disabled_timer(self):
+        self.issue(self.staging);self.issue(self.production)
+        args=(self.stack,self.project,self.production['origin'],self.production['email'],['1.1.1.1'])
+        with self.assertRaisesRegex(RuntimeFault,'MATCHING_STAGING'):
+            acme.reconfigure_plan(*args,network_check=lambda _:None)
+        with self.assertRaisesRegex(RuntimeFault,'IDENTITY_CHANGED'):
+            acme.reconfigure_plan(*args[:3],'another@example.com',args[4],network_check=lambda _:None)
+        self.issue(acme.plan(*args,'staging'))
+        write_json(acme.folder(self.stack,self.project)/'schedule.json',{'enabled':True})
+        with self.assertRaisesRegex(RuntimeFault,'DISABLE_TIMER'):
+            acme.reconfigure_plan(*args,network_check=lambda _:None)
+
+    def test_reconfigure_rechecks_network_receipt_and_pending_operations_without_mutation(self):
+        args=self.reconfiguration();root=acme.folder(self.stack,self.project)
+        reviewed=acme.reconfigure_plan(*args,network_check=lambda _:None)
+        original=(root/'production/receipt.json').read_bytes()
+        with self.assertRaisesRegex(RuntimeFault,'DNS_TARGET_CHANGED'):
+            acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=Mock(side_effect=RuntimeFault('ACME_DNS_TARGET_CHANGED')))
+        self.assertEqual((root/'production/receipt.json').read_bytes(),original)
+        for relative in ('production/receipt.json','staging/receipt.json'):
+            path=root/relative;receipt=acme.load(path)
+            write_json(path,{**receipt,'status':'in_flight'})
+            with self.assertRaisesRegex(RuntimeFault,'UNKNOWN_ORDER'):
+                acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)
+            write_json(path,receipt)
+        write_json(self.root/'tls-rotation.json',{'status':'needs_attention'})
+        with self.assertRaisesRegex(RuntimeFault,'TLS_RECOVERY_REQUIRED'):
+            acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)
+        self.assertEqual((root/'production/receipt.json').read_bytes(),original)
+
     def test_terms_changed_context_and_dns_are_refused_before_order(self):
         with self.assertRaisesRegex(RuntimeFault,'TERMS'):acme.issue(self.stack,self.staging)
         value={**self.staging,'stack_instance':'changed'}

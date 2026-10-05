@@ -27,7 +27,7 @@ CLIENT = Path('/usr/bin/certbot')
 
 def register(commands):
     p=commands.add_parser('workspace-acme',help='isolated certificate issue, recovery and scheduled renewal')
-    p.add_argument('action',choices=['plan','issue','recover','deploy','renew','status','enable','disable'])
+    p.add_argument('action',choices=['plan','issue','recover','deploy','renew','status','enable','disable','reconfigure-plan','reconfigure'])
     p.add_argument('--stack-root',type=Path,required=True);p.add_argument('--project',required=True)
     p.add_argument('--origin');p.add_argument('--email');p.add_argument('--expected-ip',action='append',default=[])
     p.add_argument('--environment',choices=list(DIRECTORIES),default='staging')
@@ -183,6 +183,66 @@ def recover(stack,project,environment):
     return collect(stack,receipt)
 
 
+def reconfigure_plan(stack,project,public_origin,email,ips,*,network_check=check_network):
+    """Review new host/IP/client context without replacing the issued certificate.
+
+    A fresh staging receipt proves the new context. The production issuance
+    history is retained; this operation grants neither employee access nor a
+    renewal schedule and never invokes the CA.
+    """
+    value=plan(stack,project,public_origin,email,ips,'production')
+    root=folder(stack,project)
+    receipt=load(root/'production/receipt.json')
+    if receipt['status']!='issued':raise RuntimeFault('ACME_UNKNOWN_ORDER_RECOVER_REQUIRED')
+    previous=receipt['plan']
+    if any(previous[k]!=value[k] for k in ('project','origin','email','environment')):
+        raise RuntimeFault('ACME_RECONFIGURE_IDENTITY_CHANGED')
+    if not receipt.get('terms_accepted'):raise RuntimeFault('ACME_TERMS_ACCEPTANCE_REQUIRED')
+    schedule_path=root/'schedule.json'
+    if schedule_path.exists() and load(schedule_path).get('enabled'):
+        raise RuntimeFault('ACME_DISABLE_TIMER_BEFORE_RECONFIGURE')
+    stagepath=root/'staging/receipt.json'
+    if not stagepath.exists():raise RuntimeFault('ACME_MATCHING_STAGING_REQUIRED')
+    staging=load(stagepath)
+    if staging['status']=='in_flight':raise RuntimeFault('ACME_UNKNOWN_ORDER_RECOVER_REQUIRED')
+    if staging['status']!='issued' or staging['plan']!={**value,'environment':'staging'}:
+        raise RuntimeFault('ACME_MATCHING_STAGING_REQUIRED')
+    from .workspace_deploy import pending
+    workroot=workspace.directory(stack,project)
+    if pending(workroot):raise RuntimeFault('WORKSPACE_DEPLOYMENT_RECOVERY_REQUIRED')
+    rotation=workroot/'tls-rotation.json'
+    if rotation.exists() and load(rotation)['status'] in ('in_flight','needs_attention'):
+        raise RuntimeFault('TLS_RECOVERY_REQUIRED')
+    cert,key=workspace.certificate(root/'production/certificate.pem',root/'production/key.pem',urlsplit(public_origin).hostname)
+    if hashlib.sha256(cert).hexdigest()!=receipt['certificate_sha256']:
+        raise RuntimeFault('ACME_CERTIFICATE_CHANGED')
+    network_check(value)
+    certificate=workspace_tls.describe(cert)
+    return {'action':'reconfigure','project':project,'previous_context':previous,'context':value,
+            'receipt_sha256':fingerprint(receipt),'staging_receipt_sha256':fingerprint(staging),
+            'certificate_sha256':hashlib.sha256(cert).hexdigest(),'private_key_sha256':hashlib.sha256(key).hexdigest(),
+            'certificate':{k:certificate[k] for k in ('sha256','leaf_sha256','expires_at')},
+            'certificate_reissued':False,'schedule_enabled':False}
+
+
+def reconfigure(stack,project,public_origin,email,ips,expected,*,network_check=check_network):
+    reviewed=reconfigure_plan(stack,project,public_origin,email,ips,network_check=network_check)
+    if fingerprint(reviewed)!=expected:raise RuntimeFault('ACME_RECONFIGURE_PLAN_CHANGED')
+    root=folder(stack,project);path=root/'production/receipt.json';receipt=load(path)
+    # One atomic receipt write keeps interrupted operations resumable and leaves
+    # the certificate/key/accounts untouched. Repeating requires a fresh plan.
+    history=receipt.get('context_reviews',[])
+    if len(history)>=64:raise RuntimeFault('ACME_CONTEXT_REVIEW_HISTORY_FULL')
+    receipt.setdefault('issuance_plan',receipt['plan'])
+    receipt['context_reviews']=[*history,{'previous_context':receipt['plan'],
+        'plan_sha256':expected,'staging_receipt_sha256':reviewed['staging_receipt_sha256'],
+        'reviewed_at':datetime.now(timezone.utc).isoformat()}]
+    receipt['plan']=reviewed['context'];write_json(path,receipt)
+    return {'status':'context_reconfigured','project':project,'certificate_reissued':False,
+            'certificate_sha256':reviewed['certificate_sha256'],'schedule_enabled':False,
+            'workspace_reverification_required':True,'external_https_verified':False}
+
+
 def deploy(stack,project):
     root=folder(stack,project)/'production'
     if not (root/'receipt.json').exists():raise RuntimeFault('ACME_ISSUED_CERTIFICATE_REQUIRED')
@@ -299,6 +359,11 @@ def cli(args):
             elif args.action=='recover':result=recover(stack,args.project,args.environment)
             elif args.action=='deploy':result=deploy(stack,args.project)
             elif args.action=='renew':result=renew(stack,args.project)
+            elif args.action in ('reconfigure-plan','reconfigure'):
+                if args.action=='reconfigure-plan':
+                    reviewed=reconfigure_plan(stack,args.project,args.origin,args.email,args.expected_ip)
+                    result={'plan':reviewed,'plan_sha256':fingerprint(reviewed)}
+                else:result=reconfigure(stack,args.project,args.origin,args.email,args.expected_ip,args.expect_plan)
             elif args.action in ('enable','disable'):result=schedule(stack,args.project,args.action=='enable')
             else:result=status(stack,args.project)
         print(json.dumps(result));return 0
