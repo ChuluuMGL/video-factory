@@ -71,8 +71,21 @@ try:
             before=len(calls)
             assert acme.recover(stack,'fixture','production')['status']=='issued'
             assert len(calls)==before==4
+            # A restored instance and changed IP need a new challenge proof,
+            # but must retain the valid production certificate and CA account.
+            preserved={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file() and p.name!='receipt.json'}
+            stack.config['instance']='restored_fixture'
+            args=(stack,'fixture',prod['origin'],prod['email'],['1.1.1.1'])
+            acme.issue(stack,acme.plan(*args,'staging'),accept_terms=True,runner=client,network_check=lambda _:None)
+            reviewed=acme.reconfigure_plan(*args,network_check=lambda _:None)
+            result=acme.reconfigure(*args,acme.fingerprint(reviewed),network_check=lambda _:None)
+            assert not result['certificate_reissued'] and not result['schedule_enabled']
+            assert len(calls)==5
+            assert preserved=={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file() and p.name!='receipt.json'}
+            acme.check_context(stack,acme.load(root/'receipt.json')['plan'])
         print(json.dumps({'status':'PASS','scope':'real_certbot_http01_against_ephemeral_pebble',
-            'orders':4,'account_reuse':True,'recovery_without_resubmission':True,
+            'orders':5,'account_reuse':True,'recovery_without_resubmission':True,
+            'context_reconfigured_without_production_reissue':True,
             'public_ca_orders':0,'real_domain_acceptance':'not_run'}))
 finally:
     if process is not None:
