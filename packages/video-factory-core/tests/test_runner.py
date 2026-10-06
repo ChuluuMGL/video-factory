@@ -1,10 +1,13 @@
 import json
+from contextlib import nullcontext
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from video_factory import runner
+from video_factory import production_setup
 from video_factory.runtime_store import RuntimeFault
 
 
@@ -57,3 +60,17 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'running')
                 rows[1]['Health'] = 'unhealthy'
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'incomplete')
+
+    def test_production_setup_accepts_private_runner_without_web(self):
+        stack = SimpleNamespace(lock=nullcontext, status=lambda: {'infrastructure_ready': True})
+        session = {'configuration': {'project': {'id': 'brand'}}}
+        args = SimpleNamespace(stack_root=Path('/synthetic/stack'), session=Path('/synthetic/session'))
+        with (patch.object(production_setup, 'Stack', return_value=stack),
+              patch.object(production_setup, 'SessionStore') as sessions,
+              patch.object(production_setup, 'rpc', side_effect=[{'token': 'synthetic-token'}, None]),
+              patch.object(production_setup, 'runner_status', return_value={'status': 'running'}),
+              patch.object(production_setup, 'workspace_status', side_effect=AssertionError('web route used')),
+              patch.object(production_setup, 'choice', side_effect=[False, False, False])):
+            sessions.return_value.read.return_value = session
+            result = production_setup.welcome(args, hidden=lambda _: 'synthetic-password', write=lambda _: None)
+        self.assertEqual(result['status'], 'credentials_saved_schedule_not_changed')
