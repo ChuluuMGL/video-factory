@@ -20,7 +20,7 @@ from .setup_admin import rpc
 from .setup_connect import run_connect
 from .review_cli import run_window
 from . import image_bundle
-from .stack import Stack, admin_host, local_engine
+from .stack import Stack, admin_host, engine_ready
 
 
 def register(commands):
@@ -69,6 +69,8 @@ def private_inputs(stack, draft, token):
 
 
 def install(args, store, session, reviewed, password):
+    # The daemon can stop while the human is entering the password.
+    engine_ready()
     with store.locked():
         latest = store._read()
         current = execution_plan(args, latest)
@@ -86,7 +88,7 @@ def install(args, store, session, reviewed, password):
 
 
 def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_products=None):
-    admin_host(); local_engine()
+    admin_host(); engine_ready()
     if (not 1 <= args.seconds <= 360 or any(not 1024 <= p <= 65535 for p in (args.connection_port, args.review_port))
             or args.connection_port == args.review_port):
         raise RuntimeFault('SETUP_WINDOW_PORT_OR_DURATION_INVALID')
@@ -118,6 +120,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     write('计划校验值：'+reviewed['execution_sha256'])
     if not choice('确认在这台机器安装或继续', read, write):
         return {'status': 'installation_not_started', 'business_ready': False}
+    engine_ready()
     fresh = not (args.root/'initialized.json').exists()
     while True:
         password = hidden('设置产品管理员密码（14–256 位）: ' if fresh else '原产品管理员密码（14–256 位）: ')

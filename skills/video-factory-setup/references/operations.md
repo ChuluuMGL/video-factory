@@ -49,6 +49,8 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 
 先确定 CLI、安装输入、Docker、数据库、项目计划、OAuth、字段权限或任务状态中的具体故障。只读状态不包含业务完成证明。不要把临时故障处理成“重新提交模型”。退出码 130 是中断；凭据已保存、连接待确认应使用原 session 继续。
 
+续接前先验证本地 Docker 守护进程可达，不能只检查 Docker 命令或 context 存在。含此检查的 a32 候选会在请求密码前拒绝不可达的服务，返回 `DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE`。检查 `systemctl status docker` / `docker info`；按已有主机授权恢复服务后回读，再用原 session/stack 续接。不要将服务故障解释为密码错误，不因此重置密码、重建 Base 或更改开机策略。
+
 半安装 CLI 选择新的空版本目录，不影响外部 stack/session。正常结束会清理短时窗口；SIGKILL、断电、Docker 故障后检查该 stack 的临时 worker、出站中继与 `data/worker/.setup-run-*`，只有确认本次窗口已停后，才按已授权范围清理确切残留。
 
 ## 5. 备份、恢复和升级

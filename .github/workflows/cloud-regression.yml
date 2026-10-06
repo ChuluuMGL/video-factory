@@ -17,6 +17,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  setup-engine:
+    name: Setup with a stopped Docker daemon
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.14'
+      - name: Reject stopped daemon before password entry and recover the CI host
+        run: |
+          python3 .github/scripts/safe-ci.py setup-engine-check <<'VF_CI_SCRIPT'
+          python -m pip install ./packages/video-factory-core
+          sudo env GITHUB_ACTIONS=true "$(command -v python)" .github/scripts/setup-engine-smoke.py
+          VF_CI_SCRIPT
   maintenance:
     name: Maintenance backup and rollback checks
     runs-on: ubuntu-24.04

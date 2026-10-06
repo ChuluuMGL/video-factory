@@ -80,6 +80,7 @@ class BrowserInput:
             'SETUP_PASSWORD_CONFIRMATION_MISMATCH': '两次密码输入不一致，尚未安装。请让 Agent 重新打开向导。',
             'AUTH_FAILED': '管理员密码未通过验证。请使用原密码；忘记密码时请让 Agent 协助恢复。',
             'AUTH_RATE_LIMITED': '登录尝试过于频繁，请稍后再试。',
+            'DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE': '无法连接服务器上的 Docker 服务。已有配置保留；请让 Agent 检查并恢复服务后续接，无需因此重置管理员密码。',
         }
         if result.get('error'):
             message = errors.get(result['error'], '本次操作未完成，已保留配置。请让 Agent 检查服务器状态后继续。')

@@ -3,6 +3,7 @@ import io
 import json
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 import tarfile
@@ -11,7 +12,7 @@ import unittest
 from unittest.mock import patch
 from cryptography.fernet import Fernet
 
-from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json, preflight
+from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json, preflight, engine_ready
 from video_factory.runtime_store import RuntimeFault
 from video_factory.postgres_store import PG_SCHEMA
 
@@ -134,6 +135,30 @@ class StackTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'MEMBER_UNSAFE'):
                 Stack.restore(source,self.root,key)
             self.assertEqual(list(self.root.iterdir()),[])
+
+
+class EngineReadinessTests(unittest.TestCase):
+    def test_unavailable_engine_is_specific_bounded_and_redacted(self):
+        for result in (subprocess.CompletedProcess([],1,b'',b'private-daemon-detail'),
+                       subprocess.CompletedProcess([],0,b'',b'')):
+            with self.subTest(code=result.returncode),patch('video_factory.stack.local_engine'),patch('video_factory.stack.subprocess.run',return_value=result) as command:
+                with self.assertRaisesRegex(RuntimeFault,'^DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE$'):
+                    engine_ready()
+                self.assertEqual(command.call_args.kwargs['timeout'],15)
+
+    def test_timeout_is_reported_as_read_only_probe_failure(self):
+        with patch('video_factory.stack.local_engine'),patch('video_factory.stack.subprocess.run',side_effect=subprocess.TimeoutExpired('docker',15)):
+            with self.assertRaisesRegex(RuntimeFault,'^DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE$'):engine_ready()
+
+    def test_remote_context_is_not_probed_or_relabelled(self):
+        with patch('video_factory.stack.local_engine',side_effect=RuntimeFault('LOCAL_DOCKER_ENGINE_REQUIRED')),patch('video_factory.stack.run') as command:
+            with self.assertRaisesRegex(RuntimeFault,'^LOCAL_DOCKER_ENGINE_REQUIRED$'):engine_ready()
+            command.assert_not_called()
+
+    def test_running_engine_requires_no_service_mutation(self):
+        with patch('video_factory.stack.local_engine'),patch('video_factory.stack.run',return_value=b'28.0.0\n') as command:
+            engine_ready()
+            command.assert_called_once_with(['docker','info','--format','{{.ServerVersion}}'],timeout=15)
 
 
 if __name__=='__main__':unittest.main()

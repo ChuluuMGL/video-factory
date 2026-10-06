@@ -65,3 +65,9 @@ class BrowserInputTests(unittest.TestCase):
         self.ui.finish({'error':'AUTH_FAILED'},seconds=0)
         self.assertIn('原密码',self.ui.completion['message'])
         self.assertFalse(self.ui.acknowledged)
+
+    def test_engine_failure_explains_service_recovery_without_password_reset(self):
+        self.ui.finish({'error':'DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE'},seconds=0)
+        self.assertTrue(self.ui.completion['failed'])
+        self.assertIn('Docker',self.ui.completion['message'])
+        self.assertIn('无需因此重置',self.ui.completion['message'])

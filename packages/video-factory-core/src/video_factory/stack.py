@@ -73,6 +73,19 @@ def local_engine():
         raise RuntimeFault('LOCAL_DOCKER_ENGINE_REQUIRED')
 
 
+def engine_ready():
+    """Check the local daemon before collecting a password; never start it here."""
+    local_engine()
+    try:
+        version = run(['docker','info','--format','{{.ServerVersion}}'], timeout=15)
+    except RuntimeFault:
+        # Daemon diagnostics can contain private connection details. Keep them
+        # out of both the terminal receipt and the private browser response.
+        raise RuntimeFault('DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE') from None
+    if not version.strip():
+        raise RuntimeFault('DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE')
+
+
 def preflight(root,runtime_port=8787,n8n_port=5678):
     admin_host()
     root=private_directory(root)

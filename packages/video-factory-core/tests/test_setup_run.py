@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from video_factory.onboarding import SessionStore
 from video_factory.setup_feishu import ConnectionSession
-from video_factory.setup_run import welcome, run, private_inputs
+from video_factory.setup_run import welcome, run, private_inputs, install as install_setup
 from video_factory.runtime_store import RuntimeFault
 
 
@@ -34,7 +34,7 @@ class SetupRunTests(unittest.TestCase):
     @contextlib.contextmanager
     def environment(self, inputs, secrets):
         reads=iter(inputs);hidden=iter(secrets)
-        with patch('video_factory.setup_run.admin_host'),patch('video_factory.setup_run.local_engine'),patch('video_factory.setup_deploy.local_machine',return_value={'hostname':'cloud-fixture','machine_id_sha256':'fixture'}),patch('video_factory.setup_run.install',return_value={'project':'new_brand'}) as install,patch('video_factory.setup_run.Stack',return_value=self.stack),patch('video_factory.setup_run.rpc',side_effect=self.rpc):
+        with patch('video_factory.setup_run.admin_host'),patch('video_factory.setup_run.engine_ready'),patch('video_factory.setup_deploy.local_machine',return_value={'hostname':'cloud-fixture','machine_id_sha256':'fixture'}),patch('video_factory.setup_run.install',return_value={'project':'new_brand'}) as install,patch('video_factory.setup_run.Stack',return_value=self.stack),patch('video_factory.setup_run.rpc',side_effect=self.rpc):
             yield lambda:welcome(self.args,read=lambda _:next(reads),hidden=lambda _:next(hidden),write=self.output.append),install
 
     def rpc(self,stack,payload):
@@ -47,6 +47,24 @@ class SetupRunTests(unittest.TestCase):
     def test_declined_install_never_asks_secret_or_installs(self):
         with self.environment(['n'],[]) as (go,install):self.assertEqual(go()['status'],'installation_not_started');install.assert_not_called()
         self.assertEqual(self.events,[])
+
+    def test_unavailable_engine_never_prompts_for_password_or_installs(self):
+        # Check both an initially stopped daemon and one stopped during review.
+        for probes in ([RuntimeFault('DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE')],
+                       [None, RuntimeFault('DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE')]):
+            with self.subTest(probes=len(probes)),self.environment(['y'],[]) as (go,install):
+                before=self.store.path.read_bytes()
+                with patch('video_factory.setup_run.engine_ready',side_effect=probes):
+                    with self.assertRaisesRegex(RuntimeFault,'DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE'):go()
+                install.assert_not_called()
+                self.assertEqual(self.events,[])
+                self.assertEqual(self.store.path.read_bytes(),before)
+
+    def test_engine_lost_during_password_entry_never_authenticates_or_changes_stack(self):
+        with patch('video_factory.setup_run.engine_ready',side_effect=RuntimeFault('DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE')),patch('video_factory.setup_run.Stack') as stack,patch('video_factory.setup_run.apply_setup') as apply,patch('video_factory.setup_run.project_operation') as project:
+            with self.assertRaisesRegex(RuntimeFault,'DOCKER_ENGINE_UNAVAILABLE_CHECK_SERVICE'):
+                install_setup(self.args,self.store,{}, {},'synthetic-password')
+            stack.assert_not_called();apply.assert_not_called();project.assert_not_called()
 
     def test_password_mismatch_never_installs(self):
         with self.environment(['y'],['synthetic-password','other-password']) as (go,install):
