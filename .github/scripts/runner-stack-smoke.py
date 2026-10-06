@@ -5,6 +5,7 @@ import sys
 from urllib.request import Request, urlopen
 
 from video_factory.dispatch import template
+from video_factory.production_setup import import_json
 from video_factory.runner import status, stop_all
 
 
@@ -42,11 +43,7 @@ def smoke(stack, root):
                        'data': {'name': 'Authorization', 'value': 'Bearer ' + cap['token']}}]
         for name, value, kind in [('runner-key', credential, 'credentials'),
                                   ('runner-workflow', draft, 'workflow')]:
-            path = root / (name + '.json')
-            path.write_text(json.dumps(value))
-            path.chmod(0o600)
-            stack.compose('cp', str(path), 'n8n:/tmp/' + name + '.json')
-            stack.compose('exec', '-T', 'n8n', 'n8n', 'import:' + kind, '--input=/tmp/' + name + '.json')
+            import_json(stack, value, name, kind)
         execution = subprocess.run(['docker', 'compose', '--project-directory', str(stack.root),
                                     '-f', str(stack.root / 'compose.json'), 'run', '--rm', '--no-deps',
                                     '-e', 'N8N_RUNNERS_BROKER_PORT=5689', 'n8n', 'execute',
