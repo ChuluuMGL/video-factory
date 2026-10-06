@@ -70,7 +70,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
 
-The public a31 release does not automatically write generated results back to Base. Existing web review code is outside the recommended first-install path; full Feishu-side review, result writeback and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE_2026_10_06.md).
+The public a31 release does not automatically write generated results back to Base. Existing web review code is outside the recommended first-install path; full Feishu-side review, result writeback and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 

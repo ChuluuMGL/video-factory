@@ -1,6 +1,6 @@
 # CLI 与飞书优先安装路径
 
-核对固定发行包与其能力，不把候选功能当作公开版。产品形态以 `docs/product/PRODUCT_SHAPE_2026_10_06.md` 为准；旧版本不可照搬新命令。
+核对固定发行包与其能力，不把候选功能当作公开版。产品形态以 `docs/product/PRODUCT_SHAPE.md` 为准；旧版本不可照搬新命令。
 
 1. 从可信固定 Release 核验归档后，执行包内 `bash bootstrap.sh --check`；支持 Ubuntu 24.04 x86_64 root/systemd。已有 Docker CE 复用插件，不擅自卸载更换。授权安装后 `bash bootstrap.sh --apply` 准备系统依赖，可附带 start.py 参数继续。软件源或磁盘失败需解决实际原因，不能返回安装成功。
 2. 默认由用户在客户服务器的私有 TTY 中完成 `setup-run` 问答。Agent 确实不能提供私有人工 TTY 时，才用 `start.py --browser-input`（默认 8792）启动同一问答；SSH 只转发操作者电脑与服务器的 127.0.0.1。用户自行输入秘密，Agent 不读取字段、截图或代填。用完关闭监听；不得接入 `video.yueyu.tech` 或其他公开域名。
