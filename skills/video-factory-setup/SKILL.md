@@ -5,7 +5,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 # Video Factory 安装与维护
 
-这是客户自托管产品的操作 Skill，配合固定版本发行包中的 `vfctl`。每客户独立服务器、账户、数据库和密钥；一个客户内可建多个项目。Skill 是 Agent 操作指南，实际服务由客户服务器上的容器运行。
+这是客户自托管产品的操作 Skill，配合固定版本发行包中的 `vfctl`。每客户独立服务器、账户、数据库和密钥；一个客户内可建多个项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE_2026_10_06.md`。
 
 ## 开始前
 
@@ -17,13 +17,14 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## 安装、配置与接入
 
-- a28 及以后带环境准备、私有浏览器输入和常驻 HTTPS 候选功能时，读取 [完整安装补齐路径](references/complete-install.md)，使用包内实际能力；不对 a27 宣称这些功能已存在。
+- 读取 [完整安装路径](references/complete-install.md) 并核对固定发行包。已有的常驻网页审核实现不是默认安装步骤；不得为了完成安装而部署网页或配置业务子域名。
 
 - 按操作流程安装 CLI；JSON 的 `cli_installed` 只说明 CLI。普通安装不启动服务、不安装 Docker、不修改客户原版本。
-- 人工使用 `setup-run` 欢迎向导，在真实私有 TTY 中输入密码/App Secret。Agent 不代收秘密到聊天、命令参数、答案文件、日志或 Git；不能提供私有人工终端时，a28 及以后使用仅用户操作的浏览器输入向导；旧版先完成非秘密配置并交接私有输入步骤，不伪装交互已完成。
+- 人工使用 `setup-run` 欢迎向导，在真实私有 TTY 中输入密码/App Secret。Agent 不代收秘密到聊天、命令参数、答案文件、日志或 Git；确实无法提供私有 TTY 时才使用只监听 loopback 的一次性浏览器输入，并通过可信 SSH 隧道交给用户。不得把它放在公开域名或官网。
 - Agent 自动填非秘密配置使用 `setup --json` 返回的 `next_question.input_schema`，逐题提交答案和当前 `revision`。不要把终端提示的 SKU 文件路径当作 Agent JSON 数组，不缓存旧字段格式。
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
+- 飞书连接完成后停止 Setup，回读 Base 和人员；任务导入及审核使用本人授权的 `stack-feishu` 分阶段命令。当前发行包尚无飞书内完整审核和自动结果回写，不得把页面测试写成该能力已通过。
 
 ## 故障与验收
 

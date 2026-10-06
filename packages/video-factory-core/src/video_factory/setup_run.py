@@ -1,5 +1,6 @@
-"""Customer-host terminal welcome, explicit install, vault and window handoff."""
+"""Customer-host terminal welcome, explicit install and Feishu handoff."""
 from contextlib import contextmanager
+import argparse
 import getpass
 import json
 import os
@@ -18,7 +19,6 @@ from .setup_feishu import ConnectionSession, interactive as connection_questions
 from .setup_deploy import execution_plan, apply_setup, project_operation
 from .setup_admin import rpc
 from .setup_connect import run_connect
-from .review_cli import run_window
 from . import image_bundle
 from .stack import Stack, admin_host, local_engine
 
@@ -33,7 +33,8 @@ def register(commands):
     p.add_argument('--runtime-port', type=int)
     p.add_argument('--n8n-port', type=int)
     p.add_argument('--connection-port', type=int, default=8791)
-    p.add_argument('--review-port', type=int, default=8790)
+    # Accepted for existing scripts; Setup no longer launches a review page.
+    p.add_argument('--review-port', type=int, default=8790, help=argparse.SUPPRESS)
     p.add_argument('--seconds', type=int, default=360)
     p.add_argument('--browser-input', action='store_true', help='human input via loopback browser, never Agent chat')
     p.add_argument('--input-port', type=int, default=8792)
@@ -87,8 +88,7 @@ def install(args, store, session, reviewed, password):
 
 def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_products=None):
     admin_host(); local_engine()
-    if (not 1 <= args.seconds <= 360 or any(not 1024 <= p <= 65535 for p in (args.connection_port, args.review_port))
-            or args.connection_port == args.review_port):
+    if (not 1 <= args.seconds <= 360 or not 1024 <= args.connection_port <= 65535):
         raise RuntimeFault('SETUP_WINDOW_PORT_OR_DURATION_INVALID')
     write('欢迎使用 Video Factory 安装与接入向导')
     write('请在客户目标服务器运行。每个阶段先核对再执行；输入 :quit 可保存退出。')
@@ -106,7 +106,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     args.host = plan['configuration']['deployment']['host']
     reviewed = execution_plan(args, session)
     target = reviewed['target']
-    if args.connection_port in (target['runtime_port'], target['n8n_port']) or args.review_port in (target['runtime_port'], target['n8n_port']):
+    if args.connection_port in (target['runtime_port'], target['n8n_port']):
         raise RuntimeFault('SETUP_WINDOW_PORT_CONFLICT')
     write('\n请核对安装计划：')
     write('声明服务器：'+target['declared_host']+'；当前主机：'+target['local_machine']['hostname'])
@@ -177,13 +177,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
         if not connected:
             write('尚未确认绑定。已保存配置与加密应用凭据；重新运行同一命令继续。')
             return {'status': 'connection_confirmation_pending', 'business_ready': False}
-        write('绑定已回读。员工需使用各自飞书身份登录审核。')
-        if choice('现在启动员工审核入口', read, write):
-            options.port = args.review_port
-            code = run_window(options, emit=event)
-            if code == 130: raise KeyboardInterrupt
-            if code: raise RuntimeFault('SETUP_EMPLOYEE_WINDOW_INCOMPLETE')
-            return {'status': 'employee_window_closed', 'project': installed['project'], 'business_ready': False}
+        write('飞书绑定已回读。请在项目 Base 核对资料与任务，再单独验收生成、审核和结果。')
         return {'status': 'connection_ready', 'project': installed['project'], 'business_ready': False}
     finally:
         # Revoke only the session created by this wizard; never other users.
@@ -201,7 +195,7 @@ def run(args):
             previous[signum] = signal.getsignal(signum)
             signal.signal(signum, interrupted)
         if getattr(args, 'browser_input', False):
-            if args.input_port in (args.connection_port, args.review_port, args.runtime_port or 8787, args.n8n_port or 5678):
+            if args.input_port in (args.connection_port, args.runtime_port or 8787, args.n8n_port or 5678):
                 raise RuntimeFault('SETUP_INPUT_PORT_CONFLICT')
             from .setup_browser import BrowserInput
             browser = BrowserInput(args.input_port)

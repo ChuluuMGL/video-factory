@@ -26,7 +26,7 @@ class SetupRunTests(unittest.TestCase):
         self.args=SimpleNamespace(session=self.store.path,root=self.root/'stack',wheelhouse=wheels,from_session=None,
             runtime_port=None,n8n_port=None,connection_port=8791,review_port=8790,seconds=360)
         self.profile={'app_id':'cli_fixture','credential_ref':'secret:fixture'}
-        self.events=[];self.output=[]
+        self.events=[];self.output=[];self.connected=False
         self.stack=MagicMock();self.stack.root=self.args.root
 
     def tearDown(self):self.temp.cleanup()
@@ -41,7 +41,7 @@ class SetupRunTests(unittest.TestCase):
         self.events.append(payload)
         if payload['action']=='open':return {'token':'synthetic-admin-token','profile':None,'profile_sha256':'fixture'}
         if payload['action']=='configure':return {'profile':self.profile}
-        if payload['action']=='status':return {'binding_matches_draft':False,'requires_reconfirmation':False}
+        if payload['action']=='status':return {'binding_matches_draft':self.connected,'requires_reconfirmation':False}
         return {'status':'wizard_session_revoked'}
 
     def test_declined_install_never_asks_secret_or_installs(self):
@@ -65,6 +65,15 @@ class SetupRunTests(unittest.TestCase):
         with self.environment(['y',':quit'],['synthetic-password','synthetic-password']) as (go,_):
             self.assertEqual(go()['status'],'installed_credentials_pending')
         self.assertEqual(self.events[-1]['action'],'close')
+
+    def test_connected_setup_finishes_without_employee_browser(self):
+        self.connected=True
+        with self.environment(['y','cli_fixture','y'],
+                              ['synthetic-password','synthetic-password','synthetic-app-secret']) as (go,install):
+            self.assertEqual(go()['status'],'connection_ready')
+            install.assert_called_once()
+        self.assertEqual([v['action'] for v in self.events],['open','configure','status','close'])
+        self.assertIn('项目 Base','\n'.join(self.output))
 
     def test_declined_or_failed_secret_save_still_revokes_session(self):
         with self.environment(['y','cli_fixture','n'],['synthetic-password','synthetic-password','synthetic-secret']) as (go,_):

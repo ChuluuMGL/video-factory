@@ -2,6 +2,8 @@
 
 2026-10-02，当前公开版本 **0.1.0a31（MIT，测试版）**。源码、完整 Skill 与固定安装包可匿名获取；官网入口已同步。独立客户、不同员工账号和新部署真实模型生成仍未完成，不等于生产验收。
 
+2026-10-06 产品形态复核：后续默认路径固定为 Skill/CLI 安装、飞书 Base 日常使用与客户自有 n8n 执行。现有 `workspace` 网页实现不作为默认安装步骤；其伴随执行器与自动调度仍耦合，飞书内完整审核和结果回写也尚未通过独立验收。详见 [产品形态与验收边界](PRODUCT_SHAPE_2026_10_06.md)。公开 a31 固定包及旧测试记录未改变，不能将本分支文档当作已发布的新版本。
+
 ## a31 公开发行
 
 - 源码与固定发行：[GitHub](https://github.com/ChuluuMGL/video-factory) · [a31](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31)。GitHub 个人署名 Chuluu，官网公司署名月瑀科技。
