@@ -241,7 +241,7 @@ jobs:
           VF_CI_SCRIPT
   regression:
     name: Linux Python regression and package smoke
-    needs: [host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal, maintenance]
+    needs: [setup-engine, host-bootstrap, feishu-postgres, workspace-tls, workspace-acme, base-results, project-portal, maintenance]
     permissions:
       contents: write
     runs-on: ubuntu-24.04
