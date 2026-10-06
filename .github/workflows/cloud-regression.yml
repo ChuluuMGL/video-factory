@@ -254,6 +254,9 @@ jobs:
           set -euo pipefail
           sudo "$(command -v python)" .github/scripts/container-stack-smoke.py "$GITHUB_WORKSPACE/ci-results/wheels" "$GITHUB_WORKSPACE/ci-results/dependencies" "$GITHUB_WORKSPACE/ci-stack/baseline" "$GITHUB_WORKSPACE/ci-release" 2> ci-stack/diagnostics.log | tee ci-stack/result.json
           VF_CI_SCRIPT
+      - name: Show sanitized container failure location
+        if: failure()
+        run: python3 .github/scripts/summarize-ci-diagnostic.py ci-stack/diagnostics.log
       - name: Reuse the exact checked archive for offline image verification
         run: |
           python3 .github/scripts/safe-ci.py cloud-check-152 <<'VF_CI_SCRIPT'
