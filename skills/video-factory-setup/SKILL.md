@@ -25,6 +25,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
 - 飞书连接完成后停止 Setup，回读 Base 和人员；任务导入及审核使用本人授权的 `stack-feishu` 分阶段命令。当前发行包尚无飞书内完整审核和自动结果回写，不得把页面测试写成该能力已通过。
+- 需要 n8n 自动推进已批准任务时，另行审阅并部署项目私网 `runner`，再执行 `production-setup`。它不开放员工网页或公网端口；具体步骤和未验收边界见[完整安装路径](references/complete-install.md)。
 
 ## 故障与验收
 

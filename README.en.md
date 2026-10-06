@@ -67,6 +67,7 @@ The operational guides and installer interactions are currently primarily in Chi
 |---|---|
 | Setup Skill | Administrator's or installer's agent; installation and maintenance |
 | Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
+| Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
 
