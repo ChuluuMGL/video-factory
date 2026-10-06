@@ -330,7 +330,7 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         assert not run(['docker','container','ls','--all','--filter','name=vf-setup-'+fourth.config['instance'],'--format','{{.ID}}']).strip()
         with socket.socket() as sock:assert sock.connect_ex(('127.0.0.1',setup_port))!=0
         feishu_proof['setup_window_container_unlock_and_cleanup']='PASS'
-        print('STAGE: terminal wizard existing binding to employee window',file=sys.stderr,flush=True)
+        print('STAGE: terminal wizard existing binding to Feishu handoff',file=sys.stderr,flush=True)
         completed_draft=json.loads((fourth.root/'data/runtime/feishu-connection.json').read_text())
         employee_session=root/'employee.setup.json';employee_session.write_text(json.dumps(completed_draft['setup']));employee_session.chmod(0o600)
         employee_connection=employee_session.with_name(employee_session.name+'.feishu.json')
@@ -338,8 +338,8 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         employee_wizard=wizard.copy();employee_wizard[employee_wizard.index('--session')+1]=str(employee_session)
         transcript=drive(employee_wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
             ('App ID（:quit 保存退出）> ','cli_fixture'),('App Secret（隐藏输入）: ','synthetic-wizard-secret'),
-            ('确认保存应用凭据','y'),('现在启动员工审核入口','y')],secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
-        assert 'employee_window_closed' in transcript
+            ('确认保存应用凭据','y')],secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
+        assert 'connection_ready' in transcript and '现在启动员工审核入口' not in transcript
         assert fourth.status()['egress']=='disabled'
         assert not list((fourth.root/'data/worker').glob('.setup-run-*'))
         # Decrypt only inside the actual customer runtime and assert; no raw
@@ -352,8 +352,8 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         feishu_proof['independent_human_operator']='not_run'
         feishu_proof['release_archive_sha256']=release_receipt['archive_sha256']
         feishu_proof['release_manifest_sha256']=release_receipt['manifest_sha256']
-        feishu_proof['terminal_welcome_install_resume_vault_and_employee_window']='PASS'
-        feishu_proof['terminal_sigterm_window_and_temporary_session_cleanup']='PASS'
+        feishu_proof['terminal_welcome_install_resume_vault_and_feishu_handoff']='PASS'
+        feishu_proof['terminal_sigterm_and_temporary_session_cleanup']='PASS'
 
 
         from video_factory.automation import template
