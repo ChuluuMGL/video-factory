@@ -6,7 +6,7 @@ import unittest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from video_factory.workspace_http import WorkspaceServer,origin
+from video_factory.workspace_http import WorkspaceServer,origin,workspace_oauth
 from video_factory.workspace import certificate,nginx
 from video_factory.runtime_store import RuntimeFault
 from review_fixture import Fixture
@@ -44,3 +44,36 @@ class WorkspaceTests(unittest.TestCase):
                 now[0]+=86400
                 sid,_=server.session(None,True);self.assertTrue(sid)
             finally: server.server_close();f.close()
+
+    def test_workspace_oauth_releases_database_before_secret_lookup(self):
+        class Row(dict):
+            def __getitem__(self, key):
+                return list(self.values())[key] if isinstance(key, int) else super().__getitem__(key)
+        class Cursor:
+            def fetchone(self): return Row(value='{"app_id":"cli_test","credential_ref":"secret:test"}')
+        class DB:
+            def __init__(self, owner): self.owner=owner
+            def execute(self, *_):
+                self.owner.events.append('read_profile')
+                return Cursor()
+        class Context:
+            def __init__(self, owner): self.owner=owner
+            def __enter__(self):
+                self.owner.open=True
+                self.owner.events.append('connect_enter')
+                return DB(self.owner)
+            def __exit__(self, *_):
+                self.owner.events.append('connect_exit')
+                self.owner.open=False
+        class Store:
+            def __init__(self):
+                self.open=False
+                self.events=[]
+            def connect(self): return Context(self)
+            def resolve_secret(self, alias, _):
+                self.events.append(('resolve_secret', alias, self.open))
+                return 'feishu-secret'
+        store=Store()
+        oauth=workspace_oauth(store,'demo',secret_reader=lambda *_:'master-key')
+        self.assertEqual(oauth.app_id,'cli_test')
+        self.assertIn(('resolve_secret','test',False),store.events)

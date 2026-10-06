@@ -64,6 +64,14 @@ class WorkspaceServer(ReviewServer):
         return super().authorize(session)
 
 
+def workspace_oauth(store, project, *, secret_reader=secret_input, master_path=Path('/run/secrets/runtime_master')):
+    with store.connect() as db:
+        profile = meta(db, 'setup:feishu-app:'+project)
+    if not profile: raise RuntimeFault('WORKSPACE_FEISHU_PROFILE_REQUIRED')
+    secret = store.resolve_secret(profile['credential_ref'][7:], secret_reader(master_path, ''))
+    return DeviceOAuth(profile['app_id'], secret)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--project', required=True)
@@ -80,11 +88,7 @@ def main():
     else:
         service = ReviewService(store, args.project, '/media')
         server_type = WorkspaceServer
-    with store.connect() as db:
-        profile = meta(db, 'setup:feishu-app:'+args.project)
-    if not profile: raise RuntimeFault('WORKSPACE_FEISHU_PROFILE_REQUIRED')
-    secret = store.resolve_secret(profile['credential_ref'][7:], secret_input(Path('/run/secrets/runtime_master'), ''))
-    oauth = DeviceOAuth(profile['app_id'], secret)
+    oauth = workspace_oauth(store, args.project)
     if args.check_projects:
         origin(args.origin)
         print('{"status":"projects_validated"}', flush=True)
