@@ -56,7 +56,7 @@ class RunnerTests(unittest.TestCase):
             (root / 'runner.json').write_text(json.dumps(runner.plan(stack, 'brand')))
             rows = [{'Service': name, 'State': 'running', 'Health': 'healthy'}
                     for name in ('executor', 'egress')]
-            with patch.object(runner, 'compose', return_value=json.dumps(rows).encode()):
+            with patch.object(runner, 'compose', side_effect=lambda *_: json.dumps(rows).encode()):
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'running')
                 rows[1]['Health'] = 'unhealthy'
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'incomplete')
