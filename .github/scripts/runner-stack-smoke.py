@@ -5,11 +5,19 @@ import sys
 from urllib.request import Request, urlopen
 
 from video_factory.dispatch import template
-from video_factory.runner import apply, plan, status, stop_all
+from video_factory.runner import status, stop_all
 
 
 def smoke(stack, root):
     project = 'fs_brand'
+    def command(action, *extra):
+        result = subprocess.run([sys.executable, '-m', 'video_factory.cli', 'runner', action,
+                                 '--stack-root', str(stack.root), '--project', project, *extra],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+        if result.returncode:
+            print(json.dumps({'stage': 'runner_' + action, 'returncode': result.returncode}), file=sys.stderr)
+            raise AssertionError('RUNNER_CLI_' + action.upper() + '_FAILED')
+        return json.loads(result.stdout)
     def post(path, body, token=None):
         headers = {'Content-Type': 'application/json'}
         if token:
@@ -19,9 +27,10 @@ def smoke(stack, root):
         with urlopen(request, timeout=10) as response:
             return json.load(response)
     try:
-        result = apply(stack, plan(stack, project))
+        reviewed = command('plan')
+        result = command('apply', '--expect-plan', reviewed['plan_sha256'])
         assert result['status'] == 'running' and result['published_ports'] == [], result
-        assert status(stack, project)['status'] == 'running'
+        assert command('status')['status'] == 'running' and status(stack, project)['status'] == 'running'
         admin = post('/v1/login', {'name': 'admin', 'password': 'cloud-stack-fixture-password'})['token']
         cap = post('/v1/automation/execution-keys', {'project': project, 'ttl_hours': 1}, admin)
         draft = template(project, 'vfPrivateRunnerKey')
