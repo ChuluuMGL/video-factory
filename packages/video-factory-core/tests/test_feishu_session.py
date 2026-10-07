@@ -1,8 +1,9 @@
 import json
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
-from video_factory.feishu_session import arguments, terminal_operation
+from video_factory.feishu_session import arguments, run_stack, terminal_operation
 from video_factory.runtime_store import RuntimeFault
 
 
@@ -75,6 +76,17 @@ class SessionTests(unittest.TestCase):
             arguments(options(action='review', record=None, task='VF_TEST_1', decision='reject'))
         with self.assertRaisesRegex(RuntimeFault, 'ARGUMENTS'):
             arguments(options(task='VF_TEST_1'))
+
+    def test_stack_uses_private_master_and_never_creates_a_user_token_file(self):
+        args = options(stack_root='/synthetic-stack')
+        with patch('video_factory.feishu_session.Stack') as stack_type, \
+             patch('video_factory.feishu_session.execute_interactive', return_value=0) as execute:
+            stack_type.return_value.config = {'schema': 2}
+            self.assertEqual(run_stack(args), 0)
+        command = execute.call_args.args[1]
+        self.assertEqual(command[:2], ['feishu-session', 'import'])
+        self.assertIn('/run/secrets/runtime_master', command)
+        self.assertNotIn('--user-token-file', command)
 
 
 if __name__ == '__main__': unittest.main()
