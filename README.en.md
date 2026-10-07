@@ -6,7 +6,7 @@
 
 [中文](README.md) | **English**
 
-[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
+[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a32) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
 
 ## What it does
 
@@ -20,13 +20,13 @@ The installer runs on the customer's server. The Skill guides the AI agent. The 
 
 ## Version and availability
 
-**0.1.0a31 · MIT-licensed public alpha.**
+**0.1.0a32 · MIT-licensed public alpha.**
 
 Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
 
-a31 passed 247 core tests, anonymous fixed-package installation, browser flows, PostgreSQL/n8n upgrade and recovery, and offline checks with both Docker storage modes. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Real model generation on a new current-version deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
+a32 passed cloud regression for fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL and real n8n migration and cold restore, and disconnected installation with both Docker storage modes. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Live Feishu binding and paid model generation on a new a32 deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
 
-See the [release verification record](docs/product/DELIVERY_A31_RESULT.md) and [current status](docs/product/STATUS.md).
+See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
 ## Get started
 
@@ -41,9 +41,9 @@ Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) 
 ```text
 Use the complete Skill in skills/video-factory-setup/ to install
 Video Factory on my own server and configure the first test project.
-Use version 0.1.0a31. Check the server and release package first,
-then guide me through Setup. Use private input channels for passwords
-and API keys; do not collect them in chat.
+Use version 0.1.0a32. Check the server and release package first,
+then guide me through Setup. Hide passwords and API keys in a private
+terminal on my server; do not collect them in chat.
 ```
 
 Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
@@ -71,7 +71,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
 
-The public a31 release does not automatically write generated results back to Base. Existing web review code is outside the recommended first-install path; full Feishu-side review, result writeback and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project; live Feishu permissions and attachment receipts still need acceptance. Existing web review code is outside the recommended first-install path. Full Feishu-side review and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
@@ -87,4 +87,4 @@ Maintained by [Chuluu](https://github.com/ChuluuMGL). Product website: [YUEYU TE
 
 Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. Original code and documentation use the [MIT license](LICENSE). Dependencies, images and case media retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Issues and pull requests are welcome; see [contributing](CONTRIBUTING.md).
 
-Public a31 packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.
+Public a32 packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.

@@ -6,7 +6,7 @@
 
 **中文** | [English](README.en.md)
 
-[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/) · [固定发行版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a31) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [安全报告](SECURITY.md)
+[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/) · [固定发行版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a32) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [安全报告](SECURITY.md)
 
 ## 它是什么
 
@@ -20,13 +20,13 @@ Video Factory 将商品资料、脚本生成、视频生成和人工审核连接
 
 ## 当前版本与使用范围
 
-**0.1.0a31 · MIT 开源测试版。**
+**0.1.0a32 · MIT 开源测试版。**
 
 官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户自行提供服务器、飞书及模型账户。
 
-a31 已通过 247 项核心回归、固定包匿名安装、浏览器交互、PostgreSQL/n8n 升级与恢复、两种 Docker 存储模式断网验证。此前 a29 实测过真实飞书建表、任务导入和脚本返工审核，由 Agent 操作同一账号。**当前版本的新部署真实模型生成、不同员工账号和独立客户完整验收仍未完成**；历史项目案例不代替本安装版验收。
+a32 的云端回归已通过：空白 Ubuntu 环境准备、固定包匿名安装、私密终端 Setup、模拟飞书授权、PostgreSQL 与真实 n8n 容器迁移和冷恢复、两种 Docker 存储模式断网安装。此前 a29 实测过真实飞书建表、任务导入和脚本返工审核，由 Agent 操作同一账号。**a32 的新部署真实飞书接入、付费模型生成、不同员工账号和独立客户完整验收仍未完成**；历史项目案例不代替本安装版验收。
 
-详细范围：[发行验证记录](docs/product/DELIVERY_A31_RESULT.md) · [当前状态](docs/product/STATUS.md)。
+详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) · [当前状态](docs/product/STATUS.md)。
 
 ## 开始安装
 
@@ -41,8 +41,8 @@ a31 已通过 247 项核心回归、固定包匿名安装、浏览器交互、Po
 ```text
 请使用本仓库 skills/video-factory-setup/ 中的完整 Skill，
 带我在自己的服务器上首次安装 Video Factory，并配置第一个测试项目。
-固定版本使用 0.1.0a31；先检查服务器和发行包，再逐步引导 Setup。
-密码和 API Key 通过私有输入通道填写，不放在聊天中。
+固定版本使用 0.1.0a32；先检查服务器和发行包，再逐步引导 Setup。
+密码和 API Key 默认在客户服务器的私密终端隐藏输入，不放在聊天中。
 ```
 
 准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
@@ -68,7 +68,7 @@ a31 已通过 247 项核心回归、固定包匿名安装、浏览器交互、Po
 | 飞书 Base | 项目资料、来源任务与员工日常查看 |
 | 受控审核命令 | Agent 使用本人飞书授权逐条导入和审核 |
 
-公开 a31 不自动回写生成结果。代码中已有网页审核实现，但推荐的首次安装不部署常驻员工网页；飞书内完整审核、结果回写和独立员工验收仍待完成。见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
+a32 可按项目显式启用 [Base 结果同步](docs/product/BASE_RESULTS.md)；真实飞书权限和附件回执仍需验收。代码中保留旧版网页审核实现，但推荐的首次安装不部署常驻员工网页；飞书内完整审核和独立员工验收仍待完成。见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
 
 ## 文档与仓库范围
 
@@ -84,4 +84,4 @@ a31 已通过 247 项核心回归、固定包匿名安装、浏览器交互、Po
 
 Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。本项目自有源码和文档采用 [MIT](LICENSE)；第三方依赖、镜像和案例媒体保留各自条款，见 [第三方说明](THIRD_PARTY_NOTICES.md)。欢迎通过 Issue 和 Pull Request 提出改进，参见 [贡献指南](CONTRIBUTING.md)。
 
-a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
+a32 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
