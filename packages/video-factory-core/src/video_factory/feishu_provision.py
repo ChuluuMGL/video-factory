@@ -78,7 +78,9 @@ def is_create(draft):
 def specification(draft):
     project = draft['setup']['configuration']['project']
     test = draft['answers']['workspace_kind'] == 'test'
-    name = ('VF 测试 · ' if test else 'VF · ')+project['base_target']
+    prefix = 'VF 测试 · ' if test else 'VF · '
+    target = project['base_target']
+    name = target if target.startswith(prefix) else prefix + target
     if len(name) > 240 or any(ord(c) < 32 for c in name):
         raise RuntimeFault('FEISHU_NEW_BASE_NAME_INVALID')
     products = [dict(zip(PRODUCT_FIELDS, [p['sku_id'], p['name'], p['variant'], p['truth_source']]))

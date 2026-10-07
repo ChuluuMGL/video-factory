@@ -69,7 +69,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
 | Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
 | Feishu Base | Project information, source tasks and employees' daily view |
-| Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
+| Controlled review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task |
 
 a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project; live Feishu permissions and attachment receipts still need acceptance. Existing web review code is outside the recommended first-install path. Full Feishu-side review and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 

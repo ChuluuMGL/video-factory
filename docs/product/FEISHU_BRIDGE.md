@@ -1,6 +1,21 @@
 # 飞书任务、员工身份与审核接入（a15）
 
-这是客户服务上的连接器候选：读取指定 Base/表/记录，把不可变输入快照存入产品账本，再由经过飞书身份验证的项目成员审核。原生 `vfctl feishu` 和容器 `vfctl stack-feishu` 共用同一实现。真实租户接入、员工界面和 OAuth 登录向导尚待验收；当前需操作员准备用户授权凭据并执行 CLI。
+这是客户服务上的连接器候选：读取指定 Base/表/记录，把不可变输入快照存入产品账本，再由经过飞书身份验证的项目成员审核。推荐用终端 `vfctl stack-feishu-session` 逐条处理；兼容命令 `vfctl feishu` / `vfctl stack-feishu` 仍接受操作者自行准备的私有用户 Token 文件。真实租户的逐任务授权与审核尚须在安装版验收。
+
+## 默认终端操作
+
+在客户服务器的私有 TTY 中运行。命令读取 Setup 已加密保存的飞书应用密钥，显示飞书官方授权地址；本人授权后，终端显示操作计划，输入 `yes` 才提交。飞书用户 Token 只留在短时容器内存，不写文件；不会打开 Video Factory 网页、调用模型或自动扫全表。
+
+```sh
+vfctl stack-feishu-session import --stack-root /srv/video-factory \
+  --project brand --record rec实际记录ID --expected-revision 0
+
+vfctl stack-feishu-session review --stack-root /srv/video-factory \
+  --project brand --task 实际任务ID --revision 1 --stage script \
+  --decision reject --feedback '请修正具体产品名称' --event 本次唯一事件ID
+```
+
+先核对项目、来源记录、版本和计划，再确认。导入后的 `awaiting_script_review` 不是视频生成完成；审核通过也不授予模型费用许可。`--event` 建议由操作员提供并在异常恢复时复用；省略时命令会打印生成的事件 ID。原始来源发生变化、计划失效或身份不符会拒绝提交。
 
 来自 Setup 的项目优先使用 [接入向导](SETUP_FEISHU_USAGE.md)，逐题配置并核对已安装项目。向导绑定分开的 `script_reviewers` 与 `video_reviewers`；以下手工格式保留原有 `reviewers` 可审核两个阶段的语义。新增分阶段列表必须同时提供，且并集必须等于 reviewers。
 

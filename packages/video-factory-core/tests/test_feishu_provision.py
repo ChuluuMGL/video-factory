@@ -10,7 +10,7 @@ from video_factory.runtime_store import RuntimeStore, RuntimeFault
 from video_factory.setup_project import import_project
 from video_factory.setup_feishu import ConnectionSession, SetupFeishu, describe
 from video_factory.feishu_bridge import meta
-from video_factory.feishu_provision import ProvisionClient, PRODUCT_FIELDS, TASK_FIELDS
+from video_factory.feishu_provision import ProvisionClient, PRODUCT_FIELDS, TASK_FIELDS, specification
 from video_factory.feishu_oauth import DeviceOAuth, SCOPES, CREATE_SCOPES
 
 
@@ -82,6 +82,10 @@ class ProvisionTests(unittest.TestCase):
     def prepare(self): return self.service.prepare(self.admin, self.draft, 'synthetic-user-token')
     def apply(self):
         return self.service.apply(self.admin, self.draft, 'synthetic-user-token', self.prepare()['plan_sha256'])
+
+    def test_test_base_name_does_not_repeat_prefix(self):
+        self.draft['setup']['configuration']['project']['base_target'] = 'VF 测试 · 安装演练'
+        self.assertEqual(specification(self.draft)['base']['name'], 'VF 测试 · 安装演练')
 
     def test_review_then_create_readback_bind_and_repeat_without_writes(self):
         plan = self.prepare(); self.assertEqual(self.remote.writes, [])

@@ -18,6 +18,7 @@ from .setup_deploy import register_setup_deploy, run_setup_deploy
 from .worker_cli import register_worker, run_worker
 from .stack_worker import run_stack_worker
 from .feishu_cli import register_feishu,run_feishu,run_stack_feishu
+from .feishu_session import register as register_feishu_session, run as run_feishu_session, run_stack as run_stack_feishu_session
 from .automation import template as queue_template
 from .setup_feishu_cli import register as register_setup_feishu, run as run_setup_feishu
 from .review_cli import register as register_review, run_review, run_stack as run_stack_review
@@ -58,6 +59,7 @@ def main(argv=None):
     register_review(commands)
     register_feishu(commands)
     register_feishu(commands,container=True)
+    register_feishu_session(commands)
     queue_parser=commands.add_parser("queue-template",help="disabled n8n project queue reader; no paid dispatch")
     queue_parser.add_argument("--project",required=True)
     queue_parser.add_argument("--credential-id",required=True)
@@ -126,6 +128,10 @@ def main(argv=None):
         return run_feishu(args)
     if args.command == "stack-feishu":
         return run_stack_feishu(args)
+    if args.command == 'feishu-session':
+        return run_feishu_session(args)
+    if args.command == 'stack-feishu-session':
+        return run_stack_feishu_session(args)
     if args.command == "stack-worker":
         return run_stack_worker(args)
     if args.command == "worker":
