@@ -128,7 +128,7 @@ http {
 '''.replace('HOST',host)
 
 
-def compose(stack, project, *args):
+def compose(stack, project, *args, data=None):
     root=directory(stack,project); private_file(root/'workspace.json')
     value=json.loads((root/'workspace.json').read_text())
     if value['stack_instance'] != stack.config['instance'] or value['runtime_image'] != stack.config['runtime_image']:
@@ -137,7 +137,7 @@ def compose(stack, project, *args):
     if json.loads((root/'compose.json').read_text()) != expected or (root/'nginx.conf').read_text()!=nginx(value):
         raise RuntimeFault('WORKSPACE_GENERATED_FILES_CHANGED')
     local_engine()
-    return run(['docker','compose','--project-directory',str(root),'-f',str(root/'compose.json'),*args],timeout=180)
+    return run(['docker','compose','--project-directory',str(root),'-f',str(root/'compose.json'),*args],timeout=180,data=data)
 
 
 def stop_all(stack):

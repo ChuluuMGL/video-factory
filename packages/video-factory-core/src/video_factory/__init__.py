@@ -1,3 +1,3 @@
 """Video Factory project bootstrap. No production runner is exported yet."""
 
-__version__ = "0.1.0a31"
+__version__ = "0.1.0a32"

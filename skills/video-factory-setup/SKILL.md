@@ -24,7 +24,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - Agent 自动填非秘密配置使用 `setup --json` 返回的 `next_question.input_schema`，逐题提交答案和当前 `revision`。不要把终端提示的 SKU 文件路径当作 Agent JSON 数组，不缓存旧字段格式。
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
-- 飞书连接完成后停止 Setup，回读 Base 和人员；任务导入及审核使用本人授权的 `stack-feishu` 分阶段命令。当前发行包尚无飞书内完整审核和自动结果回写，不得把页面测试写成该能力已通过。
+- 飞书连接完成后停止 Setup，回读 Base 和人员；任务导入及审核使用本人授权的 `stack-feishu` 分阶段命令。结果回写需管理员另外启用 `base-results`，并按随包 `docs/product/BASE_RESULTS.md` 核对权限、同步与异常回执；未通过真实 Base 验收前不得宣传为默认可用。飞书内完整审核仍未验收。
 - 需要 n8n 自动推进已批准任务时，另行审阅并部署项目私网 `runner`，再执行 `production-setup`。它不开放员工网页或公网端口；具体步骤和未验收边界见[完整安装路径](references/complete-install.md)。
 
 ## 故障与验收
@@ -36,3 +36,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 模型提交、付费重试、员工审核、外部发布分别遵循用户授权；安装或修复指令本身不包含这些动作。未知模型提交不得重发，先查询已有供应商回执。
 - 输出阶段证据：`CLI 安装 / 服务启动 / 项目导入 / 飞书真实接入 / 任务执行 / 真人验收`。逐项记已通过、失败或未执行，并注明证据来源。绿色 CI、Mock OAuth、`plan_ready` 或 `business_ready=false` 不表示客户业务已验收。
 - 结束给出当前版本、确切对象、完成步骤、剩余缺口和可续接命令；不输出秘密、一次性管理员链接或完整敏感日志。
+
+## a32 候选注意
+
+仅在实际 CLI 支持 `base-results` 时，按安装包内 `docs/product/BASE_RESULTS.md` 检查版本、项目和最小权限。公开 a31 不含此能力。候选回写默认关闭，未知上传或恢复检查点须停止并核对，不能清日志重试；未完成真实验收前不向客户承诺已支持。
