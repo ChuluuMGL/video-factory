@@ -32,10 +32,13 @@ class SetupRunTests(unittest.TestCase):
     def tearDown(self):self.temp.cleanup()
 
     @contextlib.contextmanager
-    def environment(self, inputs, secrets):
+    def environment(self, inputs, secrets, secret_prompts=None):
         reads=iter(inputs);hidden=iter(secrets)
+        def read_hidden(prompt):
+            if secret_prompts is not None:secret_prompts.append(prompt)
+            return next(hidden)
         with patch('video_factory.setup_run.admin_host'),patch('video_factory.setup_run.local_engine'),patch('video_factory.setup_deploy.local_machine',return_value={'hostname':'cloud-fixture','machine_id_sha256':'fixture'}),patch('video_factory.setup_run.install',return_value={'project':'new_brand'}) as install,patch('video_factory.setup_run.Stack',return_value=self.stack),patch('video_factory.setup_run.rpc',side_effect=self.rpc):
-            yield lambda:welcome(self.args,read=lambda _:next(reads),hidden=lambda _:next(hidden),write=self.output.append),install
+            yield lambda:welcome(self.args,read=lambda _:next(reads),hidden=read_hidden,write=self.output.append),install
 
     def rpc(self,stack,payload):
         self.events.append(payload)
@@ -53,6 +56,19 @@ class SetupRunTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'PASSWORD_CONFIRMATION_MISMATCH'):go()
             install.assert_not_called()
         self.assertEqual(self.events,[])
+
+    def test_image_fetch_resume_verifies_existing_password_once(self):
+        self.args.root.mkdir()
+        (self.args.root/'stack.json').write_text('{}')
+        self.connected=True
+        target={'declared_host':'cloud-fixture','local_machine':{'hostname':'cloud-fixture','machine_id_sha256':'fixture'},
+                'root':str(self.args.root),'project':'new_brand','runtime_port':8787,'n8n_port':5678,'wheels':{}}
+        prompts=[]
+        with self.environment(['y','cli_fixture','y'],['synthetic-password','synthetic-app-secret'],prompts) as (go,install), \
+             patch('video_factory.setup_run.execution_plan',return_value={'target':target,'execution_sha256':'fixture','sku_count':1}):
+            self.assertEqual(go()['status'],'connection_ready')
+            install.assert_called_once()
+        self.assertEqual(prompts,['产品管理员密码: ','飞书应用 App Secret（隐藏输入）: '])
 
     def test_save_credential_and_decline_window_revokes_token_and_hides_secrets(self):
         with self.environment(['y','cli_fixture','y','n'],['synthetic-password','synthetic-password','synthetic-app-secret']) as (go,install):

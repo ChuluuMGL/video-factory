@@ -118,7 +118,10 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     write('计划校验值：'+reviewed['execution_sha256'])
     if not choice('确认在这台机器安装或继续', read, write):
         return {'status': 'installation_not_started', 'business_ready': False}
-    fresh = not (args.root/'initialized.json').exists()
+    # Stack.prepare persists the administrator password before image fetch.
+    # A failed fetch leaves no initialized marker, but resuming must verify
+    # the existing password instead of asking the operator to set it again.
+    fresh = not (args.root/'stack.json').exists()
     password = hidden('设置产品管理员密码（至少 14 位）: ' if fresh else '产品管理员密码: ')
     RuntimeStore.validate_password(password)
     if fresh and hidden('再次输入管理员密码: ') != password:
