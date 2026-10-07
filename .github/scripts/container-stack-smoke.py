@@ -204,18 +204,20 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         transcript=drive(wizard,[('确认在这台机器安装或继续','y'),('设置产品管理员密码','cloud-stack-fixture-password'),
             ('再次输入管理员密码','cloud-stack-fixture-password'),('输入> ','tblFixture'),('输入> ','fldTask'),('输入> ','fldSkuId'),
             ('输入> ','fldScript'),('输入> ','fldSource'),('输入> ','ou_employee'),('App ID（:quit 保存退出）> ','cli_fixture'),
-            ('App Secret（隐藏输入）: ','synthetic-wizard-secret'),('确认保存应用凭据','y'),('现在打开飞书授权与连接确认页面','n')],
+            ('App Secret（隐藏输入）: ','synthetic-wizard-secret'),('确认保存应用凭据','y'),('现在开始飞书本人授权与终端确认','n')],
             secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
         assert 'installed_credentials_saved' in transcript
         fourth=Stack(setup_root);stacks.append(fourth)
         # Same command resumes without replaying questions or reentering the key.
+        # The Feishu terminal grant itself is exercised with synthetic OAuth in
+        # setup-terminal-smoke; this container check must not contact a real tenant.
         resumed=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
-            ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y')],
-            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
-        assert 'connection_confirmation_pending' in resumed and '请打开本次私有入口' in resumed
+            ('沿用已保存的应用密钥','y'),('现在开始飞书本人授权与终端确认','n')],
+            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),timeout=120)
+        assert 'installed_credentials_saved' in resumed
         interrupted=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
-            ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y'),('请打开本次私有入口',None)],
-            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),expected_code=130)
+            ('沿用已保存的应用密钥','y'),('现在开始飞书本人授权与终端确认',None)],
+            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),timeout=120,expected_code=130)
         assert 'interrupted' in interrupted
 
         assert not list((fourth.root/'data/worker').glob('.setup-run-*'))

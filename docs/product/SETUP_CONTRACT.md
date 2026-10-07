@@ -1,6 +1,6 @@
 # Setup 交互与状态契约
 
-本文定义分阶段契约，最初写于 a7；其中状态名是设计要求，不代表每个 CLI 都返回同名字段。当前已实现离线规划、受控部署、加密凭据、飞书接入与常驻工作区，准确命令见 [客户指南](CUSTOMER_GUIDE.md)和[当前安装能力](NEW_INSTALL_CAPABILITIES.md)。真实模型与独立人员验收仍见 [当前状态](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/STATUS.md)。
+本文定义分阶段契约，最初写于 a7；其中状态名是设计要求，不代表每个 CLI 都返回同名字段。默认产品路径为 Skill/CLI、客户服务器、飞书 Base 与私网 runner；准确命令见[客户指南](CUSTOMER_GUIDE.md)和[统一终端向导](SETUP_RUN_USAGE.md)。真实模型与独立人员验收仍见[当前状态](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/STATUS.md)。
 
 ## 入口与对象
 
