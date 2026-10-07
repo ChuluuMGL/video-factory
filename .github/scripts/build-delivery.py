@@ -19,11 +19,12 @@ def build(destination, receipt_file, repository, checked=False):
     assert not destination.exists(), 'DELIVERY_OUTPUT_MUST_BE_NEW'
     shutil.copytree('delivery/site', destination)
     shutil.copytree('skills/video-factory-setup', destination / 'skill')
-    shutil.copyfile('docs/product/CUSTOMER_GUIDE.md', destination / 'customer-guide.md')
     allowed = json.loads(Path('distribution/customer-docs.json').read_text())
-    for name in ('NEW_INSTALL_CAPABILITIES.md', 'INDEPENDENT_ACCEPTANCE.md'):
+    for name in ('CUSTOMER_GUIDE.md', 'SETUP_RUN_USAGE.md', 'INDEPENDENT_ACCEPTANCE.md', 'PRODUCT_SHAPE.md', 'BASE_RESULTS.md'):
         assert name in allowed
+    for name in allowed:
         shutil.copyfile(Path('docs/product') / name, destination / name)
+    shutil.copyfile('docs/product/CUSTOMER_GUIDE.md', destination / 'customer-guide.md')
     shutil.copyfile(receipt_file, destination / 'release.json')
     with zipfile.ZipFile(destination / 'video-factory-setup.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted((destination / 'skill').rglob('*')):

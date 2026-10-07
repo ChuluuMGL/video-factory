@@ -12,6 +12,8 @@ on:
       - 'delivery/site/**'
       - 'skills/video-factory-setup/**'
       - 'docs/product/CUSTOMER_GUIDE.md'
+      - 'docs/product/PRODUCT_SHAPE.md'
+      - 'distribution/customer-docs.json'
       - '.github/scripts/delivery-smoke.py'
       - '.github/scripts/brand-parity-smoke.py'
       - 'packages/video-factory-core/src/video_factory/*_assets/style.css'

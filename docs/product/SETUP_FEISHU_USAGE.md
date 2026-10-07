@@ -2,11 +2,11 @@
 
 交互安装与接入可使用 [统一终端向导 setup-run](SETUP_RUN_USAGE.md)。以下独立命令继续保留用于分阶段操作。
 
-推荐统一入口 `setup-run`；分阶段仍可使用 `setup` → `setup-deploy plan/apply` → `setup-feishu configure/connect`。接入向导沿用已安装的租户、项目、SKU 和分阶段审核人。
+推荐统一入口 `setup-run`：私有终端隐藏输入密钥，飞书官方地址完成本人授权，再回终端核对建表计划。以下 `configure/connect` 是分阶段兼容入口，会开启短时本机页面；只有明确采用旧流程时才使用。接入向导沿用已安装的租户、项目、SKU 和分阶段审核人。
 
 从 a25 起，`base_mode=create` 询问用途、位置及提交人，授权确认后自动创建、核验并保存实际 ID；`bind` 仍询问已有表及四个文本字段 ID。详见 [新建 Base](BASE_CREATION.md)。Setup 离线草稿不表示 Base 已创建。浏览器设备授权的 token 仅留在内存；下面的用户 token 文件方式是已有 token 操作者的备用路径，不是首次安装必需步骤。
 
-## 浏览器授权连接
+## 兼容入口：临时本机页面
 
 完成 `configure` 后，管理员可直接开启授权向导，无需手动获取用户 access token：
 
@@ -23,7 +23,7 @@ vfctl setup-feishu connect --root /srv/private/runtime \
 
 页面顺序：欢迎 → 客户飞书应用设备授权 → 读取指定 Base 字段 → 展示租户、Base、表、字段、提交人、分阶段审核人和计划摘要 → 确认保存。取消不保存；最终提交再次验证管理员、当前飞书用户和字段。租户错误、原 Setup 与安装配置不符、草稿中途改动、管理员过期/撤销或计划变化均阻断。飞书用户 token 仅在窗口内存；保存或退出清除，不写入数据库、浏览器存储或配置文件。官方应用必须具备设备授权能力和 `bitable:app:readonly`、`contact:user.base:readonly` 权限；每个客户的应用和租户策略仍须实际验证。
 
-保存后页面引导运行 [review-ui / stack-review](REVIEW_UI_USAGE.md) 开启员工审核。它不会自动启动员工窗口或付费任务，也不共用管理员页面。员工以各自飞书身份登录。旧 `plan/apply` 路径保留，供已有私有用户 token 的 Agent/运维使用。
+保存绑定不会自动启动员工网页或付费任务。旧版 `review-ui / stack-review` 属于兼容入口，不在默认安装路径；旧 `plan/apply` 路径保留，供已有私有用户 token 的运维使用。
 
 以下云端检查使用模拟授权服务：首次绑定、取消/确认、计划变化与权限拒绝、SQLite/PostgreSQL、实际 Chrome 桌面/窄屏、安装包及真实容器窗口清理。是否通过以 a17 当前提交的 Actions 为准；不能等同真实租户授权或真人验收。
 

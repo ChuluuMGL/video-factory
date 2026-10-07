@@ -20,7 +20,7 @@
     mode = value;
     document.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
     const source = new URL('skill/SKILL.md', window.location.href).href;
-    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n链接不可访问时，读取附件 video-factory-setup.zip，保留全部文件。\n安装包版本：${config.version}；来源：${config.release_url}\n\n按 Skill 逐步确认服务器与项目，执行配置并验收。密码与密钥只在私有输入界面填写，不进入聊天。完成后交接服务状态、使用入口与续接方式；新增项目复用兼容服务，不自动升级。`;
+    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n链接不可访问时，读取附件 video-factory-setup.zip，保留全部文件。\n安装包版本：${config.version}；来源：${config.release_url}\n\n按 Skill 在私有终端逐步确认服务器与项目，隐藏输入密码与密钥，不把它们发进聊天。本人完成飞书授权后，回到终端确认 Base 计划。Setup 成功后交接服务状态和 Base 链接；真实任务另行验收。新增项目复用同客户的服务。`;
     prompt.setSelectionRange(0, 0);
     prompt.scrollTop = 0;
     document.querySelector('#copy-prompt span').textContent = '复制';

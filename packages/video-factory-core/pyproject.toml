@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-factory-core"
-version = "0.1.0a31"
+version = "0.1.0a32"
 description = "Installable, disabled-by-default project bootstrap for Video Factory"
 readme = "README.md"
 license = {file = "LICENSE"}

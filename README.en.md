@@ -10,7 +10,7 @@
 
 ## What it does
 
-Video Factory connects product information, script generation, video generation and human review into a maintainable project workflow. Administrators install and configure it through an AI agent; employees work in the customer's own workspace.
+Video Factory connects product information, script generation, video generation and human review into a maintainable project workflow. Administrators install and configure it through an AI agent and the CLI; teams organize tasks in their own Feishu Base by default.
 
 - **Independent deployment:** customers manage their services, database, accounts and credentials.
 - **Multiple projects:** reuse infrastructure while configuring products, Feishu and models per project.
@@ -46,7 +46,7 @@ then guide me through Setup. Use private input channels for passwords
 and API keys; do not collect them in chat.
 ```
 
-Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. A persistent employee workspace also needs a domain and a valid HTTPS certificate. The agent checks and prepares Python 3.12, Docker and Compose.
+Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
 Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 
@@ -67,10 +67,11 @@ The operational guides and installer interactions are currently primarily in Chi
 |---|---|
 | Setup Skill | Administrator's or installer's agent; installation and maintenance |
 | Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
-| Feishu Base | Project information and existing task imports |
-| Employee workspace | Customer-hosted task and review interface |
+| Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
+| Feishu Base | Project information, source tasks and employees' daily view |
+| Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
 
-New tasks and generated videos are not automatically written back to Base. A unified project portal and automatic certificate renewal are not built in. See [capabilities and limitations](docs/product/NEW_INSTALL_CAPABILITIES.md).
+The public a31 release does not automatically write generated results back to Base. Existing web review code is outside the recommended first-install path; full Feishu-side review, result writeback and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 

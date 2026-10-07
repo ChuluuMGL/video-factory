@@ -388,6 +388,8 @@ class Stack:
         with self.lock():
             from .workspace import stop_all
             stop_all(self)
+            from .runner import stop_all as stop_all_runners
+            stop_all_runners(self)
             self.compose('stop','--timeout','60',timeout=200)
             return self.status()
 
@@ -403,6 +405,8 @@ class Stack:
             raise RuntimeFault('BACKUP_REQUIRES_NEW_PATH_OUTSIDE_STACK')
         from .workspace import stop_all
         stop_all(self)
+        from .runner import stop_all as stop_all_runners
+        stop_all_runners(self)
         # Explicit cold backup; services deliberately remain stopped afterward.
         self.compose('stop','--timeout','60',timeout=200)
         components=self.status()['components']

@@ -41,6 +41,10 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     from .workspace import register as register_workspace, cli as workspace_cli
     register_workspace(commands)
+    from .runner import register as register_runner, cli as runner_cli
+    register_runner(commands)
+    from .base_results_cli import register as register_results, cli as results_cli
+    register_results(commands)
     from .production_setup import register as register_production, cli as production_cli
     register_production(commands)
     register_runtime(commands)
@@ -93,8 +97,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == 'production-setup':
         return production_cli(args)
+    if args.command == 'base-results':
+        return results_cli(args)
     if args.command == 'workspace':
         return workspace_cli(args)
+    if args.command == 'runner':
+        return runner_cli(args)
     if args.command == 'setup-run':
         return run_setup_run(args)
     if args.command == 'review-ui':

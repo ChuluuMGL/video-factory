@@ -15,6 +15,7 @@ from .setup_admin import rpc
 from .setup_run import choice
 from .dispatch import template
 from .workspace import status as workspace_status
+from .runner import status as runner_status
 
 
 def register(commands):
@@ -108,9 +109,14 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
             if choice('确认将视频密钥与 SKU 素材配置保存到本项目',read,write):
                 with stack.lock():rpc(stack,{'action':'video','token':token,'session':session,'secret':secret,'billing_owner':billing,'region':region,'assets':assets})
                 write('视频配置已保存；具体任务仍需逐条审核和授权。');secret=None
-        with stack.lock():status=workspace_status(stack,project)
+        with stack.lock():status=runner_status(stack,project)
         if status.get('status')!='running':
-            write('请先由 Agent 完成常驻工作区的域名与 HTTPS 部署，再续接调度配置。')
+            # Older customers can retain the existing HTTPS workspace until
+            # they deliberately migrate; it also contains an executor.
+            with stack.lock():legacy=workspace_status(stack,project)
+            if legacy.get('status')=='running':status=legacy
+        if status.get('status')!='running':
+            write('请先由 Agent 部署本项目的私有 runner，再续接调度配置；不需要公网域名。')
             return {'status':'script_configuration_saved_dispatch_pending','project':project,'business_ready':False}
         write('调度只执行明确授权的脚本请求和已批准的视频任务；每次最多推进一个任务。')
         write('授权有效期 90 天，届满停止执行；再次运行本向导可以续期。恢复备份后旧授权无效。')
@@ -120,7 +126,8 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
         with stack.lock():receipt=schedule(stack,session,token,activate=activate)
         write('调度状态：'+receipt['status'])
         return {'status':receipt['status'],'project':project,'expires_at':receipt['expires_at'],
-                'workspace_url':status['url'],'provider_requests':0,'human_acceptance':'not_run'}
+                'executor': 'private_runner' if 'url' not in status else 'legacy_workspace',
+                'provider_requests':0,'human_acceptance':'not_run'}
     finally:
         with stack.lock():rpc(stack,{'action':'close','token':token})
 

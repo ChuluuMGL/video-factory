@@ -1,5 +1,6 @@
-"""Customer-host terminal welcome, explicit install, vault and window handoff."""
+"""Customer-host terminal welcome, explicit install and Feishu handoff."""
 from contextlib import contextmanager
+import argparse
 import getpass
 import json
 import os
@@ -17,8 +18,7 @@ from .setup_cli import interactive as setup_questions
 from .setup_feishu import ConnectionSession, interactive as connection_questions, describe, source_plan
 from .setup_deploy import execution_plan, apply_setup, project_operation
 from .setup_admin import rpc
-from .setup_connect import run_connect
-from .review_cli import run_window
+from .setup_connect import run_connect, run_terminal
 from . import image_bundle
 from .stack import Stack, admin_host, local_engine
 
@@ -33,7 +33,8 @@ def register(commands):
     p.add_argument('--runtime-port', type=int)
     p.add_argument('--n8n-port', type=int)
     p.add_argument('--connection-port', type=int, default=8791)
-    p.add_argument('--review-port', type=int, default=8790)
+    # Accepted for existing scripts; Setup no longer launches a review page.
+    p.add_argument('--review-port', type=int, default=8790, help=argparse.SUPPRESS)
     p.add_argument('--seconds', type=int, default=360)
     p.add_argument('--browser-input', action='store_true', help='human input via loopback browser, never Agent chat')
     p.add_argument('--input-port', type=int, default=8792)
@@ -87,8 +88,7 @@ def install(args, store, session, reviewed, password):
 
 def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_products=None):
     admin_host(); local_engine()
-    if (not 1 <= args.seconds <= 360 or any(not 1024 <= p <= 65535 for p in (args.connection_port, args.review_port))
-            or args.connection_port == args.review_port):
+    if not 1 <= args.seconds <= 360:
         raise RuntimeFault('SETUP_WINDOW_PORT_OR_DURATION_INVALID')
     write('欢迎使用 Video Factory 安装与接入向导')
     write('请在客户目标服务器运行。每个阶段先核对再执行；输入 :quit 可保存退出。')
@@ -106,7 +106,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     args.host = plan['configuration']['deployment']['host']
     reviewed = execution_plan(args, session)
     target = reviewed['target']
-    if args.connection_port in (target['runtime_port'], target['n8n_port']) or args.review_port in (target['runtime_port'], target['n8n_port']):
+    if getattr(args, 'browser_input', False) and args.connection_port in (target['runtime_port'], target['n8n_port'], args.input_port):
         raise RuntimeFault('SETUP_WINDOW_PORT_CONFLICT')
     write('\n请核对安装计划：')
     write('声明服务器：'+target['declared_host']+'；当前主机：'+target['local_machine']['hostname'])
@@ -155,35 +155,31 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
             profile = saved['profile']
         with stack.lock(): status = rpc(stack, {'action': 'status', 'token': token, 'draft': draft})
         connected = status['binding_matches_draft'] and not status['requires_reconfirmation']
-        def event(value):
-            if value.get('status') == 'ready':
-                write('请打开本次私有入口：'+value['url'])
-                write('远程访问使用同端口 SSH 隧道；不要分享管理员授权链接。窗口最多 '+str(args.seconds)+' 秒。')
-            if value.get('error'): write('入口未完成：'+value['error'])
         options = SimpleNamespace(stack_root=args.root, root=None, project=target['project'],
             app_id=profile['app_id'], app_secret_ref=profile['credential_ref'], app_secret_file=None, master_key_file=None,
             port=args.connection_port, seconds=args.seconds, answers=None, expect_revision=None, setup_session=None,
-            interactive=False, user_token_file=None, expect_plan=None, container_network=False)
+            interactive=False, json=False, user_token_file=None, expect_plan=None, container_network=False)
         if not connected:
-            if not choice('现在打开飞书授权与连接确认页面', read, write):
+            if not choice('现在开始飞书本人授权与终端确认', read, write):
                 return {'status': 'installed_credentials_saved', 'business_ready': False}
             with private_inputs(stack, draft, token) as directory:
                 options.session = directory/'connection.json'; options.token_file = directory/'admin.token'
-                code = run_connect(options, emit=event)
+                if getattr(args, 'browser_input', False):
+                    def event(value):
+                        if value.get('status') == 'ready':
+                            write('请通过可信 SSH 隧道打开本次私有入口：'+value['url'])
+                        if value.get('error'): write('飞书连接未完成：'+value['error'])
+                    code = run_connect(options, emit=event)
+                else:
+                    code = run_terminal(options)
                 if code == 130: raise KeyboardInterrupt
-                if code: raise RuntimeFault('SETUP_CONNECTION_WINDOW_INCOMPLETE')
+                if code: raise RuntimeFault('SETUP_FEISHU_TERMINAL_INCOMPLETE_READ_STATUS')
             with stack.lock(): status = rpc(stack, {'action': 'status', 'token': token, 'draft': draft})
             connected = status['binding_matches_draft'] and not status['requires_reconfirmation']
         if not connected:
             write('尚未确认绑定。已保存配置与加密应用凭据；重新运行同一命令继续。')
             return {'status': 'connection_confirmation_pending', 'business_ready': False}
-        write('绑定已回读。员工需使用各自飞书身份登录审核。')
-        if choice('现在启动员工审核入口', read, write):
-            options.port = args.review_port
-            code = run_window(options, emit=event)
-            if code == 130: raise KeyboardInterrupt
-            if code: raise RuntimeFault('SETUP_EMPLOYEE_WINDOW_INCOMPLETE')
-            return {'status': 'employee_window_closed', 'project': installed['project'], 'business_ready': False}
+        write('飞书绑定已回读。请在项目 Base 核对资料与任务，再单独验收生成、审核和结果。')
         return {'status': 'connection_ready', 'project': installed['project'], 'business_ready': False}
     finally:
         # Revoke only the session created by this wizard; never other users.
@@ -201,7 +197,7 @@ def run(args):
             previous[signum] = signal.getsignal(signum)
             signal.signal(signum, interrupted)
         if getattr(args, 'browser_input', False):
-            if args.input_port in (args.connection_port, args.review_port, args.runtime_port or 8787, args.n8n_port or 5678):
+            if args.input_port in (args.connection_port, args.runtime_port or 8787, args.n8n_port or 5678):
                 raise RuntimeFault('SETUP_INPUT_PORT_CONFLICT')
             from .setup_browser import BrowserInput
             browser = BrowserInput(args.input_port)

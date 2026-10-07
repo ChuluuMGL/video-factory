@@ -1,10 +1,11 @@
 """Hard process lifetime independent of the host's docker-compose client."""
 import signal
+import sys
 from .cli import main
 
 
 def run():
-    signal.alarm(420)
+    signal.alarm(600 if sys.argv[1:3] == ['setup-feishu', 'terminal'] else 420)
     try:return main()
     finally:signal.alarm(0)
 

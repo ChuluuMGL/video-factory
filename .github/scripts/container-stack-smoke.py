@@ -204,18 +204,20 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         transcript=drive(wizard,[('确认在这台机器安装或继续','y'),('设置产品管理员密码','cloud-stack-fixture-password'),
             ('再次输入管理员密码','cloud-stack-fixture-password'),('输入> ','tblFixture'),('输入> ','fldTask'),('输入> ','fldSkuId'),
             ('输入> ','fldScript'),('输入> ','fldSource'),('输入> ','ou_employee'),('App ID（:quit 保存退出）> ','cli_fixture'),
-            ('App Secret（隐藏输入）: ','synthetic-wizard-secret'),('确认保存应用凭据','y'),('现在打开飞书授权与连接确认页面','n')],
+            ('App Secret（隐藏输入）: ','synthetic-wizard-secret'),('确认保存应用凭据','y'),('现在开始飞书本人授权与终端确认','n')],
             secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
         assert 'installed_credentials_saved' in transcript
         fourth=Stack(setup_root);stacks.append(fourth)
         # Same command resumes without replaying questions or reentering the key.
+        # The Feishu terminal grant itself is exercised with synthetic OAuth in
+        # setup-terminal-smoke; this container check must not contact a real tenant.
         resumed=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
-            ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y')],
-            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
-        assert 'connection_confirmation_pending' in resumed and '请打开本次私有入口' in resumed
+            ('沿用已保存的应用密钥','y'),('现在开始飞书本人授权与终端确认','n')],
+            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),timeout=120)
+        assert 'installed_credentials_saved' in resumed
         interrupted=drive(wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
-            ('沿用已保存的应用密钥','y'),('现在打开飞书授权与连接确认页面','y'),('请打开本次私有入口',None)],
-            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),expected_code=130)
+            ('沿用已保存的应用密钥','y'),('现在开始飞书本人授权与终端确认',None)],
+            secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'),timeout=120,expected_code=130)
         assert 'interrupted' in interrupted
 
         assert not list((fourth.root/'data/worker').glob('.setup-run-*'))
@@ -330,7 +332,7 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         assert not run(['docker','container','ls','--all','--filter','name=vf-setup-'+fourth.config['instance'],'--format','{{.ID}}']).strip()
         with socket.socket() as sock:assert sock.connect_ex(('127.0.0.1',setup_port))!=0
         feishu_proof['setup_window_container_unlock_and_cleanup']='PASS'
-        print('STAGE: terminal wizard existing binding to employee window',file=sys.stderr,flush=True)
+        print('STAGE: terminal wizard existing binding to Feishu handoff',file=sys.stderr,flush=True)
         completed_draft=json.loads((fourth.root/'data/runtime/feishu-connection.json').read_text())
         employee_session=root/'employee.setup.json';employee_session.write_text(json.dumps(completed_draft['setup']));employee_session.chmod(0o600)
         employee_connection=employee_session.with_name(employee_session.name+'.feishu.json')
@@ -338,8 +340,8 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         employee_wizard=wizard.copy();employee_wizard[employee_wizard.index('--session')+1]=str(employee_session)
         transcript=drive(employee_wizard,[('确认在这台机器安装或继续','y'),('产品管理员密码: ','cloud-stack-fixture-password'),
             ('App ID（:quit 保存退出）> ','cli_fixture'),('App Secret（隐藏输入）: ','synthetic-wizard-secret'),
-            ('确认保存应用凭据','y'),('现在启动员工审核入口','y')],secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
-        assert 'employee_window_closed' in transcript
+            ('确认保存应用凭据','y')],secrets=('cloud-stack-fixture-password','synthetic-wizard-secret'))
+        assert 'connection_ready' in transcript and '现在启动员工审核入口' not in transcript
         assert fourth.status()['egress']=='disabled'
         assert not list((fourth.root/'data/worker').glob('.setup-run-*'))
         # Decrypt only inside the actual customer runtime and assert; no raw
@@ -352,8 +354,8 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         feishu_proof['independent_human_operator']='not_run'
         feishu_proof['release_archive_sha256']=release_receipt['archive_sha256']
         feishu_proof['release_manifest_sha256']=release_receipt['manifest_sha256']
-        feishu_proof['terminal_welcome_install_resume_vault_and_employee_window']='PASS'
-        feishu_proof['terminal_sigterm_window_and_temporary_session_cleanup']='PASS'
+        feishu_proof['terminal_welcome_install_resume_vault_and_feishu_handoff']='PASS'
+        feishu_proof['terminal_sigterm_and_temporary_session_cleanup']='PASS'
 
 
         from video_factory.automation import template
@@ -379,8 +381,9 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         except HTTPError as error:assert error.code==401
         else:raise AssertionError('REVOKED_QUEUE_TOKEN_ACCEPTED')
         import runpy
+        runner_proof=runpy.run_path('.github/scripts/runner-stack-smoke.py')['smoke'](fourth,root)
         workspace_proof=runpy.run_path('.github/scripts/workspace-stack-smoke.py')['smoke'](fourth,root,json.loads(employee_session.read_text()))
-        proof={'workspace_https':workspace_proof,'status':'PASS','scope':'isolated_cloud_three_component_stack','backend':'postgresql',
+        proof={'private_runner':runner_proof,'workspace_https':workspace_proof,'status':'PASS','scope':'isolated_cloud_three_component_stack','backend':'postgresql',
                'feishu_bridge':feishu_proof,'n8n_project_queue':'PASS','queue_cross_project_denied':True,'queue_revoke_and_upgrade_invalidation':'PASS','container_worker_full_decode':'PASS','controlled_egress':egress_proof,'worker_relay_stopped_after_rejection':True,'deployment_schema_upgrade':'2_preserved','migrated_worker_permissions_revoked':'PASS','restored_worker_permissions_revoked':'PASS','postgres_generic_worker_concurrency':'PASS','setup_to_fresh_install_and_two_projects':'PASS','setup_import_resume':'PASS','execution_digest_change_rejected':True,'single_command_install_and_resume':'PASS','target_change_rejected':True,'environment':environment,'roles_isolated':True,'postgres_ledger_concurrency_and_migration':'PASS','real_n8n_health_workflow_runs':3,'product_upgrade':{'from':old_version,'to':new_version},'failed_upgrade_rollback':'PASS',
                'n8n_credential_decryption_after_restore':True,'restart':'PASS','full_cold_restore_new_directory':'PASS',
                'media_and_keys_preserved':True,'old_sessions_revoked':True,'unknown_submission_preserved':True,
@@ -404,6 +407,10 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
         raise
     finally:
         for stack in reversed(stacks):
+            try:
+                from video_factory.runner import stop_all as stop_all_runners
+                stop_all_runners(stack)
+            except Exception:pass
             try:
                 from video_factory.workspace import stop_all
                 stop_all(stack)

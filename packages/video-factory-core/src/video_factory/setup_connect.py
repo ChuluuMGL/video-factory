@@ -1,9 +1,11 @@
-"""Admin-opened first-binding window; OAuth tokens live only in memory."""
+"""Admin-owned Feishu binding; OAuth tokens live only in memory."""
 import json
 import os
 from pathlib import Path
 import secrets
+import sys
 import threading
+import time
 
 from .feishu_oauth import DeviceOAuth, SCOPES, CREATE_SCOPES
 from .onboarding import SetupError
@@ -14,6 +16,86 @@ from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault
 from .setup_feishu import ConnectionSession, SetupFeishu, describe, fingerprint
 from .feishu_provision import is_create
+
+
+def terminal_binding(service, oauth, *, read=input, write=print, clock=time.monotonic, sleep=time.sleep, seconds=240):
+    """Review a Feishu device grant and its exact Base plan on a private TTY."""
+    draft = service.context()
+    grant = oauth.start()
+    write('请由本人在飞书完成授权：' + grant['verification_uri'])
+    write('飞书授权码：' + grant['user_code'])
+    deadline = clock() + min(seconds, grant['expires_in'])
+    interval = grant['interval']
+    user = None
+    while clock() < deadline:
+        sleep(min(interval, max(0, deadline-clock())))
+        response = oauth.poll(grant['device_code'])
+        if response['status'] == 'authorized':
+            user = response['access_token']
+            break
+        if response['status'] == 'slow_down': interval = min(interval+5, 60)
+    if user is None:
+        raise RuntimeFault('FEISHU_OAUTH_DENIED_OR_EXPIRED')
+    identity = service.identity(user)
+    prepared = service.service.prepare(service.admin, draft, user)
+    write('已验证飞书本人身份：' + json.dumps(identity, ensure_ascii=False, sort_keys=True))
+    write('请核对即将连接或创建的 Base：' + json.dumps(prepared['plan'], ensure_ascii=False, sort_keys=True))
+    write('计划校验值：' + prepared['plan_sha256'])
+    if read('确认上述飞书操作？输入 yes 后执行，其余输入取消> ').strip() != 'yes':
+        return {'status': 'connection_not_confirmed', 'business_ready': False, 'feishu_writes': 0}
+    result = service.service.apply(service.admin, draft, user, prepared['plan_sha256'])
+    status = service.service.status(service.admin, draft)
+    if not status['binding_matches_draft'] or status['requires_reconfirmation']:
+        raise RuntimeFault('SETUP_FEISHU_READBACK_INCOMPLETE')
+    write('飞书绑定已保存并回读。')
+    return result
+
+
+def run_terminal(args):
+    """Use the worker's attached TTY; no Video Factory web listener is opened."""
+    try:
+        if (not args.project or not args.app_id or not args.token_file or not args.session
+                or not (args.app_secret_file or args.app_secret_ref) or args.answers is not None
+                or args.expect_plan or args.user_token_file or args.setup_session or args.json
+                or args.interactive or args.container_network or not 1 <= args.seconds <= 360):
+            raise RuntimeFault('SETUP_FEISHU_TERMINAL_ARGUMENTS_INVALID')
+        if not all(stream.isatty() for stream in (sys.stdin, sys.stdout, sys.stderr)):
+            raise RuntimeFault('SETUP_RUN_REQUIRES_PRIVATE_TTY')
+        if args.stack_root:
+            from .stack import Stack
+            from .stack_worker import execute_interactive
+            if not args.app_secret_ref or args.app_secret_file:
+                raise RuntimeFault('FEISHU_APP_SECRET_REFERENCE_INVALID')
+            stack = Stack(args.stack_root)
+            if stack.config['schema'] != 2: raise RuntimeFault('STACK_FEISHU_REQUIRES_UPGRADE')
+            for path in (args.session, args.token_file):
+                if not path.is_absolute() or not path.is_relative_to('/work') or '..' in path.parts:
+                    raise RuntimeFault('FEISHU_INPUTS_REQUIRE_CONTAINER_WORK_DIRECTORY')
+            command = ['setup-feishu', 'terminal', '--root', '/state', '--project', args.project,
+                       '--session', str(args.session), '--token-file', str(args.token_file),
+                       '--app-id', args.app_id, '--app-secret-ref', args.app_secret_ref,
+                       '--master-key-file', '/run/secrets/runtime_master', '--seconds', str(args.seconds)]
+            return execute_interactive(stack, command)
+        if not args.root or os.environ.get('VF_CONTAINER_MODE') != '1':
+            raise RuntimeFault('CONTAINER_MODE_REQUIRED')
+        from .review_cli import app_secret
+        service = ConnectionService(SetupFeishu(selected_store()(args.root)),
+                                    secret_input(args.token_file, ''), ConnectionSession(args.session), args.project)
+        draft = service.context()
+        oauth = DeviceOAuth(args.app_id, app_secret(args), scopes=CREATE_SCOPES if is_create(draft) else SCOPES)
+        result = terminal_binding(service, oauth, seconds=min(args.seconds, 240))
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0 if result.get('status') == 'connection_binding_saved' else 2
+    except (RuntimeFault, SetupError) as error:
+        print(json.dumps({'error': str(error), 'business_ready': False, 'feishu_writes': 'unknown_read_status'}))
+        return 2
+    except (KeyboardInterrupt, EOFError):
+        print(json.dumps({'status': 'interrupted', 'business_ready': False, 'feishu_writes': 'unknown_read_status'}))
+        return 130
+    except Exception:
+        print(json.dumps({'error': 'SETUP_FEISHU_TERMINAL_UNCERTAIN_READ_STATUS', 'business_ready': False,
+                          'feishu_writes': 'unknown_read_status'}))
+        return 2
 
 
 class ConnectionService:
