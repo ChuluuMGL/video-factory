@@ -75,6 +75,21 @@ class SetupRunTests(unittest.TestCase):
         self.assertEqual([v['action'] for v in self.events],['open','configure','status','close'])
         self.assertIn('项目 Base','\n'.join(self.output))
 
+    def test_first_binding_uses_private_terminal_and_rechecks_base(self):
+        @contextlib.contextmanager
+        def inputs(*_): yield Path('/work/fixture')
+        def connect(_):
+            self.connected=True
+            return 0
+        with self.environment(['y','cli_fixture','y','y'],
+                              ['synthetic-password','synthetic-password','synthetic-app-secret']) as (go,_), \
+             patch('video_factory.setup_run.private_inputs', side_effect=inputs), \
+             patch('video_factory.setup_run.run_terminal', side_effect=connect) as terminal, \
+             patch('video_factory.setup_run.run_connect') as browser:
+            self.assertEqual(go()['status'],'connection_ready')
+            terminal.assert_called_once()
+            browser.assert_not_called()
+
     def test_declined_or_failed_secret_save_still_revokes_session(self):
         with self.environment(['y','cli_fixture','n'],['synthetic-password','synthetic-password','synthetic-secret']) as (go,_):
             self.assertEqual(go()['status'],'installed_credentials_pending')

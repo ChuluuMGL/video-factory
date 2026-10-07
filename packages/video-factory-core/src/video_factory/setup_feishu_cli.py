@@ -14,7 +14,7 @@ from .stack_worker import execute_once
 
 def register(commands):
     p = commands.add_parser('setup-feishu', help='resume connection questions; explicitly verify/apply an installed Setup')
-    p.add_argument('action', choices=('configure', 'plan', 'apply', 'status', 'connect'))
+    p.add_argument('action', choices=('configure', 'plan', 'apply', 'status', 'connect', 'terminal'))
     p.add_argument('--session', type=Path, required=True, help='private connection session; /work path for stack operations')
     p.add_argument('--setup-session', type=Path, help='original completed Setup; required for configure')
     target = p.add_mutually_exclusive_group()
@@ -41,6 +41,9 @@ def register(commands):
 
 def run(args):
     try:
+        if args.action == 'terminal':
+            from .setup_connect import run_terminal
+            return run_terminal(args)
         if args.action == 'connect':
             from .setup_connect import run_connect
             return run_connect(args)

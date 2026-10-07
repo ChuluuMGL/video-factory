@@ -18,7 +18,7 @@ from .setup_cli import interactive as setup_questions
 from .setup_feishu import ConnectionSession, interactive as connection_questions, describe, source_plan
 from .setup_deploy import execution_plan, apply_setup, project_operation
 from .setup_admin import rpc
-from .setup_connect import run_connect
+from .setup_connect import run_connect, run_terminal
 from . import image_bundle
 from .stack import Stack, admin_host, local_engine
 
@@ -88,7 +88,7 @@ def install(args, store, session, reviewed, password):
 
 def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_products=None):
     admin_host(); local_engine()
-    if (not 1 <= args.seconds <= 360 or not 1024 <= args.connection_port <= 65535):
+    if not 1 <= args.seconds <= 360:
         raise RuntimeFault('SETUP_WINDOW_PORT_OR_DURATION_INVALID')
     write('欢迎使用 Video Factory 安装与接入向导')
     write('请在客户目标服务器运行。每个阶段先核对再执行；输入 :quit 可保存退出。')
@@ -106,7 +106,7 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
     args.host = plan['configuration']['deployment']['host']
     reviewed = execution_plan(args, session)
     target = reviewed['target']
-    if args.connection_port in (target['runtime_port'], target['n8n_port']):
+    if getattr(args, 'browser_input', False) and args.connection_port in (target['runtime_port'], target['n8n_port'], args.input_port):
         raise RuntimeFault('SETUP_WINDOW_PORT_CONFLICT')
     write('\n请核对安装计划：')
     write('声明服务器：'+target['declared_host']+'；当前主机：'+target['local_machine']['hostname'])
@@ -155,23 +155,25 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
             profile = saved['profile']
         with stack.lock(): status = rpc(stack, {'action': 'status', 'token': token, 'draft': draft})
         connected = status['binding_matches_draft'] and not status['requires_reconfirmation']
-        def event(value):
-            if value.get('status') == 'ready':
-                write('请打开本次私有入口：'+value['url'])
-                write('远程访问使用同端口 SSH 隧道；不要分享管理员授权链接。窗口最多 '+str(args.seconds)+' 秒。')
-            if value.get('error'): write('入口未完成：'+value['error'])
         options = SimpleNamespace(stack_root=args.root, root=None, project=target['project'],
             app_id=profile['app_id'], app_secret_ref=profile['credential_ref'], app_secret_file=None, master_key_file=None,
             port=args.connection_port, seconds=args.seconds, answers=None, expect_revision=None, setup_session=None,
-            interactive=False, user_token_file=None, expect_plan=None, container_network=False)
+            interactive=False, json=False, user_token_file=None, expect_plan=None, container_network=False)
         if not connected:
-            if not choice('现在打开飞书授权与连接确认页面', read, write):
+            if not choice('现在开始飞书本人授权与终端确认', read, write):
                 return {'status': 'installed_credentials_saved', 'business_ready': False}
             with private_inputs(stack, draft, token) as directory:
                 options.session = directory/'connection.json'; options.token_file = directory/'admin.token'
-                code = run_connect(options, emit=event)
+                if getattr(args, 'browser_input', False):
+                    def event(value):
+                        if value.get('status') == 'ready':
+                            write('请通过可信 SSH 隧道打开本次私有入口：'+value['url'])
+                        if value.get('error'): write('飞书连接未完成：'+value['error'])
+                    code = run_connect(options, emit=event)
+                else:
+                    code = run_terminal(options)
                 if code == 130: raise KeyboardInterrupt
-                if code: raise RuntimeFault('SETUP_CONNECTION_WINDOW_INCOMPLETE')
+                if code: raise RuntimeFault('SETUP_FEISHU_TERMINAL_INCOMPLETE_READ_STATUS')
             with stack.lock(): status = rpc(stack, {'action': 'status', 'token': token, 'draft': draft})
             connected = status['binding_matches_draft'] and not status['requires_reconfirmation']
         if not connected:

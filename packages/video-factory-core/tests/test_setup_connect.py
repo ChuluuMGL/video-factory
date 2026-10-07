@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from setup_connect_fixture import SetupFixture
 import test_review_ui
-from video_factory.setup_connect import ConnectionService, run_connect
+from video_factory.setup_connect import ConnectionService, run_connect, terminal_binding
 from video_factory.runtime_store import RuntimeFault
 
 
@@ -51,6 +51,27 @@ class SetupConnectTests(unittest.TestCase):
         self.assertTrue(self.f.service.status(self.f.admin, self.f.session.snapshot())['binding_matches_draft'])
         self.assertNotIn('synthetic-user-token', repr(self.f.server.sessions))
         self.assertEqual(self.request('/api/prepare', {})[0], 401)
+
+    def test_private_terminal_device_authorization_reviews_before_binding(self):
+        output = []
+        def authorize(delay):
+            self.now += delay
+            self.f.wire.granted = True
+        result = terminal_binding(self.f.connection, self.f.wire.oauth, read=lambda _: 'yes',
+                                  write=output.append, clock=lambda: self.now, sleep=authorize)
+        self.assertEqual(result['status'], 'connection_binding_saved')
+        self.assertTrue(self.f.service.status(self.f.admin, self.f.session.snapshot())['binding_matches_draft'])
+        self.assertIn('计划校验值', '\n'.join(output))
+        self.assertNotIn('synthetic-user-token', '\n'.join(output))
+
+    def test_private_terminal_decline_keeps_base_unbound(self):
+        def authorize(delay):
+            self.now += delay
+            self.f.wire.granted = True
+        result = terminal_binding(self.f.connection, self.f.wire.oauth, read=lambda _: 'no',
+                                  write=lambda _: None, clock=lambda: self.now, sleep=authorize)
+        self.assertEqual(result['status'], 'connection_not_confirmed')
+        self.assertFalse(self.f.service.status(self.f.admin, self.f.session.snapshot())['binding_matches_draft'])
 
     def test_private_one_use_link_and_no_employee_or_admin_routes(self):
         self.assertEqual(self.request('/api/login', {})[0], 401)

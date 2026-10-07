@@ -4,7 +4,7 @@
 
 1. 从可信固定 Release 核验归档后，执行包内 `bash bootstrap.sh --check`；支持 Ubuntu 24.04 x86_64 root/systemd。已有 Docker CE 复用插件，不擅自卸载更换。授权安装后 `bash bootstrap.sh --apply` 准备系统依赖，可附带 start.py 参数继续。软件源或磁盘失败需解决实际原因，不能返回安装成功。
 2. 默认由用户在客户服务器的私有 TTY 中完成 `setup-run` 问答。Agent 确实不能提供私有人工 TTY 时，才用 `start.py --browser-input`（默认 8792）启动同一问答；SSH 只转发操作者电脑与服务器的 127.0.0.1。用户自行输入秘密，Agent 不读取字段、截图或代填。用完关闭监听；不得接入 `video.yueyu.tech` 或其他公开域名。
-3. Setup 需要飞书授权时，继续准备连接页端口隧道（默认8791）。用户完成后回读绑定，不能把开窗当成完成授权。
+3. Setup 需要飞书授权时，终端显示飞书官方授权地址与短码；用户在飞书完成本人授权，然后在原终端核对创建或绑定计划并确认。回读真实 Base 绑定，不能把取得授权码当成完成接入。
 4. 回读服务与 Base 的真实状态，交接 Base 链接、项目、人员和未执行的验收。按 `FEISHU_BRIDGE.md` 使用本人授权的 `stack-feishu` 导入或审核一条任务；Setup 本身不启动员工网页。
 5. 常驻 `workspace` 是已存在的网页候选能力，不是 CLI 安装完成的条件。需要自动调度时，先执行 `vfctl runner plan --stack-root ROOT --project PROJECT`，核对摘要后执行 `runner apply --expect-plan SHA`；它只在 Docker 私网提供执行器。旧 workspace 与 runner 不能在同一项目并行；迁移须单独计划和验收。
 

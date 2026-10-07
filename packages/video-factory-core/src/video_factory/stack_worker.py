@@ -1,6 +1,8 @@
 """One-shot container worker; no scheduler or automatic paid activation."""
 import json
 import secrets
+import subprocess
+import sys
 from pathlib import Path
 
 from .runtime_store import RuntimeFault
@@ -24,6 +26,33 @@ def execute_once(stack,command,*,egress):
             finally:
                 if egress:stack.compose('stop','--timeout','5','egress',timeout=20)
     return result
+
+
+def execute_interactive(stack, command):
+    """Attach one private TTY to an egress worker; never capture its input."""
+    if not all(stream.isatty() for stream in (sys.stdin, sys.stdout, sys.stderr)):
+        raise RuntimeFault('SETUP_RUN_REQUIRES_PRIVATE_TTY')
+    name = 'vf-worker-' + stack.config['instance'] + '-' + secrets.token_hex(6)
+    with stack.lock():
+        if not stack.status()['infrastructure_ready']:
+            raise RuntimeFault('STACK_WORKER_REQUIRES_HEALTHY_STACK')
+        try:
+            stack.compose('up', '-d', '--pull', 'never', '--wait', '--wait-timeout', '40', 'egress', timeout=60)
+            invocation = ['docker', 'compose', '--profile', 'worker', '--project-directory', str(stack.root),
+                          '-f', str(stack.root/'compose.json'), 'run', '--rm', '--name', name,
+                          '--no-deps', 'worker', *command]
+            try:
+                result = subprocess.run(invocation, timeout=610, check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                raise RuntimeFault('SETUP_TERMINAL_OUTCOME_UNKNOWN_READ_STATUS') from None
+            return result.returncode
+        finally:
+            try:
+                remaining = run(['docker', 'container', 'ls', '--all', '--filter', 'name=^/'+name+'$',
+                                 '--format', '{{.ID}}'], timeout=20)
+                if remaining.strip(): run(['docker', 'container', 'rm', '--force', name], timeout=20)
+            finally:
+                stack.compose('stop', '--timeout', '5', 'egress', timeout=20)
 
 
 def run_stack_worker(args):
