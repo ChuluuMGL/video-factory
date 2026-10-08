@@ -173,6 +173,39 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(self.remote.writes, writes)
         self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
 
+    def test_completed_recovery_preserves_edited_seed_rows(self):
+        self.apply(); writes = self.remote.writes.copy()
+        task = next(row for row in self.remote.rows.values() if row['fields'].get('任务编号') == 'VF_TEST_1')
+        task['fields']['来源版本'] = 'test-v3-global-key'
+        task['fields']['脚本'] = '人工审核后修改的脚本'
+        product = next(row for row in self.remote.rows.values() if row['fields'].get('SKU'))
+        product['fields']['规格'] = '验收过程中更新的规格'
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        result = self.apply()
+        self.assertEqual(result['status'], 'connection_binding_saved')
+        self.assertFalse(result['seed_content_unchanged'])
+        self.assertEqual(self.remote.writes, writes)
+        self.assertEqual(task['fields']['来源版本'], 'test-v3-global-key')
+        self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_completed_recovery_rejects_changed_seed_identity(self):
+        self.apply(); writes = self.remote.writes.copy()
+        task = next(row for row in self.remote.rows.values() if row['fields'].get('任务编号') == 'VF_TEST_1')
+        task['fields']['任务编号'] = 'another-task'
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        with self.assertRaisesRegex(RuntimeFault, 'RECORD_READBACK_FAILED'): self.apply()
+        self.assertEqual(self.remote.writes, writes)
+        self.assertTrue(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_initial_create_requires_exact_record_readback(self):
+        def change_before_read(kind):
+            if kind == 'records':
+                self.remote.callback = None
+                next(iter(self.remote.rows.values()))['fields']['规格'] = 'changed before first binding'
+        self.remote.callback = change_before_read
+        with self.assertRaisesRegex(RuntimeFault, 'RECORD_READBACK_FAILED'): self.apply()
+        self.assertFalse(self.service.status(self.admin, self.draft)['binding_matches_draft'])
+
     def test_new_questions_need_no_remote_ids_and_reject_field_injection(self):
         new = ConnectionSession(self.root/'other.json'); new.start(self.setup)
         self.assertEqual(describe(new.snapshot())['next_question']['field'], 'workspace_kind')
