@@ -40,6 +40,15 @@ class ResultClientTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault, '^BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_1254302$') as caught:
                 request('/bitable/v1/apps/bascnFixture/tables', b'{}', 'synthetic-token')
         self.assertNotIn('private', str(caught.exception))
+
+    def test_explicit_403_91403_is_a_rejected_write_without_exposing_body(self):
+        error = HTTPError('https://open.feishu.cn/', 403, 'private customer content', {}, io.BytesIO(
+            json.dumps({'code': 91403, 'msg': 'private customer content'}).encode()))
+        with patch('video_factory.feishu_results_client.build_opener') as opener:
+            opener.return_value.open.side_effect = error
+            with self.assertRaisesRegex(RuntimeFault, '^BASE_RESULTS_REQUEST_REJECTED_91403$') as caught:
+                request('/bitable/v1/apps/bascnFixture/tables', b'{}', 'synthetic-token')
+        self.assertNotIn('private', str(caught.exception))
         error = HTTPError('https://open.feishu.cn/', 403, 'private customer content', {}, io.BytesIO(
             json.dumps({'code': 99991672, 'msg': 'private customer content'}).encode()))
         with patch('video_factory.feishu_results_client.build_opener') as opener:

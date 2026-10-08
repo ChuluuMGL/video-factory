@@ -47,6 +47,12 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
             raw = error.read(65537)
             value = json.loads(raw) if len(raw) <= 65536 else {}
             code = value.get('code') if isinstance(value, dict) else None
+            # Feishu has explicitly refused this request. In particular a
+            # create-table 403/91403 cannot have created a table, whereas a
+            # lost response or a successful HTTP response with an error body
+            # remains an uncertain write until reconciled.
+            if error.code == 403 and code == 91403:
+                raise RuntimeFault('BASE_RESULTS_REQUEST_REJECTED_91403') from None
             if type(code) is int and 0 < code < 1000000000:
                 raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_'+str(code)) from None
         except RuntimeFault:

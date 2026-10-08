@@ -139,7 +139,22 @@ class BaseResults:
                     if current != value or self.context(db, project) != context: raise RuntimeFault('BASE_RESULTS_PLAN_CHANGED')
                     if current['table_attempted']: raise RuntimeFault('BASE_RESULTS_TABLE_UNKNOWN_READ_STATUS')
                     current['table_attempted'] = True; save(db, control_key(project), current)
-                table = client.create_result_table(base, value['table_name'])
+                try:
+                    table = client.create_result_table(base, value['table_name'])
+                except RuntimeFault as error:
+                    if str(error) != 'BASE_RESULTS_REQUEST_REJECTED_91403': raise
+                    # The upstream explicitly denied the POST. Preserve the
+                    # same destination name and clear only its create intent;
+                    # after the app gains document edit rights a later enable
+                    # may try that same name once more.
+                    with self.store.connect() as db:
+                        current = meta(db, control_key(project))
+                        if current != {**value, 'table_attempted': True}:
+                            raise RuntimeFault('BASE_RESULTS_CONFIGURATION_CHANGED') from None
+                        current['table_attempted'] = False
+                        save(db, control_key(project), current)
+                        self.store.audit(db, 'admin', 'base_results_create_forbidden', project)
+                    raise RuntimeFault('BASE_RESULTS_APP_DOCUMENT_EDIT_REQUIRED') from None
             if table == context['target']['table_id']: raise RuntimeFault('BASE_RESULTS_INPUT_TABLE_DENIED')
             mapping = schema(client, base, table)
             with self.store.connect() as db:

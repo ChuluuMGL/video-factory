@@ -16,13 +16,14 @@
 
 `enable` 先读目标 Base、应用可见性和计划，再确认创建结果表。重复启用复用已记录的目标；不会创建第二张表。`sync` 是管理员单步诊断，不代替 n8n 调度。`status` 显示启停、待处理数及未知提交步骤；不能把这些计数当作真实业务签收。
 
-应用需要目标 Base 的文档管理权限（包括高级权限下的完整读可见性）；代码只追加自己创建的结果表。最小 API 权限按当前飞书后台审核：`base:table:create`、`base:table:read`、`base:field:read`、`base:record:retrieve`、`base:record:create`、`docs:document.media:upload`。不申请记录编辑、删除或全部云盘管理权限；权限名称以实际 API 文档为准。
+应用需要在目标 Base 的「添加文档应用」中取得可管理权限（包括高级权限下的完整读可见性）；只有开通 `base:table:create` 等 API 权限仍不能代表该 Base 授权它建表。代码只追加自己创建的结果表。最小 API 权限按当前飞书后台审核：`base:table:create`、`base:table:read`、`base:field:read`、`base:record:retrieve`、`base:record:create`、`docs:document.media:upload`。不申请记录编辑、删除或全部云盘管理权限；权限名称以实际 API 文档为准。
 
 ## 失败与恢复
 
 每次写前将意图、唯一标识和步骤保存到数据库，网络调用不占数据库事务锁。
 
 - 表创建响应丢失：按带随机后缀的准确表名回查；找不到时停住，不再次建表。
+- 飞书明确返回 HTTP 403／91403：建表被拒绝，保留同一目标表名并清除本次创建意图；管理员修复目标 Base 的应用文档权限后再启用。旧版本已记为结果不明的创建请求必须先以飞书官方调用日志核实确实被拒绝，不能仅凭查不到表就重试。
 - 记录响应丢失：按同步标识回查，内容与附件令牌完全一致才签收；查不到不能盲目再提交。
 - 人工修改、重复同步标识或字段变化：报告冲突，不覆盖远端。
 - 上传预创建、分片或完成响应丢失：保留上传回执并停止，不重复创建附件。管理员可用 `repair --event 同步标识 --step 步骤` 查看计划并授权一次重试：记录沿用原幂等号，已知上传沿用原事务，最多共三次尝试。预上传无回执时可能留下未使用的旧事务；必须在确认提示中说明。未授权不重试，授权 15 分钟后失效。上传事务超过 23 小时停止，不能换一个新事务假装恢复成功。
@@ -32,4 +33,4 @@
 
 合成测试覆盖创建防重、丢响应、人工编辑、文件哈希、并发、凭据变更、项目范围与恢复停用。真实 Base、实际权限、附件上传下载哈希及独立员工验收仍需单独通过；不使用生产表验证。
 
-API 依据：[批量创建记录](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/batch_create.md)、[查询记录](https://open.feishu.cn/document/docs/bitable-v1/app-table-record/search.md)、[素材预上传](https://open.feishu.cn/document/server-docs/docs/drive-v1/media/multipart-upload-media/upload_prepare.md)、[应用访问凭据](https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal.md)。
+API 依据：[新增数据表及其权限条件](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table/create.md)、[批量创建记录](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/batch_create.md)、[查询记录](https://open.feishu.cn/document/docs/bitable-v1/app-table-record/search.md)、[素材预上传](https://open.feishu.cn/document/server-docs/docs/drive-v1/media/multipart-upload-media/upload_prepare.md)、[应用访问凭据](https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal.md)。
