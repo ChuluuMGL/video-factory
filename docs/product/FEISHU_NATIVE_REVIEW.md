@@ -15,6 +15,8 @@ vfctl feishu-review status --stack-root /opt/video-factory --session /root/vf-pr
 
 命令在原任务表补充“状态”“审核目标版本”“脚本摘要”“审核意见”“视频摘要”“视频”字段。新建 Base 在建表时已创建这些字段；旧 Base 缺少时由启用步骤补齐。已有“状态”文本或单选字段可复用，类型冲突停止。启用会用该项目应用身份订阅 Base 变更并回读订阅状态；无权限、写入结果不明或字段冲突时停止，不清表重建。私网 runner 的 `events` 服务接收长连接事件，没有公网回调或员工网页入口。
 
+订阅成功后，还要为这个项目启动私网 runner；仅运行 `feishu-review enable` 不会接收事件。先执行 `vfctl runner plan --stack-root /opt/video-factory --project PROJECT`，核对返回的计划和摘要，再用 `vfctl runner apply --stack-root /opt/video-factory --project PROJECT --expect-plan SHA256` 启动，最后运行 `vfctl runner status --stack-root /opt/video-factory --project PROJECT`。恢复或升级到新 stack 根目录后，用新路径重新核对并应用 runner 计划；旧 runner 的配置会保留，但不会自动连接新栈。`running` 只证明组件存活，仍需在 Base 真改一条测试记录来验证事件送达。
+
 ## 员工怎样审核
 
 任务必须先在该项目 Base 中有唯一“任务编号”和匹配的 SKU；提交生成前绑定该记录并冻结来源版本。生成的脚本、脚本摘要、审核目标版本及“脚本待审核”写到这一行。员工在同一行阅读脚本，然后把状态改为“脚本通过”或“脚本退回”；退回必须写审核意见。通过后，后续视频请求仍需单独的模型与费用授权。视频完整解码并校验 SHA-256 后，附件与“视频待审核”写回同一行；员工再改为“视频通过”或“视频退回”。

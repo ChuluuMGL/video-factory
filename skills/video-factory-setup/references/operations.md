@@ -45,7 +45,7 @@ Setup 后，在新建的测试 Base 中核对实际任务记录 ID。下面的�
 /opt/vf-cli-VERSION/venv/bin/vfctl feishu-review enable --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json
 ```
 
-这一步会补齐原任务表字段并订阅 Base 事件；需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
+这一步会补齐原任务表字段并订阅 Base 事件。随后按 `docs/product/FEISHU_NATIVE_REVIEW.md` 核对并启动该项目的私网 runner；恢复或升级后要对新 stack 根目录重新应用 runner 计划。仍需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
 
 ## 3. Agent 规划、续填和同客户新项目
 
