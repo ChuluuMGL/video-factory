@@ -25,6 +25,7 @@ def register_stack(commands):
     p.add_argument('--backup-key-file',type=Path)
     p.add_argument('--output',type=Path)
     p.add_argument('--source',type=Path)
+    p.add_argument('--source-root',type=Path,help='verified offline stack to reuse for an upgrade image bundle')
     p.add_argument('--candidate-root',type=Path)
 
 
@@ -80,7 +81,7 @@ def install_stack(args, *, password=None, expected_wheels=None):
 def run_stack(args):
     try:
         if args.action=='export-images':
-            result=image_bundle.export_bundle(args.root,args.wheelhouse)
+            result=image_bundle.export_bundle(args.root,args.wheelhouse,args.source_root)
         elif args.action=='install':
             result=install_stack(args)
         elif args.action=='preflight':
