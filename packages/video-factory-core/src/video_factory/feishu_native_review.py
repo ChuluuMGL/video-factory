@@ -17,6 +17,11 @@ DECISIONS = {
     '视频退回': ('video', 'reject'),
 }
 PENDING = {'script': '脚本待审核', 'video': '视频待审核'}
+FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALID',
+                 'FEISHU_REVIEW_REMOTE_CHANGED','FEISHU_REVIEW_SCRIPT_CHANGED',
+                 'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
+                 'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
+                 'FEISHU_REVIEW_EVENT_CONFLICT'}
 
 
 def source_key(project, task):
@@ -28,7 +33,7 @@ def review_key(project, event_id, record_id):
 
 
 def queue_key(project, event_id):
-    return 'native:event:' + fingerprint([identifier(project), event_id])
+    return 'native:event:' + identifier(project) + ':' + fingerprint(event_id)
 
 
 def _changed(action, field_id):
@@ -94,9 +99,11 @@ class NativeReview:
         return {'status': 'queued', 'provider_requests': 0}
 
     def process_one(self, project):
-        prefix = 'native:event:'
+        prefix = 'native:event:' + identifier(project) + ':'
+        pattern = prefix.replace('\\', '\\\\').replace('_', '\\_') + '%'
         with self.store.connect() as db:
-            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ORDER BY key LIMIT 1001", (prefix+'%',)).fetchall()
+            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' ORDER BY key LIMIT 1001",
+                              (pattern,)).fetchall()
             if len(rows)>1000: raise RuntimeFault('FEISHU_EVENT_QUEUE_CAPACITY')
             pending = [(row['key'],json.loads(row['value'])) for row in rows
                        if json.loads(row['value']).get('project')==project and json.loads(row['value'])['status']=='pending']
@@ -104,6 +111,14 @@ class NativeReview:
             try: result = self.consume_verified(project, value['event'])
             except RuntimeFault as error:
                 if str(error) in ('FEISHU_EVENT_SCOPE_DENIED','FEISHU_NATIVE_REVIEW_DISABLED'): continue
+                if str(error) in FINAL_DENIALS:
+                    with self.store.connect() as db:
+                        current = meta(db,key)
+                        if current != value: raise RuntimeFault('FEISHU_EVENT_QUEUE_CHANGED')
+                        current.update(status='denied', reason=str(error))
+                        save(db,key,current)
+                        self.store.audit(db,'feishu-event','native_review_denied',project)
+                    return {'status':'denied','reason':str(error),'provider_requests':0}
                 raise
             with self.store.connect() as db:
                 current = meta(db,key)

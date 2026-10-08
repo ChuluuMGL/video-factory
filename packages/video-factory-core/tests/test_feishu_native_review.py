@@ -60,6 +60,18 @@ class NativeReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'REMOTE_CHANGED'):
             self.reducer.consume_verified('brand',self.event())
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
+    def test_unauthorized_event_is_denied_without_blocking_next_one(self):
+        self.reducer.enqueue_verified('brand',self.event(operator='ou_outsider',event_id='evt_outsider'))
+        self.assertEqual(self.reducer.process_one('brand')['status'],'denied')
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_authorized'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+    def test_unbound_row_event_does_not_block_bound_row(self):
+        unrelated=self.event(event_id='evt_unbound')
+        unrelated['event']['action_list'][0]['record_id']='recOther'
+        self.reducer.enqueue_verified('brand',unrelated)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_REVIEW_SOURCE_NOT_BOUND')
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_bound'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
     def test_script_edit_and_forged_transition_never_approve(self):
         self.remote['脚本']='Changed in Base'
         with self.assertRaisesRegex(RuntimeFault,'SCRIPT_CHANGED'):
