@@ -16,6 +16,7 @@ from .feishu_native_review import source_key, sync_key
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
 REVIEW_FIELDS = {'status': ('状态', 1), 'review_revision': ('审核目标版本', 1),
+                 'script_digest': ('脚本摘要', 1),
                  'feedback': ('审核意见', 1), 'video_digest': ('视频摘要', 1),
                  'video': ('视频', 17)}
 SYNC_STATES = {'awaiting_script_review': '脚本待审核',
@@ -199,6 +200,7 @@ class NativeSync:
                     names['feedback']: ''}
         if row['state'] == 'awaiting_script_review':
             expected[names['script']] = payload['script']
+            expected[names['script_digest']] = hashlib.sha256(payload['script'].encode()).hexdigest()
         else:
             if not artifact: raise RuntimeFault('FEISHU_NATIVE_VIDEO_MISSING')
             expected[names['video_digest']] = artifact['sha256']

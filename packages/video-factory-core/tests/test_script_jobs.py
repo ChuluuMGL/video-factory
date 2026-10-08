@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
 from review_fixture import Fixture
 from video_factory.feishu_bridge import save,meta
+from video_factory.feishu_native_review import source_key as native_source_key
 from video_factory.runtime_store import RuntimeFault
 from video_factory.script_jobs import ScriptJobs,profile,key
 from video_factory.automation import issue_execution
@@ -82,3 +83,34 @@ class ScriptTests(unittest.TestCase):
         with self.f.store.connect() as db:self.f.store.invalidate_worker_approvals(db)
         with self.assertRaisesRegex(RuntimeFault,'AUTH_EXECUTION'):self.step()
         self.assertEqual(self.provider.calls,0)
+
+    def test_native_review_binds_base_row_before_paid_script_request(self):
+        class Source:
+            fields={'任务编号':'generated_one','SKU':'sku_one','脚本':'Base brief',
+                    '来源版本':'source_v1','状态':''}
+            def find_task(self,base,table,name,task):
+                return {'record_id':'recFixture','fields':dict(self.fields)}
+            def record(self,base,table,record):
+                return {'record_id':record,'fields':dict(self.fields)}
+        source=Source()
+        names={'task':'任务编号','sku_id':'SKU','script':'脚本','source_revision':'来源版本','status':'状态'}
+        with self.f.store.connect() as db:
+            save(db,'native:config:'+self.f.project,{'enabled':True,'context':{'target':{
+                'base_token':'bascnFixture','table_id':'tblFixture'}},'names':names})
+        jobs=ScriptJobs(self.f.store,client_factory=self.f.bridge.client_factory,
+                        source_client_factory=lambda _:source,native_app_client_factory=lambda _:source,
+                        provider=self.provider)
+        plan=jobs.prepare('synthetic-user-token',**self.args)
+        self.assertEqual(plan['plan']['native_source']['record_id'],'recFixture')
+        jobs.submit('synthetic-user-token',plan['plan_sha256'],**self.args)
+        with self.f.store.connect() as db:
+            self.assertEqual(meta(db,native_source_key(self.f.project,'generated_one'))['record_id'],'recFixture')
+        self.assertEqual(self.provider.calls,0)
+        source.fields['来源版本']='source_v2'
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_NATIVE_SOURCE_CHANGED'):
+            jobs.step(self.cap,self.f.project,'generated_one',1,self.key)
+        self.assertEqual(self.provider.calls,0)
+        source.fields['来源版本']='source_v1'
+        self.assertEqual(jobs.step(self.cap,self.f.project,'generated_one',1,self.key)['state'],'awaiting_script_review')
+        row=self.f.store.inspect_task(self.f.admin,self.f.project,'generated_one')['versions'][0]
+        self.assertEqual(json.loads(row['input'])['source_revision'],'source_v1')

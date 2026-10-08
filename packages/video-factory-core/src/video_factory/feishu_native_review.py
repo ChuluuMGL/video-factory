@@ -3,6 +3,7 @@
 The caller must be the verified Feishu event dispatcher. A Base status or
 record-history display name alone is never a review credential.
 """
+import hashlib
 import json
 
 from .feishu_bridge import FeishuBridge, meta, save, plain_text
@@ -198,7 +199,8 @@ class NativeReview:
                     or plain_text(remote.get(names['sku_id'])) != payload['sku_id']
                     or plain_text(remote.get(names['source_revision'])) != payload['source_revision']):
                 raise RuntimeFault('FEISHU_REVIEW_REMOTE_CHANGED')
-            if stage == 'script' and plain_text(remote.get(names['script'])) != payload['script']:
+            if (plain_text(remote.get(names['script'])) != payload['script']
+                    or plain_text(remote.get(names['script_digest'])) != hashlib.sha256(payload['script'].encode()).hexdigest()):
                 raise RuntimeFault('FEISHU_REVIEW_SCRIPT_CHANGED')
             if stage == 'video':
                 artifact = json.loads(row['artifact'])

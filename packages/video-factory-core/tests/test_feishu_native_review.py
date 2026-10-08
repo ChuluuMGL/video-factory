@@ -1,4 +1,5 @@
 """Cloud-only synthetic tests for Base-native human review trust boundaries."""
+import hashlib
 import json
 import tempfile
 import unittest
@@ -15,9 +16,9 @@ BINDING={'tenant_key':'fixture_tenant','base_token':'bascnFixture','table_id':'t
          'submitters':['ou_submitter'],'reviewers':['ou_reviewer'],
          'script_reviewers':['ou_reviewer'],'video_reviewers':['ou_reviewer']}
 NAMES={'task':'任务编号','sku_id':'SKU','script':'脚本','source_revision':'来源版本',
-       'status':'状态','review_revision':'审核目标版本','feedback':'审核意见',
+       'status':'状态','review_revision':'审核目标版本','script_digest':'脚本摘要','feedback':'审核意见',
        'video_digest':'视频摘要','video':'视频'}
-IDS={'status':'fldStatus','review_revision':'fldReviewRevision','feedback':'fldFeedback',
+IDS={'status':'fldStatus','review_revision':'fldReviewRevision','script_digest':'fldScriptDigest','feedback':'fldFeedback',
      'video_digest':'fldVideoDigest','video':'fldVideo'}
 
 
@@ -35,7 +36,8 @@ class NativeReviewTests(unittest.TestCase):
         self.store.put_project(self.admin,'brand',{'video_route':'deferred','credential_ref':'secret:fixture','billing_owner':'fixture'})
         self.store.create_task(self.admin,'brand','task_one',{'sku_id':'sku_one','script':'Generated script','source_revision':'source_one'})
         self.remote={'任务编号':'task_one','SKU':'sku_one','来源版本':'source_one',
-                     '脚本':'Generated script','状态':'脚本通过','审核目标版本':'1','审核意见':''}
+                     '脚本':'Generated script','脚本摘要':hashlib.sha256(b'Generated script').hexdigest(),
+                     '状态':'脚本通过','审核目标版本':'1','审核意见':''}
         self.reducer=NativeReview(self.store,client_factory=lambda _:Client(self))
         with self.store.connect() as db:
             save(db,'feishu:binding:brand',BINDING)
