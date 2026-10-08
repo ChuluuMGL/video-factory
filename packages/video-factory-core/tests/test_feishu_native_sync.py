@@ -13,7 +13,7 @@ from video_factory.runtime_store import RuntimeStore, canonical
 class Remote:
     def __init__(self):
         self.schema=[{'field_id':field_id,'field_name':name,'type':1} for name,field_id in (
-            ('任务编号','fldTask'),('SKU','fldSku'),('脚本','fldScript'),('来源版本','fldSource'))]
+            ('任务编号','fldTask'),('SKU','fldSkuId'),('脚本','fldScript'),('来源版本','fldSource'))]
         self.record_fields={'任务编号':'task_one','SKU':'sku_one','脚本':'Initial brief','来源版本':'source_one'}
         self.subscription=False;self.writes=[]
     def fields(self,base,table):return list(self.schema)
@@ -51,7 +51,7 @@ class NativeSyncTests(unittest.TestCase):
             store.put_project(admin,'brand',{'video_route':'deferred','credential_ref':'secret:fixture','billing_owner':'fixture'})
             store.create_task(admin,'brand','task_one',{'sku_id':'sku_one','script':'Generated script','source_revision':'source_one'})
             target={'tenant_key':'fixture_tenant','base_token':'bascnFixture','table_id':'tblFixture',
-                    'fields':{'task':'fldTask','sku_id':'fldSku','script':'fldScript','source_revision':'fldSource'}}
+                    'fields':{'task':'fldTask','sku_id':'fldSkuId','script':'fldScript','source_revision':'fldSource'}}
             binding={**target,'submitters':['ou_submitter'],'reviewers':['ou_reviewer']}
             with store.connect() as db:save(db,'feishu:binding:brand',binding)
             context={'target':target,'app_profile':{'app_id':'cli_fixture','credential_ref':'secret:fixture'},
