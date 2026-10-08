@@ -16,7 +16,7 @@
 
 `enable` 先读目标 Base、应用可见性和计划，再确认创建结果表。重复启用复用已记录的目标；不会创建第二张表。`sync` 是管理员单步诊断，不代替 n8n 调度。`status` 显示启停、待处理数及未知提交步骤；不能把这些计数当作真实业务签收。
 
-应用需要在目标 Base 的「添加文档应用」中取得可管理权限（包括高级权限下的完整读可见性）；只有开通 `base:table:create` 等 API 权限仍不能代表该 Base 授权它建表。代码只追加自己创建的结果表。最小 API 权限按当前飞书后台审核：`base:table:create`、`base:table:read`、`base:field:read`、`base:record:retrieve`、`base:record:create`、`docs:document.media:upload`。不申请记录编辑、删除或全部云盘管理权限；权限名称以实际 API 文档为准。
+应用需要在目标 Base 的「添加文档应用」中取得可编辑权限；若启用了高级权限，按该 Base 的规则授予可管理及所需的数据可见范围。只有开通 `base:table:create` 等 API 权限仍不能代表该 Base 授权它建表。代码只追加自己创建的结果表。最小 API 权限按当前飞书后台审核：`base:table:create`、`base:table:read`、`base:field:read`、`base:record:retrieve`、`base:record:create`、`docs:document.media:upload`。不申请记录编辑、删除或全部云盘管理权限；权限名称以实际 API 文档为准。
 
 ## 失败与恢复
 

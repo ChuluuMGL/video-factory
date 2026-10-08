@@ -46,7 +46,7 @@ def welcome(args, read=input, hidden=getpass.getpass, write=print):
             return call('recover', prepared['plan_sha256'])
         if args.action != 'enable': return call(args.action)
         write('在本项目绑定的 Base 中新增专用结果表，追加任务状态、脚本和视频附件。原始任务表不会改写。')
-        write('使用本项目自建飞书应用；请先在目标 Base 的「添加文档应用」中授予该应用可管理权限。员工登录权限不因此扩大。')
+        write('请先在目标 Base 的「添加文档应用」中授予本项目应用可编辑权限；若启用了高级权限，须按该 Base 的规则授予可管理及所需的数据可见范围。')
         write('应用需开放表创建、字段读取、记录读取/创建和素材上传权限；不需要记录编辑或删除权限。')
         prepared = call('plan')
         write('目标 Base：'+prepared['plan']['context']['target']['base_token'])
