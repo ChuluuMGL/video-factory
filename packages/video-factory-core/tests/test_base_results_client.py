@@ -3,6 +3,7 @@ import json
 import os
 import unittest
 import uuid
+from urllib.error import HTTPError
 from unittest.mock import patch, MagicMock
 
 from video_factory.feishu_results_client import ResultClient, request, BLOCK_SIZE
@@ -29,6 +30,23 @@ class ResultClientTests(unittest.TestCase):
                 request('/drive/v1/medias/upload_finish', b'{}', 'synthetic-token')
         with patch.dict(os.environ, {'VF_WORKER_EGRESS': '1', 'VF_CONTAINER_MODE': '0'}):
             with self.assertRaisesRegex(RuntimeFault, 'EGRESS_REQUIRES_CONTAINER'): request('/unused', b'{}')
+
+    def test_upstream_error_exposes_only_bounded_code_and_keeps_unknown_outcome(self):
+        response = MagicMock(); response.__enter__.return_value = response
+        response.status = 200
+        response.read.return_value = json.dumps({'code': 1254302, 'msg': 'private customer content'}).encode()
+        with patch('video_factory.feishu_results_client.build_opener') as opener:
+            opener.return_value.open.return_value = response
+            with self.assertRaisesRegex(RuntimeFault, '^BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_1254302$') as caught:
+                request('/bitable/v1/apps/bascnFixture/tables', b'{}', 'synthetic-token')
+        self.assertNotIn('private', str(caught.exception))
+        error = HTTPError('https://open.feishu.cn/', 403, 'private customer content', {}, io.BytesIO(
+            json.dumps({'code': 99991672, 'msg': 'private customer content'}).encode()))
+        with patch('video_factory.feishu_results_client.build_opener') as opener:
+            opener.return_value.open.side_effect = error
+            with self.assertRaisesRegex(RuntimeFault, '^BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_99991672$') as caught:
+                request('/bitable/v1/apps/bascnFixture/tables', b'{}', 'synthetic-token')
+        self.assertNotIn('private', str(caught.exception))
 
     def test_record_request_is_append_with_same_uuid_and_consistency(self):
         client = ResultClient('synthetic-token'); ticket = str(uuid.uuid4())

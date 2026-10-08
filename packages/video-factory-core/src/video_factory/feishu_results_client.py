@@ -1,12 +1,13 @@
 """Fixed-origin application client for opt-in, append-only Base results.
 
-No employee token fallback, environment proxy, redirects or upstream diagnostics.
+No employee token fallback, environment proxy, redirects or raw upstream diagnostics.
 The application token stays in memory and is never returned in a receipt.
 """
 import json
 import os
 import secrets
 import zlib
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, ProxyHandler, build_opener
 
@@ -33,8 +34,28 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
             raw = response.read(2*1024*1024+1)
             if response.status != 200 or len(raw) > 2*1024*1024: raise ValueError
             value = json.loads(raw)
-            if type(value.get('code')) is not int or value['code'] != 0: raise ValueError
+            if type(value.get('code')) is not int: raise ValueError
+            if value['code'] != 0:
+                # Only a bounded numeric code is safe to surface. The message
+                # and response body can contain customer data or credentials.
+                if 0 < value['code'] < 1000000000:
+                    raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_'+str(value['code']))
+                raise ValueError
             return value
+    except HTTPError as error:
+        try:
+            raw = error.read(65537)
+            value = json.loads(raw) if len(raw) <= 65536 else {}
+            code = value.get('code') if isinstance(value, dict) else None
+            if type(code) is int and 0 < code < 1000000000:
+                raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_'+str(code)) from None
+        except RuntimeFault:
+            raise
+        except Exception:
+            pass
+        raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_HTTP_'+str(error.code)) from None
+    except RuntimeFault:
+        raise
     except Exception:
         # A failed POST is not evidence that the upstream did nothing.
         raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_READ_STATUS') from None
