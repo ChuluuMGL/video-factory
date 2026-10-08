@@ -21,7 +21,7 @@ class StackFixture:
 
 
 class RunnerTests(unittest.TestCase):
-    def test_companion_has_only_private_executor_and_egress(self):
+    def test_companion_has_only_private_executor_egress_and_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             stack = StackFixture(tmp)
             base = {'services': {'runtime': {'environment': {'VF_CONTAINER_MODE': '1'}},
@@ -29,11 +29,12 @@ class RunnerTests(unittest.TestCase):
                                             'healthcheck': {'test': ['CMD', 'true']}}}}
             with patch.object(runner, 'compose_document', return_value=base):
                 value = runner.document(stack, runner.plan(stack, 'brand'))
-            self.assertEqual(set(value['services']), {'executor', 'egress'})
+            self.assertEqual(set(value['services']), {'executor', 'egress', 'events'})
             self.assertEqual(value['services']['executor']['networks']['ledger']['aliases'],
                              ['vf-executor-' + __import__('hashlib').sha256(b'brand').hexdigest()[:12]])
             self.assertNotIn('ports', value['services']['executor'])
             self.assertNotIn('ports', value['services']['egress'])
+            self.assertNotIn('ports', value['services']['events'])
             self.assertNotIn('public', value['networks'])
             self.assertEqual(value['networks']['ledger']['name'], 'vf-customer-' + 'a' * 12 + '_private')
             self.assertEqual(set(value['secrets']), {'runtime_dsn', 'runtime_master'})
@@ -48,7 +49,7 @@ class RunnerTests(unittest.TestCase):
                 runner.apply(stack, runner.plan(stack, 'brand'))
             self.assertFalse((stack.root / 'data/runners/brand').exists())
 
-    def test_status_requires_both_healthy_components(self):
+    def test_status_requires_private_components(self):
         with tempfile.TemporaryDirectory() as tmp:
             stack = StackFixture(tmp)
             root = runner.directory(stack, 'brand')
@@ -56,6 +57,7 @@ class RunnerTests(unittest.TestCase):
             (root / 'runner.json').write_text(json.dumps(runner.plan(stack, 'brand')))
             rows = [{'Service': name, 'State': 'running', 'Health': 'healthy'}
                     for name in ('executor', 'egress')]
+            rows.append({'Service':'events','State':'running','Health':''})
             with patch.object(runner, 'compose', side_effect=lambda *_: json.dumps(rows).encode()):
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'running')
                 rows[1]['Health'] = 'unhealthy'

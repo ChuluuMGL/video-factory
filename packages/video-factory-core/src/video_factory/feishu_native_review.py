@@ -58,7 +58,9 @@ class NativeReview:
         if header.get('event_type') != EVENT_TYPE or envelope.get('schema') != '2.0':
             raise RuntimeFault('FEISHU_EVENT_INVALID')
         event_id = resource(header.get('event_id'))
-        resource(event.get('operator_id', {}).get('open_id'), 'ou_')
+        operator = event.get('operator_id')
+        if not isinstance(operator, dict): raise RuntimeFault('FEISHU_EVENT_OPERATOR_REQUIRED')
+        resource(operator.get('open_id'), 'ou_')
         actions = event.get('action_list')
         if not isinstance(actions, list) or not 1 <= len(actions) <= 100:
             raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
@@ -71,8 +73,10 @@ class NativeReview:
                     or event.get('table_id') != binding['table_id']):
                 raise RuntimeFault('FEISHU_EVENT_SCOPE_DENIED')
             # Field content beyond the status transition is not needed here.
-            reduced = dict(envelope)
+            reduced = {'schema':'2.0', 'header':{
+                key:header[key] for key in ('event_id','event_type','app_id','tenant_key') if key in header}}
             reduced['event'] = {k: event[k] for k in ('file_type','file_token','table_id','operator_id') if k in event}
+            reduced['event']['operator_id'] = {'open_id':event['operator_id']['open_id']}
             reduced['event']['action_list'] = []
             for action in actions:
                 if not isinstance(action, dict): raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
@@ -122,7 +126,9 @@ class NativeReview:
         if not isinstance(header, dict) or not isinstance(event, dict) or header.get('event_type') != EVENT_TYPE:
             raise RuntimeFault('FEISHU_EVENT_INVALID')
         event_id = resource(header.get('event_id'))
-        operator = resource(event.get('operator_id', {}).get('open_id'), 'ou_')
+        operator_id = event.get('operator_id')
+        if not isinstance(operator_id, dict): raise RuntimeFault('FEISHU_EVENT_OPERATOR_REQUIRED')
+        operator = resource(operator_id.get('open_id'), 'ou_')
         with self.store.connect() as db:
             binding = self.bridge._binding(db, project)
             config = meta(db, 'native:config:'+project)

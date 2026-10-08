@@ -38,7 +38,8 @@ def schema(client, base, table, binding):
     for key, (name, kind) in REVIEW_FIELDS.items():
         field = by_name.get(name)
         if field:
-            if field.get('type') != kind: raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CONFLICT')
+            if field.get('type') not in ((1,3) if key=='status' else (kind,)):
+                raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CONFLICT')
             found[key] = resource(field.get('field_id'), 'fld')
     from .feishu_bridge import FeishuBridge
     base_names = FeishuBridge._schema(client, binding)

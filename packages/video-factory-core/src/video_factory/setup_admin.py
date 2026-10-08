@@ -148,10 +148,12 @@ def rpc(stack, payload):
     # The container's result (including a short-lived token on open) is consumed
     # in memory by the local OS administrator, never printed by the wizard.
     if payload.get('action') in ('base_results', 'native_review'):
-        from .workspace import compose
         project = payload['session']['configuration']['project']['id']
-        raw = compose(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',
-                      data=json.dumps(payload).encode())
+        from .runner import directory as runner_directory, compose as runner_compose
+        from .workspace import compose as workspace_compose
+        companion = runner_compose if (runner_directory(stack, project)/'runner.json').exists() else workspace_compose
+        raw = companion(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',
+                        data=json.dumps(payload).encode())
     else:
         raw = stack.compose('exec', '-T', 'runtime', 'python', '-m', 'video_factory.setup_admin',
                             data=json.dumps(payload).encode())

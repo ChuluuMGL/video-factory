@@ -56,14 +56,20 @@ def document(stack, value):
               'networks': ['review', 'outbound'], 'entrypoint': ['python', '-m', 'video_factory.worker_egress'],
               'command': ['--persistent'], 'healthcheck': relay['healthcheck'],
               'pids_limit': 64, 'mem_limit': '128m'}
+    events = {**executor, 'entrypoint': ['python','-m','video_factory.feishu_native_events'],
+              'environment': executor['environment'] | {'HTTPS_PROXY':'http://egress:8443',
+                                                          'https_proxy':'http://egress:8443'},
+              'depends_on': {'egress': {'condition':'service_healthy'}}}
+    events.pop('healthcheck')
+    events['networks'] = ['ledger','review']
     return {'name': prefix + '-runner-' + hashlib.sha256(project.encode()).hexdigest()[:12],
-            'services': {'executor': executor, 'egress': egress},
+            'services': {'executor': executor, 'egress': egress, 'events': events},
             'networks': {'ledger': {'external': True, 'name': prefix + '_private'},
                          'review': {'internal': True}, 'outbound': {}},
             'secrets': {name: {'file': mount('secrets/' + name)} for name in ('runtime_dsn', 'runtime_master')}}
 
 
-def compose(stack, project, *args):
+def compose(stack, project, *args, data=None):
     root = directory(stack, project)
     private_file(root / 'runner.json')
     value = json.loads((root / 'runner.json').read_text())
@@ -73,7 +79,7 @@ def compose(stack, project, *args):
         raise RuntimeFault('RUNNER_GENERATED_FILES_CHANGED')
     local_engine()
     return run(['docker', 'compose', '--project-directory', str(root), '-f', str(root / 'compose.json'), *args],
-               timeout=180)
+               timeout=180, data=data)
 
 
 def status(stack, project):
@@ -82,8 +88,8 @@ def status(stack, project):
         return {'status': 'not_configured', 'project': project}
     raw = compose(stack, project, 'ps', '--all', '--format', 'json').decode()
     rows = json.loads(raw) if raw.lstrip().startswith('[') else [json.loads(line) for line in raw.splitlines() if line]
-    ready = (len(rows) == 2 and {row['Service'] for row in rows} == {'executor', 'egress'}
-             and all(row['State'] == 'running' and row.get('Health') == 'healthy' for row in rows))
+    ready = (len(rows) == 3 and {row['Service'] for row in rows} == {'executor', 'egress', 'events'}
+             and all(row['State'] == 'running' and row.get('Health') in ('','healthy') for row in rows))
     return {'status': 'running' if ready else 'incomplete', 'project': project,
             'components': [{key: row.get(key) for key in ('Service', 'State', 'Health')} for row in rows],
             'published_ports': [], 'human_acceptance': 'not_run'}
