@@ -25,6 +25,12 @@ def cli(args):
     try:
         stack=Stack(args.stack_root)
         session=SessionStore(args.session).read()
+        if args.action=='enable':
+            from .runner import status as runner_status
+            project=session['configuration']['project']['id']
+            runner=runner_status(stack,project)
+            if runner['status']=='not_configured': raise RuntimeFault('FEISHU_NATIVE_RUNNER_REQUIRED')
+            if runner['status']!='running': raise RuntimeFault('FEISHU_NATIVE_RUNNER_NOT_READY')
         token=rpc(stack,{'action':'open','session':session,'password':getpass.getpass('产品管理员密码: ')})['token']
         def call(operation,expected=None):
             return rpc(stack,{'action':'native_review','session':session,'token':token,

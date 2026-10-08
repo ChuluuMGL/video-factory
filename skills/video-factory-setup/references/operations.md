@@ -39,13 +39,13 @@ Setup 后，在新建的测试 Base 中核对实际任务记录 ID。下面的�
 
 每条命令独立进行飞书本人授权并在终端核对计划后输入 `yes`。操作结果只证明指定记录或审核事件已入账；不触发模型费用，也不表示员工已在飞书内完成全流程。
 
-当固定发行包确实包含 `feishu-review` 且飞书应用已配置记录变更事件与长连接时，管理员再按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 在私有终端启用原任务表审核：
+当固定发行包确实包含 `feishu-review` 且飞书应用已配置记录变更事件与长连接时，先按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 核对计划并启动该项目私网 runner，再由管理员在私有终端启用原任务表审核：
 
 ```sh
 /opt/vf-cli-VERSION/venv/bin/vfctl feishu-review enable --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json
 ```
 
-这一步会补齐原任务表字段并订阅 Base 事件。随后按 `docs/product/FEISHU_NATIVE_REVIEW.md` 核对并启动该项目的私网 runner；恢复或升级后要对新 stack 根目录重新应用 runner 计划。仍需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
+这一步会补齐原任务表字段并订阅 Base 事件。runner 必须已是 `running`；恢复或升级后要对新 stack 根目录重新应用 runner 计划。仍需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
 
 ## 3. Agent 规划、续填和同客户新项目
 

@@ -6,16 +6,21 @@
 
 Setup 先完成项目、飞书本人授权和 Base 绑定。客户自己的飞书应用需对该 Base 有文档管理和编辑权限，并在开发者后台同时开通应用与用户身份的 `bitable:app` 或 `drive:drive` 权限，添加 `drive.file.bitable_record_changed_v1` 事件，选择**长连接**。文档事件订阅还需 `docs:event:subscribe` 或等效权限；应用必须是文档拥有者或管理员。Agent 核对这些条件，不让员工去终端审核脚本。
 
-在私有终端，由管理员执行（实际路径以固定发行包为准）：
+在私有终端，先为项目启动私网 runner，再由管理员启用审核（实际路径以固定发行包为准）：
 
 ```sh
+vfctl runner plan --stack-root /opt/video-factory --project PROJECT
+vfctl runner apply --stack-root /opt/video-factory --project PROJECT --expect-plan SHA256
+vfctl runner status --stack-root /opt/video-factory --project PROJECT
 vfctl feishu-review enable --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json
 vfctl feishu-review status --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json
 ```
 
-命令在原任务表补充“状态”“审核目标版本”“脚本摘要”“审核意见”“视频摘要”“视频”字段。新建 Base 在建表时已创建这些字段；旧 Base 缺少时由启用步骤补齐。已有“状态”文本或单选字段可复用，类型冲突停止。启用会用该项目应用身份订阅 Base 变更并回读订阅状态；无权限、写入结果不明或字段冲突时停止，不清表重建。私网 runner 的 `events` 服务接收长连接事件，没有公网回调或员工网页入口。
+先核对 runner 计划和摘要，只有状态为 `running` 才启用审核；否则 CLI 会在询问密码前给出明确错误。恢复或升级到新 stack 根目录后，须在新路径重新应用 runner 计划。`running` 只证明组件存活，仍需在 Base 修改一条测试记录，验证事件确实送达。
 
-订阅成功后，还要为这个项目启动私网 runner；仅运行 `feishu-review enable` 不会接收事件。先执行 `vfctl runner plan --stack-root /opt/video-factory --project PROJECT`，核对返回的计划和摘要，再用 `vfctl runner apply --stack-root /opt/video-factory --project PROJECT --expect-plan SHA256` 启动，最后运行 `vfctl runner status --stack-root /opt/video-factory --project PROJECT`。恢复或升级到新 stack 根目录后，用新路径重新核对并应用 runner 计划；旧 runner 的配置会保留，但不会自动连接新栈。`running` 只证明组件存活，仍需在 Base 真改一条测试记录来验证事件送达。
+若恢复后返回 `FEISHU_BINDING_RECONFIRM_AFTER_RECOVERY`，用原 Setup session 和现有 stack 重新运行 `setup-run`，由原管理员完成飞书本人授权，核对计划指向原 Base 后确认。向导会复用已完成的建表回执并回读绑定；不要清除恢复标记、手工修改数据库或新建另一张表。若回执或目标不一致，停止并先核对远端资源。
+
+命令在原任务表补充“状态”“审核目标版本”“脚本摘要”“审核意见”“视频摘要”“视频”字段。新建 Base 在建表时已创建这些字段；旧 Base 缺少时由启用步骤补齐。已有“状态”文本或单选字段可复用，类型冲突停止。启用会用该项目应用身份订阅 Base 变更并回读订阅状态；无权限、写入结果不明或字段冲突时停止，不清表重建。私网 runner 的 `events` 服务接收长连接事件，没有公网回调或员工网页入口。
 
 ## 员工怎样审核
 
