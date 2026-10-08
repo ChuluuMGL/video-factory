@@ -39,8 +39,10 @@ class Remote:
 
     def create_table(self, base, name, fields):
         tid = 'tblCreated'+str(len(self.tables))
-        self.tables[tid] = [{'field_id': 'fld'+str(len(self.tables))+str(i)+'Created', 'field_name': name, 'type': 1}
-                            for i, name in enumerate(fields)]
+        self.tables[tid] = [{'field_id': 'fld'+str(len(self.tables))+str(i)+'Created',
+                             'field_name': field if isinstance(field,str) else field[0],
+                             'type': 1 if isinstance(field,str) else field[1]}
+                            for i, field in enumerate(fields)]
         return self.done('table', {'table_id': tid})
 
     def fields(self, base, table):

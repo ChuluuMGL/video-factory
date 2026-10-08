@@ -79,7 +79,7 @@ jobs:
           PY
           else
             python -m pip wheel --no-deps --wheel-dir ci-page/wheels ./packages/video-factory-core
-            python -m pip download --only-binary=:all: --dest ci-page/wheels "cryptography==46.0.5" "psycopg[binary]==3.3.6"
+            python -m pip download --only-binary=:all: --dest ci-page/wheels "cryptography==46.0.5" "psycopg[binary]==3.3.6" "lark-oapi==1.7.3" "websockets==15.0.1"
             python .github/scripts/build-release.py --public-release --out ci-page/release --wheels ci-page/wheels --source "$(git rev-parse HEAD)"
           fi
       - name: Assemble draft and verify reader interactions

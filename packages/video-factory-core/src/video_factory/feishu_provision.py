@@ -15,6 +15,7 @@ from .h3_provider import NoRedirect
 from .runtime_store import RuntimeFault, fingerprint
 
 TASK_FIELDS = {'task': '任务编号', 'sku_id': 'SKU', 'script': '脚本', 'source_revision': '来源版本'}
+from .feishu_native_sync import REVIEW_FIELDS
 PRODUCT_FIELDS = ('SKU', '商品名称', '规格', '事实来源')
 
 
@@ -49,7 +50,9 @@ class ProvisionClient(FeishuClient):
     def create_table(self, base, name, fields):
         resource(base)
         value = self.post(f'/bitable/v1/apps/{base}/tables', {'table': {'name': name,
-            'default_view_name': '全部记录', 'fields': [{'field_name': f, 'type': 1} for f in fields]}})
+            'default_view_name': '全部记录', 'fields': [
+                {'field_name': f if isinstance(f,str) else f[0], 'type': 1 if isinstance(f,str) else f[1]}
+                for f in fields]}})
         return {'table_id': resource(value.get('table_id'), 'tbl')}
 
     def create_records(self, base, table, rows, client_token):
@@ -190,7 +193,8 @@ class Provisioner:
         self.verify_fields(client, base, products, PRODUCT_FIELDS)
         product_records = step('products', lambda ticket: client.create_records(base, products, spec['product_rows'], ticket))
         self.verify_records(client, base, products, product_records, spec['product_rows'])
-        tasks = step('task_table', lambda _: client.create_table(base, spec['task_table_name'], list(TASK_FIELDS.values())))['table_id']
+        tasks = step('task_table', lambda _: client.create_table(base, spec['task_table_name'],
+                     list(TASK_FIELDS.values())+list(REVIEW_FIELDS.values())))['table_id']
         ids = self.verify_fields(client, base, tasks, TASK_FIELDS.values())
         if spec['test_rows']:
             records = step('test_tasks', lambda ticket: client.create_records(base, tasks, spec['test_rows'], ticket))

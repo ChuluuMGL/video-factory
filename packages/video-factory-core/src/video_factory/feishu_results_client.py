@@ -21,7 +21,8 @@ FIELDS = {'同步标识': 1, '项目': 1, '任务': 1, '版本': 1, 'SKU': 1,
 BLOCK_SIZE = 4*1024*1024
 
 
-def request(path, body, token=None, content_type='application/json; charset=utf-8'):
+def request(path, body, token=None, content_type='application/json; charset=utf-8', method='POST'):
+    if method not in ('POST', 'PUT'): raise RuntimeFault('FEISHU_METHOD_DENIED')
     handlers = [ProxyHandler({}), NoRedirect()]
     if os.environ.get('VF_WORKER_EGRESS') == '1':
         if os.environ.get('VF_CONTAINER_MODE') != '1': raise RuntimeFault('EGRESS_REQUIRES_CONTAINER')
@@ -29,7 +30,7 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
     headers = {'Content-Type': content_type}
     if token: headers['Authorization'] = 'Bearer '+token
     try:
-        req = Request('https://open.feishu.cn/open-apis'+path, data=body, headers=headers, method='POST')
+        req = Request('https://open.feishu.cn/open-apis'+path, data=body, headers=headers, method=method)
         with build_opener(*handlers).open(req, timeout=30) as response:
             raw = response.read(2*1024*1024+1)
             if response.status != 200 or len(raw) > 2*1024*1024: raise ValueError
@@ -81,6 +82,57 @@ class ResultClient(FeishuClient):
         value = request(path, canonical(body).encode(), self.token)
         if not isinstance(value.get('data'), dict): raise RuntimeFault('BASE_RESULTS_RESPONSE_INVALID')
         return value['data']
+
+    def put(self, path, body):
+        value = request(path, canonical(body).encode(), self.token, method='PUT')
+        if not isinstance(value.get('data'), dict): raise RuntimeFault('FEISHU_WRITE_RESPONSE_INVALID')
+        return value['data']
+
+    def create_field(self, base, table, name, kind, ticket):
+        import uuid
+        resource(base); resource(table, 'tbl')
+        if str(uuid.UUID(ticket)) != ticket or uuid.UUID(ticket).version != 4 or kind not in (1, 17):
+            raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
+        data = self.post(f'/bitable/v1/apps/{base}/tables/{table}/fields?'+urlencode({'client_token': ticket}),
+                         {'field_name': name, 'type': kind})
+        field = data.get('field', {})
+        if field.get('field_name') != name or field.get('type') != kind:
+            raise RuntimeFault('FEISHU_FIELD_RECEIPT_INVALID')
+        return resource(field.get('field_id'), 'fld')
+
+    def update_record(self, base, table, record, fields):
+        resource(base); resource(table, 'tbl'); resource(record, 'rec')
+        if not isinstance(fields, dict) or not fields: raise RuntimeFault('FEISHU_UPDATE_FIELDS_INVALID')
+        data = self.put(f'/bitable/v1/apps/{base}/tables/{table}/records/{record}?ignore_consistency_check=false',
+                        {'fields': fields})
+        result = data.get('record', {})
+        if result.get('record_id') != record: raise RuntimeFault('FEISHU_UPDATE_RECEIPT_INVALID')
+        return record
+
+    def find_task(self, base, table, task_field, task):
+        resource(base); resource(table, 'tbl')
+        data = self.post(f'/bitable/v1/apps/{base}/tables/{table}/records/search?page_size=2', {
+            'filter': {'conjunction': 'and', 'conditions': [
+                {'field_name': task_field, 'operator': 'is', 'value': [task]}]}})
+        items = data.get('items')
+        if not isinstance(items, list) or type(data.get('has_more')) is not bool:
+            raise RuntimeFault('FEISHU_TASK_SEARCH_INVALID')
+        if data['has_more'] or len(items) != 1:
+            raise RuntimeFault('FEISHU_TASK_RECORD_NOT_UNIQUE')
+        record = items[0]
+        resource(record.get('record_id'), 'rec')
+        if not isinstance(record.get('fields'), dict): raise RuntimeFault('FEISHU_TASK_SEARCH_INVALID')
+        return record
+
+    def subscribe_base(self, base):
+        resource(base)
+        self.post(f'/drive/v1/files/{base}/subscribe?file_type=bitable', {})
+
+    def base_subscription_status(self, base):
+        resource(base)
+        data = self.get(f'/drive/v1/files/{base}/get_subscribe?file_type=bitable')
+        if type(data.get('is_subscribe')) is not bool: raise RuntimeFault('FEISHU_SUBSCRIPTION_READBACK_INVALID')
+        return data['is_subscribe']
 
     def tables(self, base):
         resource(base); page = None; seen = set(); result = []
