@@ -7,6 +7,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
+from unittest.mock import patch
 
 from video_factory.runtime_store import RuntimeStore, RuntimeFault, canonical
 from video_factory.worker import Worker, job_key
@@ -185,8 +186,20 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'PATH_INVALID'):request_body('script',self.assets,bad)
         import io
         p=H3Provider('global')
-        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a'):
+        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a',
+                    'https://video-product.cdn.minimax.io.evil/a',
+                    'https://key@video-product.cdn.minimax.io/a'):
             with self.assertRaisesRegex(RuntimeFault,'HOST_NOT_APPROVED'):p.download(url,io.BytesIO())
+        class MediaOpener:
+            def open(self, request, timeout):
+                self.request=request
+                return io.BytesIO(b'fixture-media')
+        media_opener=MediaOpener()
+        with patch('video_factory.h3_provider.opener', return_value=media_opener):
+            output=io.BytesIO()
+            p.download('https://video-product.cdn.minimax.io/fixture.mp4',output)
+        self.assertEqual(output.getvalue(),b'fixture-media')
+        self.assertIsNone(media_opener.request.get_header('Authorization'))
 
 
 if __name__=='__main__':unittest.main()

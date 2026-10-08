@@ -13,7 +13,11 @@ from urllib.parse import urlsplit
 from .runtime_store import RuntimeFault, canonical, private_directory
 
 ORIGINS = {'global':'https://api.minimax.io', 'cn':'https://api.minimaxi.com'}
-MEDIA_HOSTS = {'cdn.hailuoai.com', 'algeng-video-infer.oss-cn-shanghai.aliyuncs.com'}
+MEDIA_HOSTS = {
+    'cdn.hailuoai.com',
+    'algeng-video-infer.oss-cn-shanghai.aliyuncs.com',
+    'video-product.cdn.minimax.io',
+}
 
 
 class ProviderRejected(RuntimeFault):
