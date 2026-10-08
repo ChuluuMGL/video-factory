@@ -72,6 +72,8 @@ class RunnerTests(unittest.TestCase):
                                                        'runtime_image': 'sha256:' + 'd' * 64}
             (root / 'runner.json').write_text(json.dumps(previous))
             (root / 'compose.json').write_text(json.dumps({'source_root': '/old/server'}))
+            (root / 'runner.json').chmod(0o600)
+            (root / 'compose.json').chmod(0o600)
             with (patch.object(runner, 'compose') as compose,
                   patch.object(runner, 'document', return_value={'candidate': True}),
                   patch.object(runner, 'status', return_value={'status': 'running'})):

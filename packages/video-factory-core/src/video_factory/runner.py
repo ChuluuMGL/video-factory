@@ -109,13 +109,14 @@ def apply(stack, value):
     if root.resolve() != root:
         raise RuntimeFault('RUNNER_DIRECTORY_UNSAFE')
     if (root / 'runner.json').exists():
+        private_file(root / 'runner.json')
+        private_file(root / 'compose.json')
         previous = json.loads((root / 'runner.json').read_text())
         if previous == value:
             compose(stack, project, 'down', '--timeout', '15')
         elif (not isinstance(previous, dict) or set(previous) != set(value)
               or previous.get('schema') != 1 or previous.get('project') != project
-              or previous.get('stack_instance') == stack.config['instance']
-              or not (root / 'compose.json').is_file()):
+              or previous.get('stack_instance') == stack.config['instance']):
             raise RuntimeFault('RUNNER_REAPPLY_AFTER_STACK_CHANGE')
         # A restored stack has a new instance and image. Its old runner was
         # stopped by the cold backup; never execute the copied compose file,
