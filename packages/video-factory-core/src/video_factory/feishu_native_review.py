@@ -194,7 +194,9 @@ class NativeReview:
             names = config['names']
             if (plain_text(remote.get(names['status'])) != change[1]
                     or plain_text(remote.get(names['review_revision'])) != str(revision)
-                    or plain_text(remote.get(names['task'])) != task):
+                    or plain_text(remote.get(names['task'])) != task
+                    or plain_text(remote.get(names['sku_id'])) != payload['sku_id']
+                    or plain_text(remote.get(names['source_revision'])) != payload['source_revision']):
                 raise RuntimeFault('FEISHU_REVIEW_REMOTE_CHANGED')
             if stage == 'script' and plain_text(remote.get(names['script'])) != payload['script']:
                 raise RuntimeFault('FEISHU_REVIEW_SCRIPT_CHANGED')

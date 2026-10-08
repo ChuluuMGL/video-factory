@@ -173,7 +173,9 @@ class NativeSync:
         else:
             record = client.find_task(base, table, names['task'], task)
         record_id = record['record_id']; payload = json.loads(row['input'])
-        if plain_text(record['fields'].get(names['task'])) != task or plain_text(record['fields'].get(names['sku_id'])) != payload['sku_id']:
+        if (plain_text(record['fields'].get(names['task'])) != task
+                or plain_text(record['fields'].get(names['sku_id'])) != payload['sku_id']
+                or plain_text(record['fields'].get(names['source_revision'])) != payload['source_revision']):
             raise RuntimeFault('FEISHU_NATIVE_TASK_SOURCE_CONFLICT')
         if source and source['record_id'] != record_id: raise RuntimeFault('FEISHU_NATIVE_TASK_SOURCE_CONFLICT')
         with self.store.connect() as db:

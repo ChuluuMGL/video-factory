@@ -34,7 +34,8 @@ class NativeReviewTests(unittest.TestCase):
         self.admin=self.store.login('admin','fixture-admin-password')['token']
         self.store.put_project(self.admin,'brand',{'video_route':'deferred','credential_ref':'secret:fixture','billing_owner':'fixture'})
         self.store.create_task(self.admin,'brand','task_one',{'sku_id':'sku_one','script':'Generated script','source_revision':'source_one'})
-        self.remote={'任务编号':'task_one','SKU':'sku_one','脚本':'Generated script','状态':'脚本通过','审核目标版本':'1','审核意见':''}
+        self.remote={'任务编号':'task_one','SKU':'sku_one','来源版本':'source_one',
+                     '脚本':'Generated script','状态':'脚本通过','审核目标版本':'1','审核意见':''}
         self.reducer=NativeReview(self.store,client_factory=lambda _:Client(self))
         with self.store.connect() as db:
             save(db,'feishu:binding:brand',BINDING)
@@ -77,6 +78,10 @@ class NativeReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'SCRIPT_CHANGED'):
             self.reducer.consume_verified('brand',self.event())
         self.remote['脚本']='Generated script'
+        self.remote['来源版本']='source_two'
+        with self.assertRaisesRegex(RuntimeFault,'REMOTE_CHANGED'):
+            self.reducer.consume_verified('brand',self.event())
+        self.remote['来源版本']='source_one'
         with self.assertRaisesRegex(RuntimeFault,'TRANSITION_INVALID'):
             self.reducer.consume_verified('brand',self.event(before='任意状态'))
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
