@@ -30,7 +30,7 @@ session 父目录由客户创建为 0700，位于 stack 和 CLI 前缀之外。�
 
 管理员默认在私有终端完成 Setup，飞书本人授权使用飞书官方地址，回终端确认 Base 计划；无需 Video Factory 网页或端口隧道。旧版管理员接入/员工审核窗口分别默认 8791/8790，仅供兼容旧安装时限时使用，不得改成公网裸露端口。
 
-Setup 后，在新建的测试 Base 中核对实际任务记录 ID，再在客户服务器私有终端逐条导入和审核：
+Setup 后，在新建的测试 Base 中核对实际任务记录 ID。下面的私有终端操作只验证导入和本地审核账本，不是员工的日常审核方式；产品验收必须另见原任务表中的脚本/视频回写与员工表内决定：
 
 ```sh
 /opt/vf-cli-VERSION/venv/bin/vfctl stack-feishu-session import --stack-root /opt/video-factory --project PROJECT_ID --record RECORD_ID --expected-revision 0

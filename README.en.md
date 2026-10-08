@@ -10,7 +10,7 @@
 
 ## What it does
 
-Video Factory connects product information, script generation, video generation and human review into a maintainable project workflow. Administrators install and configure it through an AI agent and the CLI; teams organize tasks in their own Feishu Base by default.
+Video Factory is being built to connect product information, script generation, video generation and human review in a maintainable project workflow. Administrators install and configure it through an AI agent and the CLI; the intended daily team surface is the project's Feishu Base task table.
 
 - **Independent deployment:** customers manage their services, database, accounts and credentials.
 - **Multiple projects:** reuse infrastructure while configuring products, Feishu and models per project.
@@ -69,9 +69,9 @@ The operational guides and installer interactions are currently primarily in Chi
 | Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
 | Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
 | Feishu Base | Project information, source tasks and employees' daily view |
-| Controlled review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task |
+| Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
 
-a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project; live Feishu permissions and attachment receipts still need acceptance. Existing web review code is outside the recommended first-install path. Full Feishu-side review and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The intended workflow writes the generated script and version back to the **original task record** for an employee to review in Base; only an approved current version can proceed to video, which returns to the same record for review. That loop is not implemented or accepted yet. Existing web review code is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 

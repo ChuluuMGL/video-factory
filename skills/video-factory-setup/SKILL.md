@@ -24,7 +24,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - Agent 自动填非秘密配置使用 `setup --json` 返回的 `next_question.input_schema`，逐题提交答案和当前 `revision`。不要把终端提示的 SKU 文件路径当作 Agent JSON 数组，不缓存旧字段格式。
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
-- 飞书连接完成后停止 Setup，回读 Base 和人员。当前测试版使用 `stack-feishu-session` 在私有终端逐条验证任务导入和审核，本人飞书授权并核对计划；这不是员工在 Base 中完成审核，不能作为日常审核入口交付。旧 `stack-feishu` 仅供已有私有用户 Token 文件的兼容操作。结果回写需管理员另外启用 `base-results`，并按随包 `docs/product/BASE_RESULTS.md` 核对权限、同步与异常回执；未通过真实 Base 验收前不得宣传为默认可用。飞书内完整审核仍未验收。
+- 飞书连接完成后停止 Setup，回读 Base 和人员。员工的目标入口是项目飞书任务表：脚本/版本写回原任务，员工在表内退回或通过，成片再回原任务待审。当前测试版的 `stack-feishu-session` 仅在私有终端逐条验证授权、导入和本地账本；它没有完成脚本回写或表内审核，不得作为员工日常流程交付。旧 `stack-feishu` 仅供已有私有用户 Token 文件的兼容操作。可选 `base-results` 只追加另一张结果快照表，不是审核入口；实际任务表闭环与真人验收通过前，不得称项目可供员工日常使用。
 - 需要 n8n 自动推进已批准任务时，另行审阅并部署项目私网 `runner`，再执行 `production-setup`。它不开放员工网页或公网端口；具体步骤和未验收边界见[完整安装路径](references/complete-install.md)。
 
 ## 故障与验收
