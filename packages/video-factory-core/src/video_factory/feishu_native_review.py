@@ -28,6 +28,11 @@ def source_key(project, task):
     return 'native:source:' + fingerprint([identifier(project), identifier(task)])
 
 
+def sync_key(project, task, revision, stage):
+    if stage not in PENDING: raise RuntimeFault('FEISHU_REVIEW_STAGE_INVALID')
+    return 'native:sync:' + fingerprint([identifier(project), identifier(task), revision, stage])
+
+
 def review_key(project, event_id, record_id):
     return 'native:review:' + fingerprint([identifier(project), event_id, record_id])
 
@@ -177,7 +182,7 @@ class NativeReview:
                 row = self.store._current(db, project, task, revision)
                 if row['state'] != 'awaiting_'+stage+'_review':
                     raise RuntimeFault('FEISHU_REVIEW_STATE_CONFLICT')
-                sync = meta(db, 'native:sync:'+fingerprint([project, task, revision]))
+                sync = meta(db, sync_key(project, task, revision, stage))
                 if not sync or (not sync.get('complete') and sync.get('steps',{}).get('record',{}).get('status') != 'in_flight'):
                     raise RuntimeFault('FEISHU_REVIEW_DRAFT_NOT_SYNCED')
                 current_digest = row['input_digest']
@@ -219,10 +224,10 @@ class NativeReview:
                         or fingerprint(json.loads(row['artifact']) if row['artifact'] else None) != artifact_digest):
                     raise RuntimeFault('FEISHU_REVIEW_STATE_CONFLICT')
                 if not sync['complete']:
-                    latest_sync = meta(db, 'native:sync:'+fingerprint([project, task, revision]))
+                    latest_sync = meta(db, sync_key(project, task, revision, stage))
                     if latest_sync != sync: raise RuntimeFault('FEISHU_REVIEW_SYNC_CHANGED')
                     latest_sync['complete'] = True
-                    save(db, 'native:sync:'+fingerprint([project, task, revision]), latest_sync)
+                    save(db, sync_key(project, task, revision, stage), latest_sync)
                 receipt = self.store._review(db, actor, 'native_'+fingerprint([project, event_id, record_id]),
                                              project, task, revision, stage, decision, feedback)
                 save(db, key, {'request': request, 'receipt': receipt})

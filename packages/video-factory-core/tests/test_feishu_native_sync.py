@@ -1,4 +1,5 @@
 """Synthetic original-row setup and draft delivery; run in cloud CI."""
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,7 @@ from types import SimpleNamespace
 
 from video_factory.feishu_bridge import FeishuBridge, save
 from video_factory.feishu_native_sync import NativeSync
-from video_factory.runtime_store import RuntimeStore
+from video_factory.runtime_store import RuntimeStore, canonical
 
 
 class Remote:
@@ -31,6 +32,15 @@ class Remote:
         assert record=='recFixture'
         self.record_fields.update(fields);self.writes.append(('record',fields))
         return record
+    def upload_prepare(self,base,name,size):
+        self.writes.append(('upload_prepare',size))
+        return {'upload_id':'uploadFixture','block_num':1,'block_size':4*1024*1024}
+    def upload_part(self,upload_id,seq,data):
+        self.writes.append(('upload_part',seq))
+        return {'seq':seq,'size':len(data)}
+    def upload_finish(self,upload_id,block_num):
+        self.writes.append(('upload_finish',block_num))
+        return 'fileFixture'
 
 
 class NativeSyncTests(unittest.TestCase):
@@ -59,6 +69,24 @@ class NativeSyncTests(unittest.TestCase):
             self.assertEqual(remote.record_fields['脚本'],'Generated script')
             self.assertEqual(remote.record_fields['状态'],'脚本待审核')
             self.assertEqual(remote.record_fields['审核目标版本'],'1')
+            self.assertEqual(native.sync('brand',Path(tmp),lambda db:store.authorize(db,admin,'admin'))['status'],'idle')
+
+            # Video belongs to the same task revision. Its delivery journal
+            # must be separate from the already completed script delivery.
+            media=Path(tmp)/'review.mp4';media.write_bytes(b'synthetic fixture bytes')
+            media.chmod(0o600)
+            artifact={'sha256':hashlib.sha256(media.read_bytes()).hexdigest(),
+                      'location':str(media),'verification':'full_decode_passed'}
+            with store.connect() as db:
+                db.execute("UPDATE tasks SET state='awaiting_video_review',artifact=? WHERE project=? AND id=? AND revision=1",
+                           (canonical(artifact),'brand','task_one'))
+            remote.record_fields['状态']='脚本通过'
+            statuses=[native.sync('brand',Path(tmp),lambda db:store.authorize(db,admin,'admin'))['status']
+                      for _ in range(4)]
+            self.assertEqual(statuses,['video_upload_in_progress']*3+['synced'])
+            self.assertEqual(remote.record_fields['状态'],'视频待审核')
+            self.assertEqual(remote.record_fields['视频'],[{'file_token':'fileFixture'}])
+            self.assertEqual(remote.record_fields['视频摘要'],artifact['sha256'])
             self.assertEqual(native.sync('brand',Path(tmp),lambda db:store.authorize(db,admin,'admin'))['status'],'idle')
 
 

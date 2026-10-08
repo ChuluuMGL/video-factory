@@ -12,7 +12,7 @@ from .base_results import BaseResults
 from .feishu_bridge import meta, save, plain_text
 from .feishu_client import resource
 from .feishu_results_client import ResultClient, BLOCK_SIZE
-from .feishu_native_review import source_key
+from .feishu_native_review import source_key, sync_key
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
 REVIEW_FIELDS = {'status': ('状态', 1), 'review_revision': ('审核目标版本', 1),
@@ -23,8 +23,9 @@ SYNC_STATES = {'awaiting_script_review': '脚本待审核',
 
 
 def config_key(project): return 'native:config:'+identifier(project)
-def item_key(project, task, revision):
-    return 'native:sync:'+fingerprint([identifier(project), identifier(task), revision])
+def item_key(project, task, revision, state):
+    if state not in SYNC_STATES: raise RuntimeFault('FEISHU_NATIVE_STATE_INVALID')
+    return sync_key(project, task, revision, 'script' if state == 'awaiting_script_review' else 'video')
 
 
 def schema(client, base, table, binding):
@@ -152,7 +153,7 @@ class NativeSync:
             if len(rows)>1000: raise RuntimeFault('FEISHU_NATIVE_QUEUE_CAPACITY')
             selected = None
             for row in rows:
-                item = meta(db, item_key(project, row['id'], row['revision']))
+                item = meta(db, item_key(project, row['id'], row['revision'], row['state']))
                 if not item or not item['complete']:
                     selected = dict(row); break
             if selected is None: return {'status': 'idle', 'feishu_writes': 0}
@@ -164,7 +165,7 @@ class NativeSync:
         fields, names = schema(client, base, table, binding)
         if fields != config['fields'] or names != config['names']:
             raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
-        task, revision = row['id'], row['revision']; key = item_key(project, task, revision)
+        task, revision = row['id'], row['revision']; key = item_key(project, task, revision, row['state'])
         with self.store.connect() as db:
             source = meta(db, source_key(project, task))
         if source:

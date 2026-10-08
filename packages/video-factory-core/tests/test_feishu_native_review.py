@@ -7,7 +7,7 @@ from pathlib import Path
 from video_factory.feishu_bridge import save
 from video_factory.feishu_native_review import NativeReview
 from video_factory.feishu_native_sync import item_key
-from video_factory.runtime_store import RuntimeFault, RuntimeStore, fingerprint
+from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, fingerprint
 
 
 BINDING={'tenant_key':'fixture_tenant','base_token':'bascnFixture','table_id':'tblFixture',
@@ -40,7 +40,7 @@ class NativeReviewTests(unittest.TestCase):
             save(db,'feishu:binding:brand',BINDING)
             save(db,'native:config:brand',{'enabled':True,'app_id':'cli_fixture','fields':IDS,'names':NAMES})
             save(db,'native:record:brand:recFixture',{'record_id':'recFixture','task':'task_one','revision':1})
-            save(db,item_key('brand','task_one',1),{'complete':True,'steps':{},'snapshot':{}})
+            save(db,item_key('brand','task_one',1,'awaiting_script_review'),{'complete':True,'steps':{},'snapshot':{}})
     def tearDown(self):self.tmp.cleanup()
     def event(self,operator='ou_reviewer',before='脚本待审核',after='脚本通过',event_id='evt_fixture'):
         return {'schema':'2.0','header':{'event_id':event_id,'event_type':'drive.file.bitable_record_changed_v1',
@@ -80,6 +80,17 @@ class NativeReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'TRANSITION_INVALID'):
             self.reducer.consume_verified('brand',self.event(before='任意状态'))
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
+    def test_video_review_requires_the_video_stage_receipt_and_attachment(self):
+        digest='a'*64
+        artifact={'sha256':digest,'location':'/private/fixture.mp4','verification':'full_decode_passed'}
+        with self.store.connect() as db:
+            db.execute("UPDATE tasks SET state='awaiting_video_review',artifact=? WHERE project='brand' AND id='task_one' AND revision=1",
+                       (canonical(artifact),))
+            save(db,item_key('brand','task_one',1,'awaiting_video_review'),
+                 {'complete':True,'steps':{'finish':{'status':'done','receipt':'fileFixture'}},'snapshot':{}})
+        self.remote.update({'状态':'视频通过','视频摘要':digest,'视频':[{'file_token':'fileFixture'}]})
+        event=self.event(before='视频待审核',after='视频通过',event_id='evt_video')
+        self.assertEqual(self.reducer.consume_verified('brand',event)['reviewed'][0]['state'],'accepted')
 
 
 if __name__=='__main__':unittest.main()
