@@ -86,6 +86,17 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(created['state'],'awaiting_script_review')
         self.assertEqual(self.provider.calls,1)
 
+    def test_provider_auth_rejection_keeps_safe_diagnostic_without_retry(self):
+        self.approve()
+        self.provider.submit=lambda *args:(_ for _ in ()).throw(
+            ProviderRejected('PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'))
+        result=self.step(allow_paid=True)
+        self.assertEqual(result['failure_code'],'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY')
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['failure_code'],result['failure_code'])
+        replay=self.step(allow_paid=True)
+        self.assertEqual(replay['provider_requests'],0)
+        self.assertEqual(replay['failure_code'],result['failure_code'])
+
     def test_expired_approval_and_changed_key_stop_before_network(self):
         self.approve()
         with self.store.connect() as db:
@@ -167,7 +178,7 @@ class WorkerTests(unittest.TestCase):
         p.call=lambda *a:(200,{'task':{'id':'wrong','model':'MiniMax-H3','status':'succeeded'}})
         with self.assertRaisesRegex(RuntimeFault,'UNVERIFIED'):p.poll('12345678901234','fixture')
         p.call=lambda *a:(402,{'error':{'type':'insufficient_balance_error'}})
-        with self.assertRaises(ProviderRejected):p.submit({},'fixture')
+        with self.assertRaisesRegex(ProviderRejected,'PROVIDER_BALANCE_REQUIRED'):p.submit({},'fixture')
 
     def test_reference_paths_and_unapproved_media_origins_are_rejected(self):
         bad=copy.deepcopy(self.spec);bad['references'][0]['path']='../runtime.sqlite3'

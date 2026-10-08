@@ -99,6 +99,7 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
         if choice('配置或更换本项目视频 API Key 与 SKU 素材',read,write):
             secret=hidden('MiniMax H3 API Key（隐藏输入）: ')
             billing=read('视频费用账户标签> ').strip()
+            write('请按这把 Key 所属的 MiniMax 平台选择区域：api.minimax.io 为 global，api.minimaxi.com 为 cn；与服务器所在地无关。')
             region=read('视频账户区域 global 或 cn> ').strip()
             write('由 Agent 将已授权的产品图片上传到客户工作目录并计算哈希，再准备每 SKU 素材 JSON。')
             if getattr(args,'video_assets',None):

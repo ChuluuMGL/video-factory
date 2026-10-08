@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 from .runtime_store import RuntimeFault, canonical, fingerprint, identifier, private_directory
-from .h3_provider import H3Provider, ProviderRejected, request_body, ORIGINS
+from .h3_provider import H3Provider, ProviderRejected, REJECTION_CODES, request_body, ORIGINS
 from .worker_media import collect, toolchain
 
 
@@ -65,7 +65,8 @@ class Worker:
             raise RuntimeFault('WORKER_TASK_CHANGED')
         return row,value
 
-    def _terminal(self,token,project,task,revision):
+    def _terminal(self,token,project,task,revision,failure_code=None):
+        if failure_code not in REJECTION_CODES.values():failure_code=None
         with self.store.connect() as db:
             self.store.authorize(db,token,'admin')
             row=self.store._current(db,project,task,revision)
@@ -74,7 +75,15 @@ class Worker:
             if row['state'] in ('submission_unknown','submitted'):
                 db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=?",(project,task,revision))
                 self.store.audit(db,'worker','provider_failed_no_retry',project,task,revision)
-        return {'state':'failed','automatic_resubmit':False}
+            if failure_code:
+                key=job_key(project,task,revision)
+                saved=db.execute('SELECT value FROM meta WHERE key=?',(key,)).fetchone()
+                if saved:
+                    value=json.loads(saved[0]);value['failure_code']=failure_code
+                    db.execute('UPDATE meta SET value=? WHERE key=?',(canonical(value),key))
+        result={'state':'failed','automatic_resubmit':False}
+        if failure_code:result['failure_code']=failure_code
+        return result
 
     def status(self,token,project,task,revision):
         with self.store.connect() as db:
@@ -85,6 +94,7 @@ class Worker:
             value=json.loads(saved[0]) if saved else None
         return {'project':project,'task':task,'revision':revision,'state':row['state'],
                 'provider_id':row['provider_id'] or (value['provider_receipt'] if value else None),
+                'failure_code':value.get('failure_code') if value else None,
                 'request_plan_sha256':value['plan_sha256'] if value else None,
                 'approval_expires_at':value['expires_at'] if value else None,
                 'automatic_resubmit':False,'human_acceptance':'separate_review_required'}
@@ -93,7 +103,9 @@ class Worker:
         with self.store.connect() as db:row,value=self._load(db,token,project,task,revision)
         plan=value['plan'];state=row['state'];provider_id=row['provider_id'] or value['provider_receipt']
         if state in ('awaiting_video_review','accepted','rejected','failed'):
-            return {'state':state,'replayed':True,'provider_requests':0}
+            result={'state':state,'replayed':True,'provider_requests':0}
+            if state=='failed' and value.get('failure_code'):result['failure_code']=value['failure_code']
+            return result
         if state=='submission_unknown' and not provider_id:
             return {'state':state,'automatic_resubmit':False,'reconciliation_required':True,'provider_requests':0}
         if state=='ready' and not allow_paid:raise RuntimeFault('WORKER_EXPLICIT_PAID_SUBMISSION_REQUIRED')
@@ -123,7 +135,7 @@ class Worker:
                 db.execute("UPDATE tasks SET state='submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
                 self.store.audit(db,'worker','worker_submission_intent',project,task,revision)
             try:provider_id=provider.submit(body,secret_value)
-            except ProviderRejected:return self._terminal(token,project,task,revision)
+            except ProviderRejected as error:return self._terminal(token,project,task,revision,str(error))
             except Exception:
                 return {'state':'submission_unknown','automatic_resubmit':False,'reconciliation_required':True}
             # Retain the provider receipt independently of configuration drift.
