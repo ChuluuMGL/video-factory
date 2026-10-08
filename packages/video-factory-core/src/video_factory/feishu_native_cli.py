@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 
-from .onboarding import SessionStore
+from .onboarding import SessionStore, SetupError
 from .runtime_store import RuntimeFault
 from .setup_admin import rpc
 from .setup_run import choice
@@ -21,9 +21,10 @@ def register(commands):
 def cli(args):
     if not all(stream.isatty() for stream in (sys.stdin,sys.stdout,sys.stderr)):
         print(json.dumps({'error':'PRIVATE_INPUT_REQUIRED'})); return 2
-    stack=Stack(args.stack_root);session=SessionStore(args.session).read()
     token=None
     try:
+        stack=Stack(args.stack_root)
+        session=SessionStore(args.session).read()
         token=rpc(stack,{'action':'open','session':session,'password':getpass.getpass('产品管理员密码: ')})['token']
         def call(operation,expected=None):
             return rpc(stack,{'action':'native_review','session':session,'token':token,
@@ -39,6 +40,7 @@ def cli(args):
         print(json.dumps(result,ensure_ascii=False));return 0
     except (KeyboardInterrupt,EOFError):return 130
     except Exception as error:
-        print(json.dumps({'error':str(error) if isinstance(error,RuntimeFault) else 'FEISHU_NATIVE_OPERATION_FAILED'}));return 2
+        code=str(error) if isinstance(error,(RuntimeFault,SetupError)) else 'FEISHU_NATIVE_OPERATION_FAILED'
+        print(json.dumps({'error':code}));return 2
     finally:
         if token: rpc(stack,{'action':'close','token':token})
