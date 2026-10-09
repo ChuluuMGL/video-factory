@@ -71,11 +71,15 @@ class NativeReviewTests(unittest.TestCase):
 
     def test_single_select_option_ids_from_real_event_shape_are_accepted(self):
         event=self.event(before='optPending',after='optApproved',event_id='evt_option_id')
+        action=event['event']['action_list'][0]
+        action['before_value'][0]['field_value']='optPending'
+        action['after_value'][0]['field_value']='optApproved'
         self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
         self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
 
     def test_unrecognized_option_id_cannot_approve(self):
         event=self.event(before='optPending',after='optUnknown',event_id='evt_unknown_option')
+        event['event']['action_list'][0]['after_value'][0]['field_value']='optUnknown'
         self.reducer.enqueue_verified('brand',event)
         self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')

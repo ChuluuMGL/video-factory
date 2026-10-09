@@ -54,6 +54,11 @@ def _changed(action, field_id, option_names):
         # Feishu represents a cleared cell as an empty field_value. It is not
         # an approval and must not block later, valid events in the queue.
         if raw == '': return None
+        # The record-changed event sends a single-select option ID as bare
+        # text, while older fixtures and some clients JSON-encode that ID.
+        if raw.startswith('opt'):
+            if raw not in option_names: raise RuntimeFault('FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+            return option_names[raw]
         try:
             value = json.loads(raw)
             if isinstance(value, str) and value.startswith('opt'):
