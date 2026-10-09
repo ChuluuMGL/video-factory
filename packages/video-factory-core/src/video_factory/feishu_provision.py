@@ -15,7 +15,7 @@ from .h3_provider import NoRedirect
 from .runtime_store import RuntimeFault, fingerprint
 
 TASK_FIELDS = {'task': '任务编号', 'sku_id': 'SKU', 'script': '脚本', 'source_revision': '来源版本'}
-from .feishu_native_sync import REVIEW_FIELDS
+from .feishu_native_sync import REVIEW_FIELDS, STATUS_OPTIONS, schema as review_schema
 PRODUCT_FIELDS = ('SKU', '商品名称', '规格', '事实来源')
 
 
@@ -49,10 +49,14 @@ class ProvisionClient(FeishuClient):
 
     def create_table(self, base, name, fields):
         resource(base)
+        def definition(field):
+            item = {'field_name': field if isinstance(field, str) else field[0],
+                    'type': 1 if isinstance(field, str) else field[1]}
+            if item['field_name'] == '状态' and item['type'] == 3:
+                item['property'] = {'options': [{'name': option} for option in STATUS_OPTIONS]}
+            return item
         value = self.post(f'/bitable/v1/apps/{base}/tables', {'table': {'name': name,
-            'default_view_name': '全部记录', 'fields': [
-                {'field_name': f if isinstance(f,str) else f[0], 'type': 1 if isinstance(f,str) else f[1]}
-                for f in fields]}})
+            'default_view_name': '全部记录', 'fields': [definition(f) for f in fields]}})
         return {'table_id': resource(value.get('table_id'), 'tbl')}
 
     def create_records(self, base, table, rows, client_token):
@@ -211,6 +215,9 @@ class Provisioner:
             task_content_unchanged = True
         binding = binding_for(draft, base, tasks, {key: ids[name] for key, name in TASK_FIELDS.items()})
         FeishuBridge._schema(client, binding)
+        review_fields, _ = review_schema(client, base, tasks, binding)
+        if set(review_fields) != set(REVIEW_FIELDS):
+            raise RuntimeFault('FEISHU_PROVISION_REVIEW_SCHEMA_CHANGED')
         with store.connect() as db:
             if self.service.context(db, admin, draft) != context or meta(db, key) != journal:
                 raise RuntimeFault('SETUP_FEISHU_CONTEXT_CHANGED')

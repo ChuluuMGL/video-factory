@@ -6,7 +6,7 @@ record-history display name alone is never a review credential.
 import hashlib
 import json
 
-from .feishu_bridge import FeishuBridge, meta, save, plain_text
+from .feishu_bridge import FeishuBridge, meta, save, plain_text, select_text
 from .feishu_client import resource
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
@@ -50,7 +50,7 @@ def _changed(action, field_id):
         if not rows: return None
         raw = rows[0].get('field_value')
         if not isinstance(raw, str) or len(raw) > 16000: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
-        try: return plain_text(json.loads(raw))
+        try: return select_text(json.loads(raw))
         except (ValueError, RuntimeFault): raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
     before, after = find('before_value'), find('after_value')
     return (before, after) if before != after and after is not None else None
@@ -193,7 +193,7 @@ class NativeReview:
             # still show this exact version and decision before committing.
             remote = client.record(binding['base_token'], binding['table_id'], record_id)['fields']
             names = config['names']
-            if (plain_text(remote.get(names['status'])) != change[1]
+            if (select_text(remote.get(names['status'])) != change[1]
                     or plain_text(remote.get(names['review_revision'])) != str(revision)
                     or plain_text(remote.get(names['task'])) != task
                     or plain_text(remote.get(names['sku_id'])) != payload['sku_id']

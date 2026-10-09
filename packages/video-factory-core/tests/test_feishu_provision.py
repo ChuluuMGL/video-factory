@@ -11,6 +11,7 @@ from video_factory.setup_project import import_project
 from video_factory.setup_feishu import ConnectionSession, SetupFeishu, describe
 from video_factory.feishu_bridge import meta
 from video_factory.feishu_provision import ProvisionClient, PRODUCT_FIELDS, TASK_FIELDS, specification
+from video_factory.feishu_native_sync import REVIEW_FIELDS, STATUS_OPTIONS
 from video_factory.feishu_oauth import DeviceOAuth, SCOPES, CREATE_SCOPES
 
 
@@ -41,7 +42,9 @@ class Remote:
         tid = 'tblCreated'+str(len(self.tables))
         self.tables[tid] = [{'field_id': 'fld'+str(len(self.tables))+str(i)+'Created',
                              'field_name': field if isinstance(field,str) else field[0],
-                             'type': 1 if isinstance(field,str) else field[1]}
+                             'type': 1 if isinstance(field,str) else field[1],
+                             **({'property':{'options':[{'name':option} for option in STATUS_OPTIONS]}}
+                                if not isinstance(field,str) and field[0]=='状态' else {})}
                             for i, field in enumerate(fields)]
         return self.done('table', {'table_id': tid})
 
@@ -63,6 +66,15 @@ class Remote:
 
 
 class ProvisionTests(unittest.TestCase):
+    def test_create_table_sends_single_select_options(self):
+        calls=[]
+        client=ProvisionClient('synthetic-token')
+        with patch.object(client,'post',side_effect=lambda path,body: calls.append((path,body)) or {'table_id':'tblCreated'}):
+            client.create_table('bascnCreated','测试任务',list(TASK_FIELDS.values())+list(REVIEW_FIELDS.values()))
+        status=next(field for field in calls[0][1]['table']['fields'] if field['field_name']=='状态')
+        self.assertEqual(status['type'],3)
+        self.assertEqual([option['name'] for option in status['property']['options']],list(STATUS_OPTIONS))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         (self.root/'runtime').mkdir(mode=0o700)
@@ -105,6 +117,9 @@ class ProvisionTests(unittest.TestCase):
             binding = meta(db, 'feishu:binding:new_brand')
         self.assertEqual(binding['base_token'], 'bascnCreated')
         self.assertEqual(set(binding['fields']), set(TASK_FIELDS))
+        status=next(f for f in self.remote.tables[binding['table_id']] if f['field_name']=='状态')
+        self.assertEqual(status['type'],3)
+        self.assertEqual([option['name'] for option in status['property']['options']],list(STATUS_OPTIONS))
 
     def test_folder_is_verified_in_create_receipt_not_unavailable_get_field(self):
         self.draft['answers']['folder_token'] = 'fldcnDestination'

@@ -24,7 +24,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - Agent 自动填非秘密配置使用 `setup --json` 返回的 `next_question.input_schema`，逐题提交答案和当前 `revision`。不要把终端提示的 SKU 文件路径当作 Agent JSON 数组，不缓存旧字段格式。
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
-- 飞书连接完成后停止 Setup，回读 Base 和人员。发布含 `feishu-review` 的固定版本后，核对专用飞书应用对目标 Base 的管理权限，以及应用身份和用户身份的 `bitable:app`、应用身份的 `docs:event:subscribe`；先按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 启动私网 runner，由管理员在私有终端启用 Base 订阅。首次配置随后在开发者后台添加记录变更事件、选择长连接并发布；已有事件核对配置，不因升级重复删除。用真实 Base 的非审核测试变更核对事件日志、服务器队列和处理回执。员工只在原任务表看稿、填意见并通过或退回，不使用终端。当前已交付版的 `stack-feishu-session` 仍只验证授权、导入与本地账本，不能代替员工流程。可选 `base-results` 是另一张结果快照表，不是审核入口。真实事件与真人验收通过前，不得称项目可供员工日常使用。
+- 飞书连接完成后停止 Setup，回读 Base 和人员。发布含 `feishu-review` 的固定版本后，核对专用飞书应用对目标 Base 的管理权限，以及应用身份和用户身份的 `bitable:app`、应用身份的 `docs:event:subscribe`；先按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 启动私网 runner，由管理员在私有终端启用 Base 订阅。原任务表的“状态”必须是包含六个审核状态的单选列；旧文本列先核对整列数据再迁移，不能直接覆盖。首次配置随后在开发者后台添加记录变更事件、选择长连接并发布；已有事件核对配置，不因升级重复删除。用真实 Base 的非审核测试变更核对事件日志、服务器队列和处理回执。员工只在原任务表看稿、填意见并从单选状态中选择通过或退回，不使用终端。当前已交付版的 `stack-feishu-session` 仍只验证授权、导入与本地账本，不能代替员工流程。可选 `base-results` 是另一张结果快照表，不是审核入口。真实事件与真人验收通过前，不得称项目可供员工日常使用。
 - 需要 n8n 自动推进已批准任务时，另行审阅并部署项目私网 `runner`，再执行 `production-setup`。它不开放员工网页或公网端口；具体步骤和未验收边界见[完整安装路径](references/complete-install.md)。
 
 ## 故障与验收

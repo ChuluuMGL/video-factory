@@ -56,6 +56,12 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
         self.assertEqual(self.reducer.process_one('brand')['status'],'idle')
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'ready')
+
+    def test_single_select_one_item_event_and_record_are_accepted(self):
+        self.remote['状态']=['脚本通过']
+        event=self.event(before=['脚本待审核'],after=['脚本通过'],event_id='evt_select')
+        self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
     def test_wrong_actor_and_old_revision_never_approve(self):
         with self.assertRaisesRegex(RuntimeFault,'ROLE_DENIED'):
             self.reducer.consume_verified('brand',self.event(operator='ou_outsider'))
