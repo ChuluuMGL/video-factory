@@ -62,11 +62,21 @@ class NativeSync:
             old = meta(db, config_key(project))
             if old and old['context'] != context: raise RuntimeFault('FEISHU_NATIVE_CONTEXT_CHANGED')
             binding = self.results.bridge._binding(db, project)
+            # Each project starts its own long-connection receiver. Feishu
+            # delivers an event to one randomly selected receiver for an app,
+            # so sharing an app between local projects can silently lose
+            # reviews even if each project's Base subscription is correct.
+            for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'setup:feishu-app:%'").fetchall():
+                if row['key'] != 'setup:feishu-app:'+project and json.loads(row['value']).get('app_id') == context['app_profile']['app_id']:
+                    raise RuntimeFault('FEISHU_NATIVE_APP_SHARED_WITH_ANOTHER_PROJECT')
         client = self.client(context)
+        # Check document-event access before adding fields to an existing
+        # customer table. Missing permission must leave the schema untouched.
+        subscribed = client.base_subscription_status(binding['base_token'])
         fields, _ = schema(client, binding['base_token'], binding['table_id'], binding)
         plan = {'project': project, 'context': context, 'existing': fields,
                 'missing': [key for key in REVIEW_FIELDS if key not in fields],
-                'subscription': 'app_identity_document_manager_required',
+                'subscription': 'registered' if subscribed else 'not_registered',
                 'writes_original_table': True, 'model_calls': 0,
                 'journal_sha256': fingerprint(old)}
         return {'plan': plan, 'plan_sha256': fingerprint(plan)}

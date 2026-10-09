@@ -40,6 +40,7 @@ def cli(args):
             plan=call('plan')
             print('将在原飞书任务表补充状态、审核版本、脚本摘要、审核意见、视频摘要和视频附件字段，并订阅该 Base 的变更事件。')
             print('目标 Base：'+plan['plan']['context']['target']['base_token'])
+            print('该应用必须专供本项目事件接收，不得与其他机器人或长连接客户端共用。')
             print('需先给本项目飞书应用授予 Base 文档管理/编辑和记录变更事件权限。')
             if not choice('确认启用原任务表审核', input, print): result={'status':'unchanged'}
             else: result=call('enable',plan['plan_sha256'])
