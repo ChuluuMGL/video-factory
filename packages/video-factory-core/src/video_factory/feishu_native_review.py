@@ -56,10 +56,10 @@ def _changed(action, field_id, option_names):
                 if value not in option_names: raise RuntimeFault('FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
                 return option_names[value]
             return select_text(value)
-        except ValueError: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
         except RuntimeFault as error:
             if str(error) == 'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN': raise
             raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
+        except ValueError: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
     before, after = find('before_value'), find('after_value')
     return (before, after) if before != after and after is not None else None
 
