@@ -22,7 +22,8 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'FEISHU_REVIEW_REMOTE_CHANGED','FEISHU_REVIEW_SCRIPT_CHANGED',
                  'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
                  'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
-                 'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN'}
+                 'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN',
+                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS'}
 
 
 def source_key(project, task):
@@ -50,6 +51,9 @@ def _changed(action, field_id, option_names):
         if not rows: return None
         raw = rows[0].get('field_value')
         if not isinstance(raw, str) or len(raw) > 16000: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
+        # Feishu represents a cleared cell as an empty field_value. It is not
+        # an approval and must not block later, valid events in the queue.
+        if raw == '': return None
         try:
             value = json.loads(raw)
             if isinstance(value, str) and value.startswith('opt'):

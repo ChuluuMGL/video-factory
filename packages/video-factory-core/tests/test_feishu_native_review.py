@@ -79,6 +79,21 @@ class NativeReviewTests(unittest.TestCase):
         self.reducer.enqueue_verified('brand',event)
         self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
+    def test_cleared_status_event_does_not_block_later_approval(self):
+        cleared=self.event(before='unrelated',after='',event_id='evt_cleared')
+        cleared['event']['action_list'][0]['after_value'][0]['field_value']=''
+        self.reducer.enqueue_verified('brand',cleared)
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'],[])
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_after_clear'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_malformed_status_event_is_denied_without_blocking_approval(self):
+        invalid=self.event(event_id='evt_invalid_status')
+        invalid['event']['action_list'][0]['after_value'][0]['field_value']='not json'
+        self.reducer.enqueue_verified('brand',invalid)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_EVENT_FIELD_INVALID')
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_after_invalid'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
     def test_wrong_actor_and_old_revision_never_approve(self):
         with self.assertRaisesRegex(RuntimeFault,'ROLE_DENIED'):
             self.reducer.consume_verified('brand',self.event(operator='ou_outsider'))
