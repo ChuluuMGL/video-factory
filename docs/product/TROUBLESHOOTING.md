@@ -15,6 +15,6 @@
 
 这些是诊断入口，不保证每种故障都能由 Agent 自动修复。涉及权限扩张、密钥轮换、数据恢复、模型重试或员工审核时，按各自的操作边界处理。Agent 可先做只读诊断，给出**证据、修复计划和验收结果**。
 
-遇到本页没有覆盖的问题，先搜[现有 Issues](https://github.com/ChuluuMGL/video-factory/issues)，再用[问题模板](https://github.com/ChuluuMGL/video-factory/issues/new/choose)提交**脱敏的最小复现**：版本、阶段、错误码、期望与实际结果、已做的检查。不要提交密码、API Key、App Secret、服务器 IP、真实飞书 ID、客户内容、原始日志或未脱敏截图。安全漏洞使用[私密报告](../../SECURITY.md)。客户或实施人员审核后自行提交；Agent 不自动公开发送诊断资料。
+遇到本页没有覆盖的问题，先搜[现有 Issues](https://github.com/ChuluuMGL/video-factory/issues)，再用[问题模板](https://github.com/ChuluuMGL/video-factory/issues/new/choose)提交**脱敏的最小复现**：版本、阶段、错误码、期望与实际结果、已做的检查。不要提交密码、API Key、App Secret、服务器 IP、真实飞书 ID、客户内容、原始日志或未脱敏截图。安全漏洞使用[私密报告](https://github.com/ChuluuMGL/video-factory/security/advisories/new)。客户或实施人员审核后自行提交；Agent 不自动公开发送诊断资料。
 
 Issue 是待核查的问题记录，不能直接当作已验证的修复方案。维护者修复并验证后，在对应 PR 中更新本页及相关操作文档，注明适用版本；每次固定发行前复查索引与失效链接。关闭 Issue 不等于客户实例已升级，也不等于客户任务已恢复。
