@@ -30,6 +30,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 ## 故障与验收
 
 - 先读取当前 CLI 版本、Setup 状态、stack 状态及准确错误码，再判断是哪一层失败。不要用重装覆盖未知状态，或直接改数据库“修正”为成功。
+- 遇到 `DOCKER_ADDRESS_POOL_EXHAUSTED`，只读核对 Docker 网络及连接容器；只清理确认无容器且可重建的旧测试网络，再续接原 session。容器未启动时不得称飞书已授权。
 - 新建 Base 回执保存在客户数据库。读取失败后用原 session 续接；创建结果未知或恢复了未完成检查点时，读取 `setup-feishu status` 并核对远端，禁止直接清理日志重建。详见随包 `docs/product/BASE_CREATION.md`。
 - 已完成绑定的 Base 续接应保留用户后续修改的商品内容和测试任务脚本；核对原记录及 SKU、任务编号。身份字段或记录缺失时停止对账，不把内容改回初始化值。
 - 已存在同版本 CLI 可校验复用；半安装 CLI 目录保留，改用新的空前缀诊断安装。客户 stack 与 session 必须放在 CLI 目录之外。
