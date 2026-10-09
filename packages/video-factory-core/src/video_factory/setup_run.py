@@ -146,8 +146,16 @@ def welcome(args, *, read=input, hidden=getpass.getpass, write=print, read_produ
             app_id = read('飞书应用 App ID（:quit 保存退出）> ').strip()
             if app_id == ':quit': return {'status': 'installed_credentials_pending', 'business_ready': False}
             from .feishu_oauth import DeviceOAuth
-            secret = hidden('飞书应用 App Secret（隐藏输入）: ')
-            DeviceOAuth(app_id, secret)
+            for attempt in range(3):
+                secret = hidden('飞书应用 App Secret（隐藏输入）: ')
+                try:
+                    DeviceOAuth(app_id, secret)
+                    break
+                except RuntimeFault as error:
+                    secret = None
+                    if str(error) != 'FEISHU_APP_SECRET_INVALID' or attempt == 2:
+                        raise
+                    write('App Secret 格式无效，请从飞书开发者后台重新复制。')
             write('将为项目 '+target['project']+' 保存应用 '+app_id+'，密钥加密保存在这台客户服务器。')
             if not choice('确认保存应用凭据', read, write):
                 return {'status': 'installed_credentials_pending', 'business_ready': False}

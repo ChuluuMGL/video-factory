@@ -56,8 +56,8 @@ class DeviceOAuth:
     def __init__(self, app_id, app_secret, *, scopes=SCOPES):
         if not isinstance(app_id, str) or not re.fullmatch(r'cli_[A-Za-z0-9_-]{4,128}', app_id):
             raise RuntimeFault('FEISHU_APP_ID_INVALID')
-        text_value(app_secret)
-        if ':' in app_secret:
+        if (not isinstance(app_secret, str) or not 1 <= len(app_secret) <= 4096
+                or any(c.isspace() for c in app_secret) or ':' in app_secret):
             raise RuntimeFault('FEISHU_APP_SECRET_INVALID')
         if tuple(scopes) not in (SCOPES, CREATE_SCOPES):
             raise RuntimeFault('FEISHU_OAUTH_SCOPE_INVALID')

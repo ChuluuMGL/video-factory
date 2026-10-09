@@ -77,6 +77,16 @@ class SetupRunTests(unittest.TestCase):
         for value in ('synthetic-password','synthetic-app-secret','synthetic-admin-token'):
             self.assertNotIn(value,'\n'.join(self.output));self.assertNotIn(value,self.store.path.read_text())
 
+    def test_invalid_pasted_secret_retries_without_reentering_admin_password(self):
+        prompts=[]
+        with self.environment(['y','cli_fixture','y','n'],
+                ['synthetic-password','synthetic-password','stale clipboard text','synthetic-app-secret'],prompts) as (go,_):
+            self.assertEqual(go()['status'],'installed_credentials_saved')
+        self.assertEqual(prompts.count('设置产品管理员密码（至少 14 位）: '),1)
+        self.assertEqual(prompts.count('飞书应用 App Secret（隐藏输入）: '),2)
+        self.assertEqual([v['action'] for v in self.events],['open','configure','status','close'])
+        self.assertNotIn('stale clipboard text','\n'.join(self.output))
+
     def test_interrupt_after_login_revokes_token(self):
         with self.environment(['y',':quit'],['synthetic-password','synthetic-password']) as (go,_):
             self.assertEqual(go()['status'],'installed_credentials_pending')
