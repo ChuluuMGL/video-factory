@@ -50,6 +50,8 @@ def run(command, *, timeout=300, data=None):
         raise RuntimeFault('STACK_COMMAND_UNCERTAIN_CHECK_STATUS') from None
     if result.returncode:
         # Provider passwords and Docker env/connection strings must not leak.
+        if b'all predefined address pools have been fully subnetted' in result.stderr:
+            raise RuntimeFault('DOCKER_ADDRESS_POOL_EXHAUSTED')
         raise RuntimeFault('STACK_COMMAND_FAILED')
     return result.stdout
 
