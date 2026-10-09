@@ -97,7 +97,9 @@ def run_stack(args):
                 raise RuntimeFault('BACKUP_SOURCE_AND_KEY_REQUIRED')
             stack=Stack.restore(args.source,args.root,secret_input(args.backup_key_file,''),deployment=args.deployment,
                                 runtime_port=args.runtime_port,n8n_port=args.n8n_port)
-            result={'restored':True,'deployment':stack.config['deployment'],'build_and_up_required':True,'sessions_revoke_on_start':True}
+            result={'restored':True,'deployment':stack.config['deployment'],'build_and_up_required':True,'sessions_revoke_on_start':True,
+                    'restored_execution_credentials_revoke_on_start':True,
+                    'next_step_after_up':'rerun production-setup for each previously enabled project schedule'}
         else:
             stack=Stack(args.root)
             if args.action=='fetch':
