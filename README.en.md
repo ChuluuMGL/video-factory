@@ -73,12 +73,12 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
 
-a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) writes a script and version to the **original task record** and receives Base review events; one real account's script approval has passed. Return-and-revision, video writeback, and video review remain unverified. Terminal review is a technical test path. A persistent employee web interface is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) writes a script and version to the **original task record** and receives Base review events; one real account's script approval and rejection have passed. Review of a revised script, video writeback and video review remain unverified. Terminal review is a technical test path. A persistent employee web interface is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
 - Installers: [customer guide](docs/product/CUSTOMER_GUIDE.md), [complete Skill](skills/video-factory-setup/SKILL.md), [acceptance guide](docs/product/INDEPENDENT_ACCEPTANCE.md).
-- Maintainers: [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
+- Maintainers: [troubleshooting and issues](docs/product/TROUBLESHOOTING.en.md), [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
 - Security and data: [security reporting](SECURITY.md), [data handling](PRIVACY.md).
 
 This repository contains generic source, synthetic tests, installers and product documentation. The former TikTok project repository remains a private historical archive. It is not a customer installation entry point and must not be made public as part of this repository's publication.

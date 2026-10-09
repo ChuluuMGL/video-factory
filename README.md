@@ -26,7 +26,7 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 a32 的云端回归已通过：空白 Ubuntu 环境准备、固定包匿名安装、私密终端 Setup、模拟飞书授权、PostgreSQL 与真实 n8n 容器迁移和冷恢复、两种 Docker 存储模式断网安装。2026-10-07 在临时 ECS 上又完成了单账号真实飞书授权、新建测试 Base、1 个 SKU 和 2 条测试任务的回读，未调用模型。此前 a29 实测过任务导入和脚本返工审核，由 Agent 操作同一账号。**a32 新部署的任务导入、付费模型生成、不同员工账号和独立客户完整验收仍未完成**；历史项目案例不代替本安装版验收。
 
-[PR #18 候选版](https://github.com/ChuluuMGL/video-factory/pull/18) 已在临时 ECS 对一条真实测试任务完成原飞书表脚本写回、本人在表内选择“脚本通过”、事件接收与服务端状态推进；此前还完成过一次经授权的 H3 视频请求。候选版尚未发行；原表脚本退回与修订、成片回写与表内视频审核、第二位员工和非作者独立安装仍需分别验收。
+[PR #18 候选版](https://github.com/ChuluuMGL/video-factory/pull/18) 已在临时 ECS 完成原飞书表脚本写回、本人在表内选择“脚本通过”和“脚本退回”、认证事件接收与服务端状态推进；此前还完成过一次经授权的 H3 视频请求。候选版尚未发行；退回后的新版本复审、成片回写与表内视频审核、第二位员工和非作者独立安装仍需分别验收。
 
 详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) · [当前状态](docs/product/STATUS.md)。
 
@@ -70,12 +70,12 @@ a32 的云端回归已通过：空白 Ubuntu 环境准备、固定包匿名安�
 | 飞书 Base | 项目资料、来源任务与员工日常查看 |
 | 当前测试用审核命令 | `stack-feishu-session` 在私有终端完成本人飞书授权，逐条核验导入和审核；尚非飞书 Base 内的日常审核入口 |
 
-a32 可按项目显式启用 [Base 结果同步](docs/product/BASE_RESULTS.md)，但它只追加专用结果快照，不是员工审核入口。[PR #18 候选版](https://github.com/ChuluuMGL/video-factory/pull/18) 将脚本和版本写回**原任务表**并接收表内审核事件，已通过单账号“脚本通过”实测；退回修订、成片回写和视频审核尚未跑完。终端审核只用于技术验收。推荐的首次安装不部署常驻员工网页，见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
+a32 可按项目显式启用 [Base 结果同步](docs/product/BASE_RESULTS.md)，但它只追加专用结果快照，不是员工审核入口。[PR #18 候选版](https://github.com/ChuluuMGL/video-factory/pull/18) 将脚本和版本写回**原任务表**并接收表内审核事件，已通过单账号脚本通过和退回实测；新版复审、成片回写和视频审核尚未跑完。终端审核只用于技术验收。推荐的首次安装不部署常驻员工网页，见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
 
 ## 文档与仓库范围
 
 - 安装人员：[客户指南](docs/product/CUSTOMER_GUIDE.md)、[完整 Skill](skills/video-factory-setup/SKILL.md)、[验收指南](docs/product/INDEPENDENT_ACCEPTANCE.md)。
-- 维护人员：[产品定义](docs/product/PRD.md)、[状态](docs/product/STATUS.md)、[迁移范围](docs/product/MIGRATION.md)、[公开发布检查](docs/product/PUBLICATION_REVIEW.md)。
+- 维护人员：[排障与问题反馈](docs/product/TROUBLESHOOTING.md)、[产品定义](docs/product/PRD.md)、[状态](docs/product/STATUS.md)、[迁移范围](docs/product/MIGRATION.md)、[公开发布检查](docs/product/PUBLICATION_REVIEW.md)。
 - 安全与数据：[安全报告](SECURITY.md)、[数据说明](PRIVACY.md)。
 
 此仓库保存通用源码、合成测试、安装器和产品文档。旧 TikTok 项目仓库保留为私有历史档案，不作为新客户入口，也不随此仓库一起公开。
