@@ -22,7 +22,7 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'FEISHU_REVIEW_REMOTE_CHANGED','FEISHU_REVIEW_SCRIPT_CHANGED',
                  'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
                  'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
-                 'FEISHU_REVIEW_EVENT_CONFLICT'}
+                 'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN'}
 
 
 def source_key(project, task):
@@ -42,16 +42,24 @@ def queue_key(project, event_id):
     return 'native:event:' + identifier(project) + ':' + fingerprint(event_id)
 
 
-def _changed(action, field_id):
-    """Return a changed text field, or None if it was not changed by this event."""
+def _changed(action, field_id, option_names):
+    """Resolve a changed status; Feishu events send option IDs, not labels."""
     def find(side):
         rows = [item for item in action.get(side, []) if item.get('field_id') == field_id]
         if len(rows) > 1: raise RuntimeFault('FEISHU_EVENT_FIELD_AMBIGUOUS')
         if not rows: return None
         raw = rows[0].get('field_value')
         if not isinstance(raw, str) or len(raw) > 16000: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
-        try: return select_text(json.loads(raw))
-        except (ValueError, RuntimeFault): raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
+        try:
+            value = json.loads(raw)
+            if isinstance(value, str) and value.startswith('opt'):
+                if value not in option_names: raise RuntimeFault('FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+                return option_names[value]
+            return select_text(value)
+        except ValueError: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
+        except RuntimeFault as error:
+            if str(error) == 'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN': raise
+            raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
     before, after = find('before_value'), find('after_value')
     return (before, after) if before != after and after is not None else None
 
@@ -164,11 +172,27 @@ class NativeReview:
         if not isinstance(actions, list) or not 1 <= len(actions) <= 100:
             raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
         client = self.client_factory(config['app_id'])
+        option_names = None
         results = []
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
-            change = _changed(action, mapping['status'])
+            if not any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
+                       for item in action.get(side, []) if isinstance(item, dict)):
+                continue
+            if option_names is None:
+                fields = [field for field in client.fields(binding['base_token'], binding['table_id'])
+                          if field.get('field_id') == mapping['status']]
+                if len(fields) != 1 or fields[0].get('type') != 3:
+                    raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+                properties = fields[0].get('property')
+                options = properties.get('options') if isinstance(properties, dict) else None
+                if not isinstance(options, list): raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+                option_names = {option['id']: option['name'] for option in options
+                                if isinstance(option, dict) and isinstance(option.get('id'), str)
+                                and isinstance(option.get('name'), str)}
+                if len(option_names) != len(options): raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+            change = _changed(action, mapping['status'], option_names)
             if not change or change[1] not in DECISIONS: continue
             stage, decision = DECISIONS[change[1]]
             if change[0] != PENDING[stage]:

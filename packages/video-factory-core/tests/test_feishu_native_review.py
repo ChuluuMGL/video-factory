@@ -24,6 +24,12 @@ IDS={'status':'fldStatus','review_revision':'fldReviewRevision','script_digest':
 
 class Client:
     def __init__(self, fixture): self.fixture=fixture
+    def fields(self,base,table):
+        return [{'field_id':'fldStatus','field_name':'状态','type':3,
+                 'property':{'options':[{'id':key,'name':name} for key,name in (
+                     ('optPending','脚本待审核'),('optApproved','脚本通过'),
+                     ('optRejected','脚本退回'),('optVideoPending','视频待审核'),
+                     ('optVideoApproved','视频通过'),('optVideoRejected','视频退回'))]}}]
     def record(self,base,table,record):
         assert (base,table,record)==('bascnFixture','tblFixture','recFixture')
         return {'record_id':record,'fields':dict(self.fixture.remote)}
@@ -62,6 +68,17 @@ class NativeReviewTests(unittest.TestCase):
         event=self.event(before=['脚本待审核'],after=['脚本通过'],event_id='evt_select')
         self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
         self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_single_select_option_ids_from_real_event_shape_are_accepted(self):
+        event=self.event(before='optPending',after='optApproved',event_id='evt_option_id')
+        self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_unrecognized_option_id_cannot_approve(self):
+        event=self.event(before='optPending',after='optUnknown',event_id='evt_unknown_option')
+        self.reducer.enqueue_verified('brand',event)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+        self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
     def test_wrong_actor_and_old_revision_never_approve(self):
         with self.assertRaisesRegex(RuntimeFault,'ROLE_DENIED'):
             self.reducer.consume_verified('brand',self.event(operator='ou_outsider'))
