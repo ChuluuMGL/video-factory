@@ -34,6 +34,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 已存在同版本 CLI 可校验复用；半安装 CLI 目录保留，改用新的空前缀诊断安装。客户 stack 与 session 必须放在 CLI 目录之外。
 - `setup-run` 退出后使用原 session/stack 续接。恢复、升级及停机备份需依照用户已授权的具体对象和停机范围；未获授权时先给出具体计划，不自行扩展授权。
 - 模型提交、付费重试、员工审核、外部发布分别遵循用户授权；安装或修复指令本身不包含这些动作。未知模型提交不得重发，先查询已有供应商回执。
+- 明确认证拒绝且没有供应商回执时，更换密钥或接口区域后，可按 `docs/product/WORKER_USAGE.md` 使用 `stack-worker recover-auth`。保留失败尝试与原人工审核，重新核对并批准执行计划；恢复本身不会付费提交，不能用于结果未知或已有回执的任务。
 - 输出阶段证据：`CLI 安装 / 服务启动 / 项目导入 / 飞书真实接入 / 任务执行 / 真人验收`。逐项记已通过、失败或未执行，并注明证据来源。绿色 CI、Mock OAuth、`plan_ready` 或 `business_ready=false` 不表示客户业务已验收。
 - 结束给出当前版本、确切对象、完成步骤、剩余缺口和可续接命令；不输出秘密、一次性管理员链接或完整敏感日志。
 

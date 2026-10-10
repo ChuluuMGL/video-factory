@@ -87,3 +87,8 @@ vfctl stack-worker step --stack-root /srv/video-factory \
 中继仅在显式 `step` 时拉起，结束/错误后停止；如果主机端命令被强制终止，中继最多存活十分钟且不自动重启。它不是任务调度器，不会自动提交积压任务。一次性 worker 自身也有七分钟硬时限；主机命令返回或超时时会清理本次唯一名称的容器。整个调用与备份/升级共用部署锁。
 
 验收边界：云端测试使用合成凭据、隔离 HTTP/TLS 服务和合成视频；真实 H3、真实飞书员工操作、n8n 业务调度仍需分别验收。当前仍需管理员准备任务/token/素材，这部分尚未收敛为面向普通客户的一步 Setup。
+## 认证失败后更换密钥
+
+当状态为 `failed`、错误为 `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY`，且没有供应商任务回执时，先通过私有终端更新项目密钥或接口区域。管理员可执行 `stack-worker recover-auth`，传入原项目、任务、版本、旧 `--expect-plan`，以及更新后的 `--credential-ref` 和 `--region`。
+
+此命令保留原脚本和人工审核记录，将失败尝试归档并撤销旧付费许可；不会调用模型。随后重新执行 `prepare`、核对计划和 `approve`，获得付费重试授权后才执行 `step --allow-paid-submit`。结果未知、已有供应商回执或其他生成失败均不能使用此命令恢复。
