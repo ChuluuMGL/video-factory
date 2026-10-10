@@ -6,6 +6,7 @@
 |---|---|---|
 | 安装中断、继续安装 | 固定包版本、原 Setup session、`vfctl stack status` | 使用原 session 续接；不要删除它或重建客户数据。见[安装操作](SETUP_RUN_USAGE.md)。 |
 | `DOCKER_ADDRESS_POOL_EXHAUSTED` | Docker 网络、网络所连接的容器、目标 stack | 只处理确认为空且可重建的旧测试网络，再用原 session 续接。 |
+| 主机重启后所有容器都没起来 | `systemctl is-enabled docker`、`systemctl is-active docker`，再查目标 stack 的容器健康状态 | 若 Docker 被禁用，管理员先确认主机策略，再启用开机启动并做一次停机重启验收；容器健康不等于任务账本和事件队列已恢复。 |
 | 飞书授权过期或 `FEISHU_OAUTH_DENIED_OR_EXPIRED` | 授权页时限、本人账号、终端是否仍在等待 | 重新发起**一次**本人授权；先回读本地状态，不因授权超时重建 Base。 |
 | 新建 Base 结果不明 | `setup-feishu status`、远端 Base 和表是否已存在 | 停止自动重试；核对创建日志与远端 ID。见[Base 创建与恢复](BASE_CREATION.md)。 |
 | 表内审核未推进 | 原行的状态、审核目标版本、SKU、脚本或视频、事件接收器及持久队列 | 先确认员工在原表操作及事件送达。退回必须先保存具体意见，再选择退回；事后修改意见不会改写回执。见[原表审核](FEISHU_NATIVE_REVIEW.md)。 |

@@ -6,6 +6,7 @@ This index is for administrators, installers and their agents. First read the **
 |---|---|---|
 | Interrupted installation | Pinned release, original Setup session, `vfctl stack status` | Resume the original session; do not delete it or recreate customer data. See [Setup](SETUP_RUN_USAGE.md). |
 | `DOCKER_ADDRESS_POOL_EXHAUSTED` | Docker networks and attached containers | Only remove an identified empty, rebuildable test network, then resume. |
+| No containers after a host reboot | `systemctl is-enabled docker`, `systemctl is-active docker`, then the target stack's container health | If Docker is disabled, the administrator checks host policy before enabling boot start and running a stop/start acceptance test. Healthy containers do not prove that the task ledger or event queue recovered. |
 | `FEISHU_OAUTH_DENIED_OR_EXPIRED` | Grant expiry, signed-in user, waiting terminal | Start one fresh user grant after reading current state. Do not recreate the Base. |
 | Uncertain Base creation | `setup-feishu status` and actual remote Base/table IDs | Stop automatic retries and reconcile the journal with the remote resources. See [Base recovery](BASE_CREATION.md). |
 | Original-table review has not advanced | Status, target revision, SKU, script/video, verified event receiver and queue | Check the actual employee action and event receipt. Save specific feedback **before** selecting Reject. A later edit does not change an existing receipt. See [native review](FEISHU_NATIVE_REVIEW.md). |
