@@ -109,7 +109,8 @@ class Worker:
             if not secret:raise RuntimeFault('SECRET_MISSING')
             plan=value['plan']
             if (credential_ref==plan['credential_ref'] and secret[0]==plan['credential_revision']
-                    and region==plan['region']):raise RuntimeFault('WORKER_AUTH_CONFIGURATION_UNCHANGED')
+                    and region==plan['region'] and ORIGINS[region]==plan['provider_origin']):
+                raise RuntimeFault('WORKER_AUTH_CONFIGURATION_UNCHANGED')
             archive='worker_attempt:'+fingerprint([project,task,revision,time.time_ns()])
             archived={**value,'expires_at':0,'recovery':{'actor':actor,'reason':'definite_auth_rejection',
                 'credential_ref':credential_ref,'credential_revision':secret[0],'region':region}}
@@ -144,6 +145,8 @@ class Worker:
             return result
         if state=='submission_unknown' and not provider_id:
             return {'state':state,'automatic_resubmit':False,'reconciliation_required':True,'provider_requests':0}
+        if plan['provider_origin']!=ORIGINS.get(plan['region']):
+            raise RuntimeFault('WORKER_PROVIDER_ORIGIN_CHANGED_REVIEW_REQUIRED')
         if state=='ready' and not allow_paid:raise RuntimeFault('WORKER_EXPLICIT_PAID_SUBMISSION_REQUIRED')
         if state=='ready' and value['expires_at']<time.time():raise RuntimeFault('WORKER_APPROVAL_EXPIRED_OR_CHANGED')
         # Credential value never leaves memory; a changed key revision needs review.

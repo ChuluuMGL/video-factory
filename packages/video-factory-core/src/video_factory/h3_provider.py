@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from .runtime_store import RuntimeFault, canonical, private_directory
 
-ORIGINS = {'global':'https://api.minimax.io', 'cn':'https://api.minimaxi.com'}
+ORIGINS = {'global':'https://api.minimax.io', 'cn':'https://api.minimax.cn'}
 MEDIA_HOSTS = {
     'cdn.hailuoai.com',
     'algeng-video-infer.oss-cn-shanghai.aliyuncs.com',

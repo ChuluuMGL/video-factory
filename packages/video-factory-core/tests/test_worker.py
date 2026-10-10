@@ -88,6 +88,24 @@ class WorkerTests(unittest.TestCase):
             self.worker.recover_auth(self.token,'brand','one',1,'0'*64,'secret:fixture','cn')
         self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'failed')
 
+    def test_origin_migration_revokes_old_submit_permission(self):
+        self.approve()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            with self.assertRaisesRegex(RuntimeFault,'PROVIDER_ORIGIN_CHANGED'):
+                self.step(allow_paid=True)
+        self.assertEqual(self.provider.calls,0)
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'ready')
+
+    def test_auth_recovery_allows_origin_migration_with_same_key(self):
+        plan=self.auth_failure()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            result=self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','global')
+        self.assertEqual(result['state'],'ready')
+        self.assertEqual(result['provider_requests'],0)
+
+    def test_china_origin_matches_current_official_endpoint(self):
+        self.assertEqual(H3Provider('cn').origin,'https://api.minimax.cn')
+
     def test_auth_recovery_never_retries_unknown_submission_or_provider_failure(self):
         plan=self.approve()['request_plan_sha256'];self.provider.mode='unknown';self.step(allow_paid=True)
         with self.assertRaisesRegex(RuntimeFault,'NOT_SAFE'):
