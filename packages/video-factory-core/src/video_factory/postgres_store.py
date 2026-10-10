@@ -28,6 +28,10 @@ class Cursor:
     def __init__(self, cursor):
         self.cursor = cursor
 
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
     def fetchone(self):
         row = self.cursor.fetchone()
         return Row(row) if row is not None else None
