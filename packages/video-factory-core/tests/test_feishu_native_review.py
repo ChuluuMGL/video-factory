@@ -63,6 +63,34 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['status'],'idle')
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'ready')
 
+    def test_rejected_script_revision_uses_same_row_and_never_approves_old_version(self):
+        self.remote.update({'状态':'脚本退回','审核意见':'角色发色应为棕色'})
+        self.reducer.enqueue_verified('brand',self.event(after='脚本退回',event_id='evt_reject_v1'))
+        rejected=self.reducer.process_one('brand')['result']['reviewed'][0]
+        self.assertEqual((rejected['revision'],rejected['state'],rejected['feedback']),
+                         (1,'rejected','角色发色应为棕色'))
+        self.store.create_task(self.admin,'brand','task_one',
+                               {'sku_id':'sku_one','script':'Revised brown-haired role',
+                                'source_revision':'source_two'},expected_revision=1)
+        with self.store.connect() as db:
+            save(db,'native:record:brand:recFixture',
+                 {'record_id':'recFixture','task':'task_one','revision':2})
+            save(db,item_key('brand','task_one',2,'awaiting_script_review'),
+                 {'complete':True,'steps':{},'snapshot':{}})
+        self.remote.update({'来源版本':'source_two','脚本':'Revised brown-haired role',
+                            '脚本摘要':hashlib.sha256(b'Revised brown-haired role').hexdigest(),
+                            '审核目标版本':'2','审核意见':'','状态':'脚本通过'})
+        stale=self.event(before='脚本待审核',after='脚本通过',event_id='evt_stale_v1')
+        self.remote['审核目标版本']='1'
+        with self.assertRaisesRegex(RuntimeFault,'FEISHU_REVIEW_REMOTE_CHANGED'):
+            self.reducer.consume_verified('brand',stale)
+        self.remote['审核目标版本']='2'
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_approve_v2'))
+        approved=self.reducer.process_one('brand')['result']['reviewed'][0]
+        self.assertEqual((approved['revision'],approved['state']),(2,'ready'))
+        versions=self.store.inspect_task(self.admin,'brand','task_one')['versions']
+        self.assertEqual([(v['revision'],v['state']) for v in versions],[(1,'rejected'),(2,'ready')])
+
     def test_single_select_one_item_event_and_record_are_accepted(self):
         self.remote['状态']=['脚本通过']
         event=self.event(before=['脚本待审核'],after=['脚本通过'],event_id='evt_select')
