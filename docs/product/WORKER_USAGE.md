@@ -80,13 +80,14 @@ vfctl stack-worker step --stack-root /srv/video-factory \
 
 后续同一任务使用 `step` 查询/下载，可省略付费提交开关。`status` 仅查询本地账本。没有授权、材料变动、密钥轮换、审批过期会拒绝提交；结果不确定时先查询 `status`，禁止自行重试新任务。恢复或升级会撤销旧提交授权和旧登录，需要重新登录、重新核对尚未提交的任务。
 
-供应商明确拒绝时，任务保持 `failed`，`step` 和 `status` 返回固定的 `failure_code`，例如 `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY`。它只说明错误类别，不保存供应商响应文本或密钥；不会自动重发。先核对 Key 所属的 MiniMax 接口区域：`api.minimaxi.com` 对应 `cn`，`api.minimax.io` 对应 `global`，两者不能凭服务器所在地推断。修正配置后需要从原飞书记录导入新来源版本，重新由真人审核脚本和逐条批准模型请求；旧失败版本保留。
+供应商明确拒绝时，任务保持 `failed`，`step` 和 `status` 返回固定的 `failure_code`，例如 `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY`。它只说明错误类别，不保存供应商响应文本或密钥；不会自动重发。先核对 Key 所属的 MiniMax 接口区域：`api.minimaxi.com` 对应 `cn`，`api.minimax.io` 对应 `global`，两者不能凭服务器所在地推断。仅认证拒绝且无供应商回执时，可按下文保留原审核恢复；其他明确失败需要新的来源版本、真人审核和单次生成许可，旧失败版本保留。
 
 网络边界：worker 仅加入内部网络，经临时 CONNECT 中继连接固定 API/素材主机的 HTTPS 443。a14 的独立飞书连接器另允许 open.feishu.cn；模型客户端不使用该目的地。中继拒绝未列入域名、其他端口及解析出的非公网地址；按已校验的 IP 建立连接，避免 DNS 二次解析。TLS 由 worker 验证目标证书，中继不解密密钥，也没有客户目录/密钥挂载。普通 runtime/n8n 继续没有外网通路。
 
 中继仅在显式 `step` 时拉起，结束/错误后停止；如果主机端命令被强制终止，中继最多存活十分钟且不自动重启。它不是任务调度器，不会自动提交积压任务。一次性 worker 自身也有七分钟硬时限；主机命令返回或超时时会清理本次唯一名称的容器。整个调用与备份/升级共用部署锁。
 
 验收边界：云端测试使用合成凭据、隔离 HTTP/TLS 服务和合成视频；真实 H3、真实飞书员工操作、n8n 业务调度仍需分别验收。当前仍需管理员准备任务/token/素材，这部分尚未收敛为面向普通客户的一步 Setup。
+
 ## 认证失败后更换密钥
 
 当状态为 `failed`、错误为 `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY`，且没有供应商任务回执时，先通过私有终端更新项目密钥或接口区域。管理员可执行 `stack-worker recover-auth`，传入原项目、任务、版本、旧 `--expect-plan`，以及更新后的 `--credential-ref` 和 `--region`。
