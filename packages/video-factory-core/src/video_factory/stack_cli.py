@@ -25,6 +25,7 @@ def register_stack(commands):
     p.add_argument('--backup-key-file',type=Path)
     p.add_argument('--output',type=Path)
     p.add_argument('--source',type=Path)
+    p.add_argument('--source-root',type=Path,help='verified offline stack to reuse for an upgrade image bundle')
     p.add_argument('--candidate-root',type=Path)
 
 
@@ -80,7 +81,7 @@ def install_stack(args, *, password=None, expected_wheels=None):
 def run_stack(args):
     try:
         if args.action=='export-images':
-            result=image_bundle.export_bundle(args.root,args.wheelhouse)
+            result=image_bundle.export_bundle(args.root,args.wheelhouse,args.source_root)
         elif args.action=='install':
             result=install_stack(args)
         elif args.action=='preflight':
@@ -96,7 +97,9 @@ def run_stack(args):
                 raise RuntimeFault('BACKUP_SOURCE_AND_KEY_REQUIRED')
             stack=Stack.restore(args.source,args.root,secret_input(args.backup_key_file,''),deployment=args.deployment,
                                 runtime_port=args.runtime_port,n8n_port=args.n8n_port)
-            result={'restored':True,'deployment':stack.config['deployment'],'build_and_up_required':True,'sessions_revoke_on_start':True}
+            result={'restored':True,'deployment':stack.config['deployment'],'build_and_up_required':True,'sessions_revoke_on_start':True,
+                    'restored_execution_credentials_revoke_on_start':True,
+                    'next_step_after_up':'rerun production-setup for each previously enabled project schedule'}
         else:
             stack=Stack(args.root)
             if args.action=='fetch':

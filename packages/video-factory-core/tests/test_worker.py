@@ -7,6 +7,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
+from unittest.mock import patch
 
 from video_factory.runtime_store import RuntimeStore, RuntimeFault, canonical
 from video_factory.worker import Worker, job_key
@@ -85,6 +86,17 @@ class WorkerTests(unittest.TestCase):
         created=self.store.create_task(self.token,'brand','one',{'sku_id':'sku','script':'Revised','source_revision':'2'},1)
         self.assertEqual(created['state'],'awaiting_script_review')
         self.assertEqual(self.provider.calls,1)
+
+    def test_provider_auth_rejection_keeps_safe_diagnostic_without_retry(self):
+        self.approve()
+        self.provider.submit=lambda *args:(_ for _ in ()).throw(
+            ProviderRejected('PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'))
+        result=self.step(allow_paid=True)
+        self.assertEqual(result['failure_code'],'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY')
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['failure_code'],result['failure_code'])
+        replay=self.step(allow_paid=True)
+        self.assertEqual(replay['provider_requests'],0)
+        self.assertEqual(replay['failure_code'],result['failure_code'])
 
     def test_expired_approval_and_changed_key_stop_before_network(self):
         self.approve()
@@ -167,15 +179,27 @@ class WorkerTests(unittest.TestCase):
         p.call=lambda *a:(200,{'task':{'id':'wrong','model':'MiniMax-H3','status':'succeeded'}})
         with self.assertRaisesRegex(RuntimeFault,'UNVERIFIED'):p.poll('12345678901234','fixture')
         p.call=lambda *a:(402,{'error':{'type':'insufficient_balance_error'}})
-        with self.assertRaises(ProviderRejected):p.submit({},'fixture')
+        with self.assertRaisesRegex(ProviderRejected,'PROVIDER_BALANCE_REQUIRED'):p.submit({},'fixture')
 
     def test_reference_paths_and_unapproved_media_origins_are_rejected(self):
         bad=copy.deepcopy(self.spec);bad['references'][0]['path']='../runtime.sqlite3'
         with self.assertRaisesRegex(RuntimeFault,'PATH_INVALID'):request_body('script',self.assets,bad)
         import io
         p=H3Provider('global')
-        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a'):
+        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a',
+                    'https://video-product.cdn.minimax.io.evil/a',
+                    'https://key@video-product.cdn.minimax.io/a'):
             with self.assertRaisesRegex(RuntimeFault,'HOST_NOT_APPROVED'):p.download(url,io.BytesIO())
+        class MediaOpener:
+            def open(self, request, timeout):
+                self.request=request
+                return io.BytesIO(b'fixture-media')
+        media_opener=MediaOpener()
+        with patch('video_factory.h3_provider.opener', return_value=media_opener):
+            output=io.BytesIO()
+            p.download('https://video-product.cdn.minimax.io/fixture.mp4',output)
+        self.assertEqual(output.getvalue(),b'fixture-media')
+        self.assertIsNone(media_opener.request.get_header('Authorization'))
 
 
 if __name__=='__main__':unittest.main()

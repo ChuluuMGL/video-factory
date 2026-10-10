@@ -24,13 +24,15 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - Agent 自动填非秘密配置使用 `setup --json` 返回的 `next_question.input_schema`，逐题提交答案和当前 `revision`。不要把终端提示的 SKU 文件路径当作 Agent JSON 数组，不缓存旧字段格式。
 - 同客户新项目用独立 session + `--from-session`，复用同一 stack；不同客户不能复用。目标变化后重新核对绑定与计划。
 - 默认飞书 Base + n8n。a25 支持新建（默认）及绑定；新建选择 test / production、位置和员工身份，授权后审阅字段及初始化内容，再创建并回读实际 ID。绑定路径需要已有表/字段 ID。模型选择是配置意图，不能据此宣称所有模型已支持、已验证或已开始生成。
-- 飞书连接完成后停止 Setup，回读 Base 和人员；任务导入及审核使用本人授权的 `stack-feishu` 分阶段命令。结果回写需管理员另外启用 `base-results`，并按随包 `docs/product/BASE_RESULTS.md` 核对权限、同步与异常回执；未通过真实 Base 验收前不得宣传为默认可用。飞书内完整审核仍未验收。
+- 飞书连接完成后停止 Setup，回读 Base 和人员。发布含 `feishu-review` 的固定版本后，核对专用飞书应用对目标 Base 的管理权限，以及应用身份和用户身份的 `bitable:app`、应用身份的 `docs:event:subscribe`；先按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 启动私网 runner，由管理员在私有终端启用 Base 订阅。原任务表的“状态”必须是包含六个审核状态的单选列；旧文本列先核对整列数据再迁移，不能直接覆盖。首次配置随后在开发者后台添加记录变更事件、选择长连接并发布；已有事件核对配置，不因升级重复删除。用真实 Base 的非审核测试变更核对事件日志、服务器队列和处理回执。员工只在原任务表看稿、填意见并从单选状态中选择通过或退回，不使用终端。当前已交付版的 `stack-feishu-session` 仍只验证授权、导入与本地账本，不能代替员工流程。可选 `base-results` 是另一张结果快照表，不是审核入口。真实事件与真人验收通过前，不得称项目可供员工日常使用。
 - 需要 n8n 自动推进已批准任务时，另行审阅并部署项目私网 `runner`，再执行 `production-setup`。它不开放员工网页或公网端口；具体步骤和未验收边界见[完整安装路径](references/complete-install.md)。
 
 ## 故障与验收
 
-- 先读取当前 CLI 版本、Setup 状态、stack 状态及准确错误码，再判断是哪一层失败。不要用重装覆盖未知状态，或直接改数据库“修正”为成功。
+- 先查 [检查与修复入口](references/troubleshooting.md)，只读核对当前 CLI 版本、Setup、stack 状态及准确错误码，再判断失败层。不要重装覆盖未知状态或直接改数据库“修正”为成功。已有 Issue 只是线索，不能代替本机回读；新问题由 Agent 准备脱敏复现，交客户或实施人员审核后提交。
+- 遇到 `DOCKER_ADDRESS_POOL_EXHAUSTED`，只读核对 Docker 网络及连接容器；只清理确认无容器且可重建的旧测试网络，再续接原 session。容器未启动时不得称飞书已授权。
 - 新建 Base 回执保存在客户数据库。读取失败后用原 session 续接；创建结果未知或恢复了未完成检查点时，读取 `setup-feishu status` 并核对远端，禁止直接清理日志重建。详见随包 `docs/product/BASE_CREATION.md`。
+- 已完成绑定的 Base 续接应保留用户后续修改的商品内容和测试任务脚本；核对原记录及 SKU、任务编号。身份字段或记录缺失时停止对账，不把内容改回初始化值。
 - 已存在同版本 CLI 可校验复用；半安装 CLI 目录保留，改用新的空前缀诊断安装。客户 stack 与 session 必须放在 CLI 目录之外。
 - `setup-run` 退出后使用原 session/stack 续接。恢复、升级及停机备份需依照用户已授权的具体对象和停机范围；未获授权时先给出具体计划，不自行扩展授权。
 - 模型提交、付费重试、员工审核、外部发布分别遵循用户授权；安装或修复指令本身不包含这些动作。未知模型提交不得重发，先查询已有供应商回执。

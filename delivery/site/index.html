@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="通过 Setup Skill，在自己的服务器上部署视频工作流。默认接入飞书与 n8n，支持项目配置、生成、审核和维护。">
+  <meta name="description" content="通过 Setup Skill，在自己的服务器上部署视频工作流。默认接入飞书与 n8n；原任务表审核候选仍待真实验收。">
   <meta name="robots" content="noindex,nofollow">
   <title>Video Factory · 产品介绍与安装指南</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%2302040a'/%3E%3Cpath d='M16 12v24l21-12z' fill='%233b82f6'/%3E%3C/svg%3E">
@@ -21,12 +21,12 @@
       <a class="brand-home" href="https://www.yueyu.tech/zh/solutions/ai-workflow-models">月瑀科技 / AI 工作流与模型服务 ↗</a>
       <p class="eyebrow">Video Factory · 自托管视频工作流</p>
       <h1>从商品资料，<br><em>到脚本和视频。</em></h1>
-      <p class="lead">用 Skill 和 CLI 把视频流程部署到自己的服务器。商品与任务从飞书 Base 开始，生成和审核保留版本与回执。</p>
+      <p class="lead">用 Skill 和 CLI 把视频流程部署到自己的服务器。商品与任务从飞书 Base 开始；原任务表审核候选仍待真实验收。</p>
       <div class="hero-actions"><a class="button primary" href="#start">开始安装 <span aria-hidden="true">↓</span></a><a class="case-link" href="#cases">先看真实案例 <span aria-hidden="true">↓</span></a></div>
       <dl class="product-parts">
         <div><dt>Setup Skill</dt><dd>引导安装、新增项目与故障排查。</dd></div>
         <div><dt>服务与工作流</dt><dd>部署在客户服务器，账号和数据由客户管理。</dd></div>
-        <div><dt>飞书 Base</dt><dd>团队整理商品与来源任务；逐项验收生成结果。</dd></div>
+        <div><dt>飞书 Base</dt><dd>团队整理商品与任务；在原任务表选择审核状态。</dd></div>
       </dl>
     </section>
 
@@ -61,9 +61,9 @@
       <div class="section-heading"><h2>使用与维护</h2></div>
       <div class="faq">
         <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">检查服务器 → 配置首个项目并部署服务与 n8n → 设置管理员 → 连接飞书。Setup 到此结束；模型、真实任务和人工审核随后逐项验收。</p></details>
-        <details><summary>安装后，团队怎样使用？</summary><p>员工在飞书 Base 整理商品与来源任务；Agent 可用操作者本人授权的 CLI 导入、审核。管理员可按项目启用结果同步；飞书内完整操作仍待验收。</p></details>
+        <details><summary>安装后，团队怎样使用？</summary><p>管理员启用项目执行和飞书事件，并核对真实推送；员工随后在同一飞书任务表看脚本和成片、填写意见并审核。这条流程仍待真实员工验收。</p></details>
         <details><summary>新增项目或帮助另一个客户，需要重装吗？</summary><p>Skill 可以复用。同一客户新增项目时复用已有服务，另设项目资料与权限；不同客户分别部署。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></details>
-        <details><summary>中断、报错或升级，怎样处理？</summary><p>在上方选择“继续上次安装”或“排查问题”，把安装记录交给助手。升级前先备份；更新 Skill 不会自动升级服务器。</p></details>
+        <details><summary>中断、报错或升级，怎样处理？</summary><p>选择“继续上次安装”或“排查问题”，把安装记录交给助手。续接保留已修改的商品和任务；升级前先备份。更新 Skill 不会自动升级服务器。</p></details>
         <details><summary>模型和费用怎么配置？</summary><p>当前接入 DeepSeek Flash 和 MiniMax H3，使用客户自己的 API 账户。安装不会调用模型；每次生成需确认，结果需人工审核。</p></details>
       </div>
     </section>

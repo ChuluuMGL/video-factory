@@ -38,6 +38,15 @@ GitHub 的 `cloud-offline-images-<run>-<attempt>` 私有候选产物保存 14 �
 
 离线升级要提供候选版 CLI、wheels 和候选镜像包：在已有 `stack upgrade` 命令上加上述两个镜像参数。缺少候选包时会在停止原服务之前拒绝。升级仍需原来的加密检查点、独立候选目录和验收回读。不得把新版本镜像包用于旧版本恢复。
 
+已有健康的离线栈且固定基础镜像不变时，可以在同一 Linux 主机复用已验证的旧镜像制作候选包，不再访问镜像仓库。候选版必须更换产品 wheel；若同时更换或新增依赖，候选 wheels 必须包含 Python 3.12 / Linux amd64 可离线解析的完整依赖闭包：
+
+```sh
+vfctl stack export-images --root /root/vf-next-images \
+  --wheelhouse /root/vf-next-wheels --source-root /opt/video-factory
+```
+
+这一步只构建候选 runtime 镜像并导出所需角色镜像；校验旧栈清单、已加载镜像、新产品 wheel 和候选依赖。依赖变化时，构建全程使用候选 wheels 离线安装；缺失或不兼容的依赖会导致导出失败。输出的候选 manifest 摘要仍须从可信回执独立传递，之后按正常 `stack upgrade` 冷备份、克隆和回读。旧栈保持运行，导出失败不能视为升级成功。
+
 ## 验收边界
 
 云端新增空 Docker 镜像库、无外部网络命名空间验收，验证校验拒绝、加载、安装、重复安装、重启、冷恢复。此项通过仍不替代原 ECS 的复测，也不等于真实飞书/真人操作/付费生成验收。

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from video_factory.image_bundle import inspect_bundle, import_bundle, validate_manifest, verify_archive_index, verify_loaded
+from video_factory.image_bundle import export_bundle, inspect_bundle, import_bundle, validate_manifest, verify_archive_index, verify_loaded
 from video_factory.runtime_store import RuntimeFault
 from video_factory.stack import images, compose_document, validate_config
 
@@ -87,6 +87,45 @@ class ImageBundleTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'OFFLINE_UPGRADE_REQUIRES'):
                 stack.upgrade(candidate,wheels,self.root/'backup',Fernet.generate_key())
             status.assert_not_called();backup.assert_not_called()
+
+    def test_offline_upgrade_exports_changed_dependencies_from_loaded_source(self):
+        from types import SimpleNamespace
+        old_core='video_factory_core-0.1.0a31-py3-none-any.whl'
+        new_core='video_factory_core-0.1.0a32-py3-none-any.whl'
+        dependency='dependency-1-py3-none-any.whl'
+        for changed in (False,True):
+            with self.subTest(changed_dependencies=changed):
+                wheels=self.root/('wheels-changed' if changed else 'wheels-same')
+                wheels.mkdir(mode=0o700)
+                (wheels/new_core).write_bytes(b'new product')
+                (wheels/dependency).write_bytes(b'new dependency' if changed else b'old dependency')
+                old_wheels={old_core:'1'*64,dependency:hashlib.sha256(b'old dependency').hexdigest()}
+                source=SimpleNamespace(config={'image_bundle':{},'wheels':old_wheels})
+                bundle=self.root/('bundle-changed' if changed else 'bundle-same')
+                bundle.mkdir(mode=0o700)
+                captured={}
+                def stop_build(command,**kwargs):
+                    self.assertEqual(command[:2],['docker','build'])
+                    context=Path(command[-1])
+                    captured['dockerfile']=(context/'Dockerfile').read_text()
+                    captured['wheels']={path.name for path in (context/'wheels').iterdir()}
+                    raise RuntimeFault('STOP_AFTER_INSPECTION')
+                loaded={role:'sha256:'+str(index)*64 for index,role in enumerate(('runtime','postgres','n8n','gateway','ffmpeg'),1)}
+                with patch('video_factory.stack.admin_host'),patch('video_factory.stack.local_engine'),\
+                     patch('video_factory.stack.Stack',return_value=source),\
+                     patch('video_factory.image_bundle.validate_manifest'),\
+                     patch('video_factory.image_bundle.verify_loaded',return_value=loaded),\
+                     patch('video_factory.stack.run',side_effect=stop_build):
+                    with self.assertRaisesRegex(RuntimeFault,'STOP_AFTER_INSPECTION'):
+                        export_bundle(bundle,wheels,self.root/'old-stack')
+                self.assertIn('FROM '+loaded['runtime'],captured['dockerfile'])
+                if changed:
+                    self.assertEqual(captured['wheels'],{new_core,dependency})
+                    self.assertIn('--no-index --find-links=/wheels --only-binary=:all:',captured['dockerfile'])
+                    self.assertNotIn('--no-deps',captured['dockerfile'])
+                else:
+                    self.assertEqual(captured['wheels'],{new_core})
+                    self.assertIn('--no-index --no-deps --force-reinstall',captured['dockerfile'])
 
     def test_complete_docker_manifest_does_not_hide_incomplete_oci_index(self):
         # a22 ECS failure: classic sees four configs, containerd sees only one.

@@ -13,11 +13,26 @@ from urllib.parse import urlsplit
 from .runtime_store import RuntimeFault, canonical, private_directory
 
 ORIGINS = {'global':'https://api.minimax.io', 'cn':'https://api.minimaxi.com'}
-MEDIA_HOSTS = {'cdn.hailuoai.com', 'algeng-video-infer.oss-cn-shanghai.aliyuncs.com'}
+MEDIA_HOSTS = {
+    'cdn.hailuoai.com',
+    'algeng-video-infer.oss-cn-shanghai.aliyuncs.com',
+    'video-product.cdn.minimax.io',
+}
 
 
 class ProviderRejected(RuntimeFault):
     pass
+
+
+REJECTION_CODES = {
+    400: 'PROVIDER_REQUEST_INVALID',
+    401: 'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY',
+    402: 'PROVIDER_BALANCE_REQUIRED',
+    403: 'PROVIDER_ACCESS_DENIED',
+    404: 'PROVIDER_ENDPOINT_NOT_FOUND',
+    422: 'PROVIDER_CONTENT_REJECTED',
+    429: 'PROVIDER_RATE_LIMITED',
+}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -108,8 +123,10 @@ class H3Provider:
         provider_id=result.get('task_id')
         if status==200 and isinstance(provider_id,str) and re.fullmatch(r'[0-9]{10,24}',provider_id):
             return provider_id
-        if status in (400,401,402,403,404,422,429) and not any(result.get(k) for k in ('task_id','taskId','id')):
-            raise ProviderRejected('PROVIDER_REJECTED_NO_AUTOMATIC_RETRY')
+        if status in REJECTION_CODES and not any(result.get(k) for k in ('task_id','taskId','id')):
+            # A fixed code is enough to diagnose the rejection without
+            # persisting provider text, request bodies, or credentials.
+            raise ProviderRejected(REJECTION_CODES[status])
         raise RuntimeFault('PROVIDER_SUBMISSION_UNCERTAIN')
 
     def poll(self, provider_id, secret):
