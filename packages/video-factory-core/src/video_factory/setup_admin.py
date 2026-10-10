@@ -151,7 +151,10 @@ def rpc(stack, payload):
         project = payload['session']['configuration']['project']['id']
         from .runner import directory as runner_directory, compose as runner_compose
         from .workspace import compose as workspace_compose
-        companion = runner_compose if (runner_directory(stack, project)/'runner.json').exists() else workspace_compose
+        has_runner = (runner_directory(stack, project)/'runner.json').exists()
+        if payload['action'] == 'native_review' and not has_runner:
+            raise RuntimeFault('FEISHU_NATIVE_RUNNER_REQUIRED')
+        companion = runner_compose if has_runner else workspace_compose
         raw = companion(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',
                         data=json.dumps(payload).encode())
     else:

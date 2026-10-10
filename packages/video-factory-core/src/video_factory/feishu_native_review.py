@@ -6,7 +6,7 @@ record-history display name alone is never a review credential.
 import hashlib
 import json
 
-from .feishu_bridge import FeishuBridge, meta, save, plain_text
+from .feishu_bridge import FeishuBridge, meta, save, plain_text, select_text
 from .feishu_client import resource
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
@@ -22,7 +22,8 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'FEISHU_REVIEW_REMOTE_CHANGED','FEISHU_REVIEW_SCRIPT_CHANGED',
                  'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
                  'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
-                 'FEISHU_REVIEW_EVENT_CONFLICT'}
+                 'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN',
+                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS'}
 
 
 def source_key(project, task):
@@ -42,16 +43,32 @@ def queue_key(project, event_id):
     return 'native:event:' + identifier(project) + ':' + fingerprint(event_id)
 
 
-def _changed(action, field_id):
-    """Return a changed text field, or None if it was not changed by this event."""
+def _changed(action, field_id, option_names):
+    """Resolve a changed status; Feishu events send option IDs, not labels."""
     def find(side):
         rows = [item for item in action.get(side, []) if item.get('field_id') == field_id]
         if len(rows) > 1: raise RuntimeFault('FEISHU_EVENT_FIELD_AMBIGUOUS')
         if not rows: return None
         raw = rows[0].get('field_value')
         if not isinstance(raw, str) or len(raw) > 16000: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
-        try: return plain_text(json.loads(raw))
-        except (ValueError, RuntimeFault): raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
+        # Feishu represents a cleared cell as an empty field_value. It is not
+        # an approval and must not block later, valid events in the queue.
+        if raw == '': return None
+        # The record-changed event sends a single-select option ID as bare
+        # text, while older fixtures and some clients JSON-encode that ID.
+        if raw.startswith('opt'):
+            if raw not in option_names: raise RuntimeFault('FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+            return option_names[raw]
+        try:
+            value = json.loads(raw)
+            if isinstance(value, str) and value.startswith('opt'):
+                if value not in option_names: raise RuntimeFault('FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+                return option_names[value]
+            return select_text(value)
+        except RuntimeFault as error:
+            if str(error) == 'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN': raise
+            raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
+        except ValueError: raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID') from None
     before, after = find('before_value'), find('after_value')
     return (before, after) if before != after and after is not None else None
 
@@ -164,11 +181,27 @@ class NativeReview:
         if not isinstance(actions, list) or not 1 <= len(actions) <= 100:
             raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
         client = self.client_factory(config['app_id'])
+        option_names = None
         results = []
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
-            change = _changed(action, mapping['status'])
+            if not any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
+                       for item in action.get(side, []) if isinstance(item, dict)):
+                continue
+            if option_names is None:
+                fields = [field for field in client.fields(binding['base_token'], binding['table_id'])
+                          if field.get('field_id') == mapping['status']]
+                if len(fields) != 1 or fields[0].get('type') != 3:
+                    raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+                properties = fields[0].get('property')
+                options = properties.get('options') if isinstance(properties, dict) else None
+                if not isinstance(options, list): raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+                option_names = {option['id']: option['name'] for option in options
+                                if isinstance(option, dict) and isinstance(option.get('id'), str)
+                                and isinstance(option.get('name'), str)}
+                if len(option_names) != len(options): raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CHANGED')
+            change = _changed(action, mapping['status'], option_names)
             if not change or change[1] not in DECISIONS: continue
             stage, decision = DECISIONS[change[1]]
             if change[0] != PENDING[stage]:
@@ -193,7 +226,7 @@ class NativeReview:
             # still show this exact version and decision before committing.
             remote = client.record(binding['base_token'], binding['table_id'], record_id)['fields']
             names = config['names']
-            if (plain_text(remote.get(names['status'])) != change[1]
+            if (select_text(remote.get(names['status'])) != change[1]
                     or plain_text(remote.get(names['review_revision'])) != str(revision)
                     or plain_text(remote.get(names['task'])) != task
                     or plain_text(remote.get(names['sku_id'])) != payload['sku_id']

@@ -90,11 +90,15 @@ class ResultClient(FeishuClient):
 
     def create_field(self, base, table, name, kind, ticket):
         import uuid
+        from .feishu_native_sync import STATUS_OPTIONS
         resource(base); resource(table, 'tbl')
-        if str(uuid.UUID(ticket)) != ticket or uuid.UUID(ticket).version != 4 or kind not in (1, 17):
+        if str(uuid.UUID(ticket)) != ticket or uuid.UUID(ticket).version != 4 or kind not in (1, 3, 17):
             raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
+        if kind == 3 and name != '状态': raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
+        body = {'field_name': name, 'type': kind}
+        if kind == 3: body['property'] = {'options': [{'name': option} for option in STATUS_OPTIONS]}
         data = self.post(f'/bitable/v1/apps/{base}/tables/{table}/fields?'+urlencode({'client_token': ticket}),
-                         {'field_name': name, 'type': kind})
+                         body)
         field = data.get('field', {})
         if field.get('field_name') != name or field.get('type') != kind:
             raise RuntimeFault('FEISHU_FIELD_RECEIPT_INVALID')

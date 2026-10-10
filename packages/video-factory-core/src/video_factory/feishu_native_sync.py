@@ -9,13 +9,15 @@ import time
 import uuid
 
 from .base_results import BaseResults
-from .feishu_bridge import meta, save, plain_text
+from .feishu_bridge import meta, save, plain_text, select_text
 from .feishu_client import resource
 from .feishu_results_client import ResultClient, BLOCK_SIZE
 from .feishu_native_review import source_key, sync_key
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
-REVIEW_FIELDS = {'status': ('状态', 1), 'review_revision': ('审核目标版本', 1),
+STATUS_OPTIONS = ('脚本待审核', '脚本通过', '脚本退回',
+                  '视频待审核', '视频通过', '视频退回')
+REVIEW_FIELDS = {'status': ('状态', 3), 'review_revision': ('审核目标版本', 1),
                  'script_digest': ('脚本摘要', 1),
                  'feedback': ('审核意见', 1), 'video_digest': ('视频摘要', 1),
                  'video': ('视频', 17)}
@@ -40,8 +42,14 @@ def schema(client, base, table, binding):
     for key, (name, kind) in REVIEW_FIELDS.items():
         field = by_name.get(name)
         if field:
-            if field.get('type') not in ((1,3) if key=='status' else (kind,)):
+            if field.get('type') != kind:
                 raise RuntimeFault('FEISHU_NATIVE_SCHEMA_CONFLICT')
+            if key == 'status':
+                properties = field.get('property')
+                options = properties.get('options') if isinstance(properties, dict) else None
+                if not isinstance(options, list) or not set(STATUS_OPTIONS).issubset(
+                        {option.get('name') for option in options if isinstance(option, dict)}):
+                    raise RuntimeFault('FEISHU_NATIVE_STATUS_OPTIONS_MISSING')
             found[key] = resource(field.get('field_id'), 'fld')
     from .feishu_bridge import FeishuBridge
     base_names = FeishuBridge._schema(client, binding)
@@ -62,11 +70,21 @@ class NativeSync:
             old = meta(db, config_key(project))
             if old and old['context'] != context: raise RuntimeFault('FEISHU_NATIVE_CONTEXT_CHANGED')
             binding = self.results.bridge._binding(db, project)
+            # Each project starts its own long-connection receiver. Feishu
+            # delivers an event to one randomly selected receiver for an app,
+            # so sharing an app between local projects can silently lose
+            # reviews even if each project's Base subscription is correct.
+            for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'setup:feishu-app:%'").fetchall():
+                if row['key'] != 'setup:feishu-app:'+project and json.loads(row['value']).get('app_id') == context['app_profile']['app_id']:
+                    raise RuntimeFault('FEISHU_NATIVE_APP_SHARED_WITH_ANOTHER_PROJECT')
         client = self.client(context)
+        # Check document-event access before adding fields to an existing
+        # customer table. Missing permission must leave the schema untouched.
+        subscribed = client.base_subscription_status(binding['base_token'])
         fields, _ = schema(client, binding['base_token'], binding['table_id'], binding)
         plan = {'project': project, 'context': context, 'existing': fields,
                 'missing': [key for key in REVIEW_FIELDS if key not in fields],
-                'subscription': 'app_identity_document_manager_required',
+                'subscription': 'registered' if subscribed else 'not_registered',
                 'writes_original_table': True, 'model_calls': 0,
                 'journal_sha256': fingerprint(old)}
         return {'plan': plan, 'plan_sha256': fingerprint(plan)}
@@ -218,7 +236,7 @@ class NativeSync:
                     if not isinstance(actual, list) or [x.get('file_token') for x in actual] != [x['file_token'] for x in value]: return False
                 else:
                     try:
-                        if plain_text(actual) != value: return False
+                        if (select_text(actual) if name == names['status'] else plain_text(actual)) != value: return False
                     except RuntimeFault: return False
             return True
         if matches():
@@ -228,7 +246,7 @@ class NativeSync:
                 current['complete'] = True; save(db, key, current)
             return {'status': 'synced', 'task': task, 'revision': revision, 'feishu_writes': 0}
         status = remote.get(names['status']) or ''
-        if status: status = plain_text(status)
+        if status: status = select_text(status)
         allowed = ('', '脚本退回') if row['state']=='awaiting_script_review' and revision>1 else (
             ('',) if row['state']=='awaiting_script_review' else ('脚本通过',))
         if status not in allowed:

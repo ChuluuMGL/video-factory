@@ -2,6 +2,7 @@
 import json
 import os
 import re
+from urllib.error import HTTPError
 from http.client import HTTPSConnection
 from urllib.parse import urlencode
 from urllib.request import Request, ProxyHandler, build_opener
@@ -49,8 +50,22 @@ class FeishuClient:
                 raw=response.read(2*1024*1024+1)
                 if response.status!=200 or len(raw)>2*1024*1024:raise ValueError
                 result=json.loads(raw)
-                if type(result.get('code')) is not int or result['code']!=0 or not isinstance(result.get('data'),dict):raise ValueError
+                code=result.get('code')
+                if type(code) is int and 0<code<1000000000:
+                    raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code))
+                if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):raise ValueError
                 return result['data']
+        except HTTPError as error:
+            try:
+                raw=error.read(65537)
+                result=json.loads(raw) if len(raw)<=65536 else {}
+                code=result.get('code') if isinstance(result,dict) else None
+                if type(code) is int and 0<code<1000000000:
+                    raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code)) from None
+            except RuntimeFault:raise
+            except Exception:pass
+            raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
+        except RuntimeFault:raise
         except Exception:raise RuntimeFault('FEISHU_READ_OR_USER_AUTH_FAILED') from None
 
     def identity(self):

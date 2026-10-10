@@ -155,16 +155,20 @@ def export_bundle(directory, wheelhouse, source_root=None):
     wheels = release_manifest(wheelhouse)
     locks = images()
     source_images = None
+    replace_dependencies = False
     if source_root is not None:
         from .stack import Stack
         source = Stack(source_root)
         old = source.config.get('image_bundle')
         if old is None: raise RuntimeFault('IMAGE_BUNDLE_SOURCE_OFFLINE_REQUIRED')
         validate_manifest(old, source.config['wheels'], locks)
+        product = lambda values: {name: digest for name, digest in values.items()
+                                  if name.startswith('video_factory_core-')}
+        if product(wheels) == product(source.config['wheels']):
+            raise RuntimeFault('IMAGE_BUNDLE_UPGRADE_WHEELS_CHANGED')
         other = lambda values: {name: digest for name, digest in values.items()
                                 if not name.startswith('video_factory_core-')}
-        if other(wheels) != other(source.config['wheels']) or wheels == source.config['wheels']:
-            raise RuntimeFault('IMAGE_BUNDLE_UPGRADE_WHEELS_CHANGED')
+        replace_dependencies = other(wheels) != other(source.config['wheels'])
         source_images = verify_loaded(old)
     else:
         for role in ('python', 'ffmpeg', 'postgres', 'n8n', 'gateway'):
@@ -174,18 +178,21 @@ def export_bundle(directory, wheelhouse, source_root=None):
         if source_images is None:
             shutil.copyfile(ASSETS/'Dockerfile', context/'Dockerfile')
         else:
+            install = ('--no-index --find-links=/wheels --only-binary=:all: '
+                       '--upgrade --force-reinstall ' if replace_dependencies else
+                       '--no-index --no-deps --force-reinstall ')
             (context/'Dockerfile').write_text(
                 'FROM '+source_images['runtime']+'\n'
                 'USER root\n'
                 'COPY wheels /wheels\n'
-                'RUN python -m pip install --no-index --no-deps --force-reinstall '
+                'RUN python -m pip install '+install+
                 '/wheels/video_factory_core-*.whl && rm -rf /wheels\n'
                 'USER 10001:10001\n')
         (context/'wheels').mkdir()
-        for name in wheels if source_images is None else (
+        for name in wheels if source_images is None or replace_dependencies else (
                 name for name in wheels if name.startswith('video_factory_core-')):
             shutil.copyfile(wheelhouse/name, context/'wheels'/name)
-        expected = wheels if source_images is None else {
+        expected = wheels if source_images is None or replace_dependencies else {
             name: digest for name, digest in wheels.items() if name.startswith('video_factory_core-')}
         if release_manifest(context/'wheels') != expected:
             raise RuntimeFault('IMAGE_BUNDLE_WHEELS_CHANGED')

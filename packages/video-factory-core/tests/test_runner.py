@@ -63,6 +63,26 @@ class RunnerTests(unittest.TestCase):
                 rows[1]['Health'] = 'unhealthy'
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'incomplete')
 
+    def test_restored_runner_rebinds_without_executing_source_compose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stack = StackFixture(tmp)
+            root = runner.directory(stack, 'brand')
+            root.mkdir(parents=True)
+            previous = runner.plan(stack, 'brand') | {'stack_instance': 'c' * 12,
+                                                       'runtime_image': 'sha256:' + 'd' * 64}
+            (root / 'runner.json').write_text(json.dumps(previous))
+            (root / 'compose.json').write_text(json.dumps({'source_root': '/old/server'}))
+            (root / 'runner.json').chmod(0o600)
+            (root / 'compose.json').chmod(0o600)
+            with (patch.object(runner, 'compose') as compose,
+                  patch.object(runner, 'document', return_value={'candidate': True}),
+                  patch.object(runner, 'status', return_value={'status': 'running'})):
+                result = runner.apply(stack, runner.plan(stack, 'brand'))
+            self.assertEqual(result['status'], 'running')
+            self.assertEqual(json.loads((root / 'runner.json').read_text()), runner.plan(stack, 'brand'))
+            self.assertEqual(json.loads((root / 'compose.json').read_text()), {'candidate': True})
+            self.assertEqual([call.args[2] for call in compose.call_args_list], ['up'])
+
     def test_production_setup_accepts_private_runner_without_web(self):
         stack = SimpleNamespace(lock=nullcontext, status=lambda: {'infrastructure_ready': True})
         session = {'configuration': {'project': {'id': 'brand'}}}

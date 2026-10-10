@@ -26,7 +26,7 @@
       <dl class="product-parts">
         <div><dt>Setup Skill</dt><dd>引导安装、新增项目与故障排查。</dd></div>
         <div><dt>服务与工作流</dt><dd>部署在客户服务器，账号和数据由客户管理。</dd></div>
-        <div><dt>飞书 Base</dt><dd>团队整理商品与来源任务；逐项验收生成结果。</dd></div>
+        <div><dt>飞书 Base</dt><dd>团队整理商品与任务；在原任务表选择审核状态。</dd></div>
       </dl>
     </section>
 
@@ -61,9 +61,9 @@
       <div class="section-heading"><h2>使用与维护</h2></div>
       <div class="faq">
         <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">检查服务器 → 配置首个项目并部署服务与 n8n → 设置管理员 → 连接飞书。Setup 到此结束；模型、真实任务和人工审核随后逐项验收。</p></details>
-        <details><summary>安装后，团队怎样使用？</summary><p>员工在同一飞书任务表看脚本和成片、填写意见并审核。原表回写与认证事件处理已有候选实现，但发布和真实员工验收前仍按测试功能处理；可选结果快照表不是审核入口。</p></details>
+        <details><summary>安装后，团队怎样使用？</summary><p>管理员启用项目执行和飞书事件，并核对真实推送；员工随后在同一飞书任务表看脚本和成片、填写意见并审核。这条流程仍待真实员工验收。</p></details>
         <details><summary>新增项目或帮助另一个客户，需要重装吗？</summary><p>Skill 可以复用。同一客户新增项目时复用已有服务，另设项目资料与权限；不同客户分别部署。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></details>
-        <details><summary>中断、报错或升级，怎样处理？</summary><p>在上方选择“继续上次安装”或“排查问题”，把安装记录交给助手。升级前先备份；离线安装可复用已验证的服务器镜像准备候选版。更新 Skill 不会自动升级服务器。</p></details>
+        <details><summary>中断、报错或升级，怎样处理？</summary><p>选择“继续上次安装”或“排查问题”，把安装记录交给助手。续接保留已修改的商品和任务；升级前先备份。更新 Skill 不会自动升级服务器。</p></details>
         <details><summary>模型和费用怎么配置？</summary><p>当前接入 DeepSeek Flash 和 MiniMax H3，使用客户自己的 API 账户。安装不会调用模型；每次生成需确认，结果需人工审核。</p></details>
       </div>
     </section>

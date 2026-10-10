@@ -26,6 +26,8 @@ Source, the complete Skill and pinned server packages are publicly readable with
 
 a32 passed cloud regression for fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL and real n8n migration and cold restore, and disconnected installation with both Docker storage modes. On October 7, 2026, a temporary ECS also completed single-account live Feishu authorization and readback of a new test Base, one SKU, and two test tasks without model calls. Earlier a29 testing covered task import and script revision/review with an agent operating one account. **Task import on the new a32 deployment, paid model generation, separate employee identities, and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
 
+The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) has written one test script to its original Feishu task row on a temporary ECS. One real account selected script approval in Base; the authenticated event advanced the server task. An authorized H3 video request also succeeded earlier. This candidate is not released. Return-and-revision review in the original row, video writeback and Base review, a second employee identity, and independent installation remain separate acceptance gates.
+
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
 ## Get started
@@ -71,12 +73,12 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
 
-a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The intended workflow writes the generated script and version back to the **original task record** for an employee to review in Base; only an approved current version can proceed to video, which returns to the same record for review. That loop is not implemented or accepted yet. Existing web review code is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) writes a script and version to the **original task record** and receives Base review events; one real account's script approval and rejection have passed. Review of a revised script, video writeback and video review remain unverified. Terminal review is a technical test path. A persistent employee web interface is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
 - Installers: [customer guide](docs/product/CUSTOMER_GUIDE.md), [complete Skill](skills/video-factory-setup/SKILL.md), [acceptance guide](docs/product/INDEPENDENT_ACCEPTANCE.md).
-- Maintainers: [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
+- Maintainers: [troubleshooting and issues](docs/product/TROUBLESHOOTING.en.md), [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
 - Security and data: [security reporting](SECURITY.md), [data handling](PRIVACY.md).
 
 This repository contains generic source, synthetic tests, installers and product documentation. The former TikTok project repository remains a private historical archive. It is not a customer installation entry point and must not be made public as part of this repository's publication.

@@ -39,13 +39,13 @@ Setup 后，在新建的测试 Base 中核对实际任务记录 ID。下面的�
 
 每条命令独立进行飞书本人授权并在终端核对计划后输入 `yes`。操作结果只证明指定记录或审核事件已入账；不触发模型费用，也不表示员工已在飞书内完成全流程。
 
-当固定发行包确实包含 `feishu-review` 且飞书应用已配置记录变更事件与长连接时，管理员再按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 在私有终端启用原任务表审核：
+当固定发行包确实包含 `feishu-review` 且飞书应用已配置记录变更事件与长连接时，先按随包 `docs/product/FEISHU_NATIVE_REVIEW.md` 核对计划并启动该项目私网 runner，再由管理员在私有终端启用原任务表审核：
 
 ```sh
 /opt/vf-cli-VERSION/venv/bin/vfctl feishu-review enable --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json
 ```
 
-这一步会补齐原任务表字段并订阅 Base 事件；需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
+这一步会补齐原任务表字段并订阅 Base 事件。runner 必须已是 `running`；恢复或升级后要对新 stack 根目录重新应用 runner 计划。仍需另行回读真实脚本、审核操作者和视频附件。不能用上面的终端 `review` 命令代替员工在飞书表内的通过或退回。
 
 ## 3. Agent 规划、续填和同客户新项目
 
@@ -76,5 +76,5 @@ Setup 后，在新建的测试 Base 中核对实际任务记录 ID。下面的�
 - 恢复到新的空目录；主密钥、数据库、n8n 和媒体必须一并恢复。恢复后旧产品会话/队列凭据撤销，飞书绑定需要重核。归档存在不证明恢复成功，需实际启动/回读和恢复演练。
 - 升级先将新 CLI 安装到新版本前缀。再通过当前支持的 `stack upgrade`、新 stack 目录和冷备检查点进行服务迁移。仅安装新 CLI 不会升级运行中的服务；不得直接覆盖旧 wheel、旧数据库或旧部署。
 - 离线部署须将镜像包与业务备份分开留存。新机恢复先 `stack fetch` 加原镜像包的两个参数，再 `stack build` / `stack up`；离线升级必须提供候选版本的镜像包，缺包应在停原服务前拒绝。
-- 如候选版只更换产品 wheel、其他依赖和固定镜像不变，可按随包 `docs/product/OFFLINE_IMAGES.md` 使用 `stack export-images --source-root <原离线栈>`，在同一 Linux 主机从已验证镜像制作候选包。先核对新清单摘要，再按正常升级流程冷备和克隆；导出本身不升级旧服务。
+- 如固定基础镜像不变且候选版更换产品 wheel，可按随包 `docs/product/OFFLINE_IMAGES.md` 使用 `stack export-images --source-root <原离线栈>`，在同一 Linux 主机从已验证镜像制作候选包。新增或变更依赖时，候选 wheels 须含 Python 3.12 / Linux amd64 的完整离线依赖闭包；先离线校验解析，再核对新清单摘要，最后按正常升级流程冷备和克隆。导出本身不升级旧服务。
 - 出现 `rolled_back` / `needs_attention` 按失败或待处理记录；核对哪个目录和端口实际运行。客户发布、付费调用与真人验收单独记录。

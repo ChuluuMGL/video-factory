@@ -24,6 +24,12 @@ IDS={'status':'fldStatus','review_revision':'fldReviewRevision','script_digest':
 
 class Client:
     def __init__(self, fixture): self.fixture=fixture
+    def fields(self,base,table):
+        return [{'field_id':'fldStatus','field_name':'状态','type':3,
+                 'property':{'options':[{'id':key,'name':name} for key,name in (
+                     ('optPending','脚本待审核'),('optApproved','脚本通过'),
+                     ('optRejected','脚本退回'),('optVideoPending','视频待审核'),
+                     ('optVideoApproved','视频通过'),('optVideoRejected','视频退回'))]}}]
     def record(self,base,table,record):
         assert (base,table,record)==('bascnFixture','tblFixture','recFixture')
         return {'record_id':record,'fields':dict(self.fixture.remote)}
@@ -56,6 +62,70 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
         self.assertEqual(self.reducer.process_one('brand')['status'],'idle')
         self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'ready')
+
+    def test_rejected_script_revision_uses_same_row_and_never_approves_old_version(self):
+        self.remote.update({'状态':'脚本退回','审核意见':'角色发色应为棕色'})
+        self.reducer.enqueue_verified('brand',self.event(after='脚本退回',event_id='evt_reject_v1'))
+        rejected=self.reducer.process_one('brand')['result']['reviewed'][0]
+        self.assertEqual((rejected['revision'],rejected['state'],rejected['feedback']),
+                         (1,'rejected','角色发色应为棕色'))
+        self.store.create_task(self.admin,'brand','task_one',
+                               {'sku_id':'sku_one','script':'Revised brown-haired role',
+                                'source_revision':'source_two'},expected_revision=1)
+        with self.store.connect() as db:
+            save(db,'native:record:brand:recFixture',
+                 {'record_id':'recFixture','task':'task_one','revision':2})
+            save(db,item_key('brand','task_one',2,'awaiting_script_review'),
+                 {'complete':True,'steps':{},'snapshot':{}})
+        self.remote.update({'来源版本':'source_two','脚本':'Revised brown-haired role',
+                            '脚本摘要':hashlib.sha256(b'Revised brown-haired role').hexdigest(),
+                            '审核目标版本':'2','审核意见':'','状态':'脚本通过'})
+        stale=self.event(before='脚本待审核',after='脚本通过',event_id='evt_stale_v1')
+        self.remote['审核目标版本']='1'
+        with self.assertRaisesRegex(RuntimeFault,'FEISHU_REVIEW_REMOTE_CHANGED'):
+            self.reducer.consume_verified('brand',stale)
+        self.remote['审核目标版本']='2'
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_approve_v2'))
+        approved=self.reducer.process_one('brand')['result']['reviewed'][0]
+        self.assertEqual((approved['revision'],approved['state']),(2,'ready'))
+        versions=self.store.inspect_task(self.admin,'brand','task_one')['versions']
+        self.assertEqual([(v['revision'],v['state']) for v in versions],[(1,'rejected'),(2,'ready')])
+
+    def test_single_select_one_item_event_and_record_are_accepted(self):
+        self.remote['状态']=['脚本通过']
+        event=self.event(before=['脚本待审核'],after=['脚本通过'],event_id='evt_select')
+        self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_single_select_option_ids_from_real_event_shape_are_accepted(self):
+        event=self.event(before='optPending',after='optApproved',event_id='evt_option_id')
+        action=event['event']['action_list'][0]
+        action['before_value'][0]['field_value']='optPending'
+        action['after_value'][0]['field_value']='optApproved'
+        self.assertEqual(self.reducer.enqueue_verified('brand',event)['status'],'queued')
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_unrecognized_option_id_cannot_approve(self):
+        event=self.event(before='optPending',after='optUnknown',event_id='evt_unknown_option')
+        event['event']['action_list'][0]['after_value'][0]['field_value']='optUnknown'
+        self.reducer.enqueue_verified('brand',event)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_REVIEW_STATUS_OPTION_UNKNOWN')
+        self.assertEqual(self.store.inspect_task(self.admin,'brand','task_one')['versions'][0]['state'],'awaiting_script_review')
+    def test_cleared_status_event_does_not_block_later_approval(self):
+        cleared=self.event(before='unrelated',after='',event_id='evt_cleared')
+        cleared['event']['action_list'][0]['after_value'][0]['field_value']=''
+        self.reducer.enqueue_verified('brand',cleared)
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'],[])
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_after_clear'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
+
+    def test_malformed_status_event_is_denied_without_blocking_approval(self):
+        invalid=self.event(event_id='evt_invalid_status')
+        invalid['event']['action_list'][0]['after_value'][0]['field_value']='not json'
+        self.reducer.enqueue_verified('brand',invalid)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'FEISHU_EVENT_FIELD_INVALID')
+        self.reducer.enqueue_verified('brand',self.event(event_id='evt_after_invalid'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['reviewed'][0]['state'],'ready')
     def test_wrong_actor_and_old_revision_never_approve(self):
         with self.assertRaisesRegex(RuntimeFault,'ROLE_DENIED'):
             self.reducer.consume_verified('brand',self.event(operator='ou_outsider'))
