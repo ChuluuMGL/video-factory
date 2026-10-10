@@ -60,6 +60,58 @@ class WorkerTests(unittest.TestCase):
     def step(self,task='one',project='brand',**kwargs):
         return self.worker.step(self.token,project,task,1,self.key,self.root,**kwargs)
 
+    def auth_failure(self):
+        approved=self.approve()
+        self.provider.submit=lambda *args:(_ for _ in ()).throw(
+            ProviderRejected('PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'))
+        self.step(allow_paid=True)
+        return approved['request_plan_sha256']
+
+    def test_auth_recovery_archives_failure_and_requires_fresh_paid_approval(self):
+        plan=self.auth_failure()
+        self.store.put_secret(self.token,'replacement','synthetic-new-key',self.key)
+        result=self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:replacement','global')
+        self.assertEqual(result['state'],'ready')
+        self.assertEqual(result['provider_requests'],0)
+        with self.store.connect() as db:
+            archived=json.loads(db.execute('SELECT value FROM meta WHERE key=?',(result['failed_attempt'],)).fetchone()[0])
+        self.assertEqual(archived['failure_code'],'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY')
+        self.assertEqual(archived['expires_at'],0)
+        self.assertEqual(len(self.store.inspect_task(self.token,'brand','one')['reviews']),1)
+        with self.assertRaisesRegex(RuntimeFault,'APPROVAL_REQUIRED'):self.step(allow_paid=True)
+
+    def test_auth_recovery_rejects_unchanged_credentials_and_wrong_plan(self):
+        plan=self.auth_failure()
+        with self.assertRaisesRegex(RuntimeFault,'CONFIGURATION_UNCHANGED'):
+            self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','global')
+        with self.assertRaisesRegex(RuntimeFault,'PLAN_CHANGED'):
+            self.worker.recover_auth(self.token,'brand','one',1,'0'*64,'secret:fixture','cn')
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'failed')
+
+    def test_origin_migration_revokes_old_submit_permission(self):
+        self.approve()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            with self.assertRaisesRegex(RuntimeFault,'PROVIDER_ORIGIN_CHANGED'):
+                self.step(allow_paid=True)
+        self.assertEqual(self.provider.calls,0)
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'ready')
+
+    def test_auth_recovery_allows_origin_migration_with_same_key(self):
+        plan=self.auth_failure()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            result=self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','global')
+        self.assertEqual(result['state'],'ready')
+        self.assertEqual(result['provider_requests'],0)
+
+    def test_china_origin_matches_current_official_endpoint(self):
+        self.assertEqual(H3Provider('cn').origin,'https://api.minimax.cn')
+
+    def test_auth_recovery_never_retries_unknown_submission_or_provider_failure(self):
+        plan=self.approve()['request_plan_sha256'];self.provider.mode='unknown';self.step(allow_paid=True)
+        with self.assertRaisesRegex(RuntimeFault,'NOT_SAFE'):
+            self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','cn')
+        self.assertEqual(self.provider.calls,1)
+
     def test_approval_and_explicit_submit_both_required(self):
         with self.assertRaisesRegex(RuntimeFault,'APPROVAL_REQUIRED'):self.step(allow_paid=True)
         self.approve()
