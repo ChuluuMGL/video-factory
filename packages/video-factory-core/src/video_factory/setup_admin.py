@@ -90,7 +90,11 @@ class SetupAdmin:
         if not isinstance(secret,str) or not 16<=len(secret)<=512 or any(c.isspace() for c in secret):raise RuntimeFault('VIDEO_KEY_INVALID')
         alias='video_'+secrets.token_hex(16)
         self.store.put_secret(token,alias,secret,self.master_key)
-        return configure(self.store,token,project,'secret:'+alias,billing_owner,region,assets)
+        try:
+            return configure(self.store,token,project,'secret:'+alias,billing_owner,region,assets)
+        except BaseException:
+            with self.store.connect() as db: db.execute('DELETE FROM vault WHERE alias=?',(alias,))
+            raise
 
     def dispatch(self, payload):
         fields = {'open': {'action','session','password'}, 'close': {'action','token'},

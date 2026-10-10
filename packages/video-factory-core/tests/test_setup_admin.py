@@ -92,3 +92,13 @@ class SetupAdminTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'MASTER_KEY_REQUIRED'):app_secret(args)
         args.app_secret_ref='env:LEAK'
         with self.assertRaisesRegex(RuntimeFault,'REFERENCE_INVALID'):app_secret(args)
+
+    def test_invalid_video_assets_preserve_existing_key_and_profile(self):
+        self.store.put_secret(self.admin,'existing_video','synthetic-existing-key',self.key)
+        with self.assertRaisesRegex(RuntimeFault,'VIDEO_ASSET_FIELDS_INVALID'):
+            self.helper.video(self.admin,self.session,'synthetic-new-video-key','fixture_owner','cn',
+                              {'fixture_sku': {'duration':5,'references':[]}})
+        with self.store.connect() as db:
+            self.assertEqual([row[0] for row in db.execute('SELECT alias FROM vault')],['existing_video'])
+            self.assertIsNone(meta(db,'video:profile:new_brand'))
+        self.assertEqual(self.store.resolve_secret('existing_video',self.key),'synthetic-existing-key')
