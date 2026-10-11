@@ -82,7 +82,11 @@ class SetupAdmin:
             raise RuntimeFault('SCRIPT_KEY_INVALID')
         alias='script_'+secrets.token_hex(16)
         self.store.put_secret(token,alias,secret,self.master_key)
-        return profile(self.store,token,project,'secret:'+alias,billing_owner)
+        try:
+            return profile(self.store,token,project,'secret:'+alias,billing_owner)
+        except BaseException:
+            with self.store.connect() as db: db.execute('DELETE FROM vault WHERE alias=?',(alias,))
+            raise
 
     def video(self,token,session,secret,billing_owner,region,assets):
         from .video_jobs import configure
