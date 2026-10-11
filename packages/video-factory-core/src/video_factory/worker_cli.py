@@ -10,7 +10,7 @@ from .worker import Worker
 
 def register_worker(commands, *, container=False):
     p=commands.add_parser('stack-worker' if container else 'worker',help='one-task H3 candidate; prepare/approve are offline, step may contact provider')
-    p.add_argument('action',choices=('prepare','approve','step','status'))
+    p.add_argument('action',choices=('prepare','approve','step','status','recover-auth'))
     if container:
         p.add_argument('--stack-root',type=Path,required=True)
     else:
@@ -36,6 +36,9 @@ def run_worker(args):
         worker=Worker(selected_store()(args.root));token=secret_input(args.token_file,'')
         identity={'project':args.project,'task':args.task,'revision':args.revision}
         if args.action=='status':result=worker.status(token,**identity)
+        elif args.action=='recover-auth':
+            result=worker.recover_auth(token,**identity,expected_plan=args.expect_plan,
+                                      credential_ref=args.credential_ref,region=args.region)
         elif args.action in ('prepare','approve'):
             if not all((args.assets_root,args.specification,args.credential_ref,args.billing_owner)):
                 raise RuntimeFault('WORKER_INPUTS_CREDENTIAL_AND_BILLING_REQUIRED')

@@ -15,6 +15,6 @@ notes=Path('public-release-notes.md');notes.write_text('''Video Factory · MIT p
 
 Cloud-tested fixed installer, complete Setup Skill, checksums and dependency notices/source. Customer servers obtain pinned upstream service images. No historical internal images or raw logs are included.
 
-This is an alpha. Independent customer installation, new live paid generation and distinct employee acceptance remain pending. See handoff.json for scope.
+This is an alpha. A development candidate completed one real-account Feishu review and H3 video writeback flow. That does not replace fresh fixed-release installation, distinct employee authorization or production acceptance. See docs/product/DELIVERY_ACCEPTANCE.md and handoff.json for their separate scopes.
 ''')
 subprocess.run(['gh','release','create','v'+r['version'],'--target',r['source_commit'],'--draft','--prerelease','--title','Video Factory '+r['version'],'--notes-file',str(notes),*[str(p) for p in sorted(root.iterdir())]],check=True)

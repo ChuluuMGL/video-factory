@@ -72,7 +72,7 @@ class EgressTests(unittest.TestCase):
                     with self.assertRaises(Exception):
                         build_opener(ProxyHandler({}),TunnelHandler()).open('https://api.minimax.io/fixture',timeout=5)
                     # Same trusted cert must fail for a different allowed host.
-                    with self.assertRaises(Exception):client.open('https://api.minimaxi.com/fixture',timeout=5)
+                    with self.assertRaises(Exception):client.open('https://api.minimax.cn/fixture',timeout=5)
                 self.assertEqual(received,['Bearer SYNTHETIC','Bearer USER_SYNTHETIC','Basic SYNTHETIC'])
                 for raw in (b'GET http://example.com/ HTTP/1.1\r\n\r\n',b'CONNECT 127.0.0.1:443 HTTP/1.1\r\n\r\n',b'CONNECT api.minimax.io:80 HTTP/1.1\r\n\r\n'):
                     with socket.create_connection(('127.0.0.1',8443),3) as stream:

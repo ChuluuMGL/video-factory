@@ -85,6 +85,43 @@ class Worker:
         if failure_code:result['failure_code']=failure_code
         return result
 
+    def recover_auth(self,token,project,task,revision,expected_plan,credential_ref,region):
+        """Restore an unchanged approved script after a definite auth rejection only.
+
+        Archive the failed attempt and revoke its paid approval. Never submit here.
+        """
+        if not isinstance(credential_ref,str) or not credential_ref.startswith('secret:'):
+            raise RuntimeFault('WORKER_SECRET_REFERENCE_REQUIRED')
+        alias=identifier(credential_ref[7:])
+        if region not in ORIGINS:raise RuntimeFault('PROVIDER_REGION_INVALID')
+        with self.store.connect() as db:
+            actor=self.store.authorize(db,token,'admin')
+            row,value=self._load(db,token,project,task,revision)
+            if value['plan_sha256']!=expected_plan:raise RuntimeFault('WORKER_PLAN_CHANGED_REVIEW_REQUIRED')
+            if (row['state']!='failed' or row['provider_id'] or value.get('provider_receipt')
+                    or value.get('failure_code')!='PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'):
+                raise RuntimeFault('WORKER_AUTH_RECOVERY_NOT_SAFE')
+            expected={'project':project,'task':task,'revision':revision,'state':'ready'}
+            receipts=(json.loads(event[0]) for event in db.execute('SELECT receipt FROM events').fetchall())
+            approved=any(all(receipt.get(k)==v for k,v in expected.items()) for receipt in receipts)
+            if not approved:raise RuntimeFault('WORKER_REQUIRES_APPROVED_SCRIPT')
+            secret=db.execute('SELECT revision FROM vault WHERE alias=?',(alias,)).fetchone()
+            if not secret:raise RuntimeFault('SECRET_MISSING')
+            plan=value['plan']
+            if (credential_ref==plan['credential_ref'] and secret[0]==plan['credential_revision']
+                    and region==plan['region'] and ORIGINS[region]==plan['provider_origin']):
+                raise RuntimeFault('WORKER_AUTH_CONFIGURATION_UNCHANGED')
+            archive='worker_attempt:'+fingerprint([project,task,revision,time.time_ns()])
+            archived={**value,'expires_at':0,'recovery':{'actor':actor,'reason':'definite_auth_rejection',
+                'credential_ref':credential_ref,'credential_revision':secret[0],'region':region}}
+            updated=db.execute("UPDATE tasks SET state='ready' WHERE project=? AND id=? AND revision=? AND state='failed'",(project,task,revision))
+            if updated.rowcount!=1:raise RuntimeFault('WORKER_AUTH_RECOVERY_NOT_SAFE')
+            db.execute('INSERT INTO meta VALUES(?,?)',(archive,canonical(archived)))
+            db.execute('DELETE FROM meta WHERE key=?',(job_key(project,task,revision),))
+            self.store.audit(db,actor,'worker_auth_recovery_requires_new_approval',project,task,revision)
+        return {'state':'ready','failed_attempt':archive,'provider_requests':0,'automatic_resubmit':False,
+                'approval_required':True,'script_review_preserved':True}
+
     def status(self,token,project,task,revision):
         with self.store.connect() as db:
             self.store.authorize(db,token,'admin')
@@ -108,6 +145,8 @@ class Worker:
             return result
         if state=='submission_unknown' and not provider_id:
             return {'state':state,'automatic_resubmit':False,'reconciliation_required':True,'provider_requests':0}
+        if plan['provider_origin']!=ORIGINS.get(plan['region']):
+            raise RuntimeFault('WORKER_PROVIDER_ORIGIN_CHANGED_REVIEW_REQUIRED')
         if state=='ready' and not allow_paid:raise RuntimeFault('WORKER_EXPLICIT_PAID_SUBMISSION_REQUIRED')
         if state=='ready' and value['expires_at']<time.time():raise RuntimeFault('WORKER_APPROVAL_EXPIRED_OR_CHANGED')
         # Credential value never leaves memory; a changed key revision needs review.
