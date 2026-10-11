@@ -53,7 +53,7 @@ vfctl worker status --root /absolute/runtime --token-file /absolute/private/admi
 
 适配契约参考 MiniMax 官方 [创建任务](https://platform.minimax.io/docs/api-reference/video-generation-v2-create) 和 [查询任务](https://platform.minimax.io/docs/api-reference/video-generation-v2-query)。当前采用白名单区域地址，不接受任意供应商 URL；客户网络可达性和 CDN 差异需在后续真实联调中确认。
 
-## a13 客户容器入口（候选，以当前提交云端 CI 为准）
+## 客户私网容器入口
 
 `vfctl stack-worker` 在客户 Linux 主机运行，复用该客户的 PostgreSQL、密钥保险库和媒体目录。原生 `vfctl worker` 保留。新安装采用部署格式 2；格式 1 必须显式 `stack upgrade`，不会因 `stack up`、查看状态或恢复备份而自动换格式。
 
@@ -86,7 +86,7 @@ vfctl stack-worker step --stack-root /srv/video-factory \
 
 中继仅在显式 `step` 时拉起，结束/错误后停止；如果主机端命令被强制终止，中继最多存活十分钟且不自动重启。它不是任务调度器，不会自动提交积压任务。一次性 worker 自身也有七分钟硬时限；主机命令返回或超时时会清理本次唯一名称的容器。整个调用与备份/升级共用部署锁。
 
-验收边界：云端测试使用合成凭据、隔离 HTTP/TLS 服务和合成视频；真实 H3、真实飞书员工操作、n8n 业务调度仍需分别验收。当前仍需管理员准备任务/token/素材，这部分尚未收敛为面向普通客户的一步 Setup。
+验收边界：云端测试使用合成凭据、隔离 HTTP/TLS 服务和合成视频；真实 H3、真实飞书员工操作、n8n 业务调度仍需分别验收。这些低层命令由实施人员或 Agent 使用；常规安装从完整 Setup Skill 开始，模型配置、任务材料与付费授权分开核对。
 
 ## 认证失败后更换密钥
 
