@@ -102,3 +102,21 @@ class SetupAdminTests(unittest.TestCase):
             self.assertEqual([row[0] for row in db.execute('SELECT alias FROM vault')],['existing_video'])
             self.assertIsNone(meta(db,'video:profile:new_brand'))
         self.assertEqual(self.store.resolve_secret('existing_video',self.key),'synthetic-existing-key')
+
+    def test_revoked_script_setup_preserves_previous_profile_and_key(self):
+        self.helper.script(self.admin,self.session,'synthetic-existing-script-key','fixture_owner')
+        with self.store.connect() as db:
+            prior=meta(db,'script:profile:new_brand')
+            aliases=[row[0] for row in db.execute('SELECT alias FROM vault')]
+        original=self.store.put_secret
+        def interrupted(*args):
+            value=original(*args)
+            with self.store.connect() as db:db.execute('DELETE FROM sessions')
+            return value
+        with patch.object(self.store,'put_secret',interrupted):
+            with self.assertRaisesRegex(RuntimeFault,'AUTH'):
+                self.helper.script(self.admin,self.session,'synthetic-new-script-key','fixture_owner')
+        with self.store.connect() as db:
+            self.assertEqual([row[0] for row in db.execute('SELECT alias FROM vault')],aliases)
+            self.assertEqual(meta(db,'script:profile:new_brand'),prior)
+        self.assertEqual(self.store.resolve_secret(aliases[0],self.key),'synthetic-existing-script-key')
