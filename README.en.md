@@ -6,7 +6,7 @@
 
 [中文](README.md) | **English**
 
-[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a32) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
+[Installation guide](https://www.yueyu.tech/zh/products/video-factory/) · [Pinned release](https://github.com/ChuluuMGL/video-factory/releases) · [Setup Skill](skills/video-factory-setup/SKILL.md) · [Security](SECURITY.md)
 
 ## What it does
 
@@ -20,13 +20,13 @@ The installer runs on the customer's server. The Skill guides the AI agent. The 
 
 ## Version and availability
 
-**0.1.0a32 · MIT-licensed public alpha.**
+**MIT-licensed public alpha. The public Release defines the pinned version and hashes.**
 
 Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
 
-a32 passed cloud regression for fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL and real n8n migration and cold restore, and disconnected installation with both Docker storage modes. On October 7, 2026, a temporary ECS also completed single-account live Feishu authorization and readback of a new test Base, one SKU, and two test tasks without model calls. Earlier a29 testing covered task import and script revision/review with an agent operating one account. **Task import on the new a32 deployment, paid model generation, separate employee identities, and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
+Cloud regression covers fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL, real n8n, cold restore, and disconnected installation with both Docker storage modes. Results apply to the exact source commit checked by Actions.
 
-The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) has written one test script to its original Feishu task row on a temporary ECS. One real account selected script approval in Base; the authenticated event advanced the server task. An authorized H3 video request also succeeded earlier. This candidate is not released. Return-and-revision review in the original row, video writeback and Base review, a second employee identity, and independent installation remain separate acceptance gates.
+A development candidate completed one real-account flow in an isolated Base: script return, revision-two approval, one real H3 generation, original-row video writeback and human video approval. The authenticated event and server ledger read back the same revision as `accepted`. **Fresh fixed-release deployment, live script-model generation, a second project, distinct employee permissions and nonauthor installation remain separate acceptance gates.** Historical examples and a successful installation do not replace them.
 
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
@@ -43,7 +43,7 @@ Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) 
 ```text
 Use the complete Skill in skills/video-factory-setup/ to install
 Video Factory on my own server and configure the first test project.
-Use version 0.1.0a32. Check the server and release package first,
+Pin the latest public alpha Release tag and hashes. Check the server and package first,
 then guide me through Setup. Hide passwords and API keys in a private
 terminal on my server; do not collect them in chat.
 ```
@@ -73,7 +73,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
 
-a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) writes a script and version to the **original task record** and receives Base review events; one real account's script approval and rejection have passed. Review of a revised script, video writeback and video review remain unverified. Terminal review is a technical test path. A persistent employee web interface is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+[Original task-row review](docs/product/FEISHU_NATIVE_REVIEW.md) writes the script, revision and video back to the same task for employee decisions in Feishu Base. Optional [Base result synchronization](docs/product/BASE_RESULTS.md) appends a separate snapshot table. Terminal review is technical acceptance. The default installation does not deploy a persistent employee web interface; see the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
@@ -89,4 +89,4 @@ Maintained by [Chuluu](https://github.com/ChuluuMGL). Product website: [YUEYU TE
 
 Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. Original code and documentation use the [MIT license](LICENSE). Dependencies, images and case media retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Issues and pull requests are welcome; see [contributing](CONTRIBUTING.md).
 
-Public a32 packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.
+Public packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.
