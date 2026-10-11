@@ -90,6 +90,6 @@ vfctl queue-template --project brand --credential-id 实际n8n凭据ID
 
 ## 证据与未完成项
 
-云端验收使用官方响应结构的回环 HTTP fixture、不同身份/完整字段分页、多次独立 CLI 进程、真实 SQLite/PostgreSQL、合成供应商和实际 FFmpeg 解码，演练脚本退回→新版本→视频退回→再修订→审核，以及真实 n8n 队列读取、跨项目拒绝、撤销和升级失效。只有对应提交的 Actions 通过后才记为技术验收；这些合成回归不代替真实身份和业务验收；当前实测范围见 [交付检查](DELIVERY_ACCEPTANCE.md)。
+云端验收使用官方响应结构的回环 HTTP fixture、不同身份/完整字段分页、多次独立 CLI 进程、真实 SQLite/PostgreSQL、合成供应商和实际 FFmpeg 解码，演练脚本退回→新版本→视频退回→再修订→审核，以及真实 n8n 队列读取、跨项目拒绝、撤销和升级失效。只有对应提交的 Actions 通过后才记为技术验收；这些合成回归不代替真实身份和业务验收；当前实测范围见 [交付检查](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/DELIVERY_ACCEPTANCE.md)。
 
 API 契约参考飞书官方：[用户信息](https://open.feishu.cn/document/server-docs/authentication-management/login-state-management/get)、[记录读取](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/get)、[字段分页](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-field/list) 及 [官方 Python SDK](https://github.com/larksuite/oapi-sdk-python)。
