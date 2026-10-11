@@ -1,6 +1,6 @@
-# 飞书任务、员工身份与审核接入（a15）
+# 飞书低层连接器与终端技术验收
 
-这是客户服务上的连接器候选：读取指定 Base/表/记录，把不可变输入快照存入产品账本，再由经过飞书身份验证的项目成员提交测试用审核。`vfctl stack-feishu-session` 是当前逐条技术验收入口，不是员工在 Base 中审核的最终产品流程；兼容命令 `vfctl feishu` / `vfctl stack-feishu` 仍接受操作者自行准备的私有用户 Token 文件。飞书内审核仍须开发和真实验收。
+本文说明低层连接器与逐条终端技术验收命令。`vfctl stack-feishu-session` 使用本人授权核对来源快照；兼容命令 `vfctl feishu` / `vfctl stack-feishu` 使用操作者准备的私有 Token 文件。员工日常审核在 [飞书原任务表](FEISHU_NATIVE_REVIEW.md) 中进行，终端技术审核不代替员工表内决定。
 
 ## 当前测试用终端操作
 
@@ -45,7 +45,7 @@ vfctl stack-feishu-session review --stack-root /srv/video-factory \
 
 ## 容器中的操作步骤
 
-在客户部署目录的 `data/worker` 准备 binding.json、管理员 token 和员工自己的用户授权 token。容器内路径为 `/work`；目录/私密文件须归 UID/GID 10001，权限分别为 700/600。用户 token 的获取和刷新尚未集成进 Setup，不应发送到聊天、写入 Git 或作为命令行明文。操作员准备的私密输入文件仍留在客户服务器，完整加密备份也会包含 data/worker；应按有效期自行清理输入文件。连接器不将这些原始 token 另存到数据库。
+在客户部署目录的 `data/worker` 准备 binding.json、管理员 token 和员工自己的用户授权 token。容器内路径为 `/work`；目录/私密文件须归 UID/GID 10001，权限分别为 700/600。这些兼容命令需自行准备用户 Token；常规 Setup 使用本人授权流程。Token 不应发送到聊天、写入 Git 或作为命令行明文。操作员准备的私密输入文件仍留在客户服务器，完整加密备份也会包含 data/worker；应按有效期自行清理输入文件。连接器不将这些原始 token 另存到数据库。
 
 ```sh
 vfctl stack-feishu bind --stack-root /srv/video-factory --project brand \
@@ -74,7 +74,7 @@ vfctl stack-feishu prepare-review --stack-root /srv/video-factory --project bran
 
 产品执行依据账本内的不可变快照。审核时会回读来源并对比四个映射字段；不一致则要求核对，不覆盖员工内容。外部读取与本地提交之间不是分布式事务；这里只保证批准的是具体快照及任务版本，不声称远端行被锁定。若员工已提前修改当前待审记录，须由管理员核对并关闭旧任务版本，再导入新版本。
 
-本连接器对飞书只执行 GET，不创建、覆盖或回写审核记录。状态、审核意见和结果保存在产品账本；可选的 Base 结果同步是另一个功能，不等于飞书内审核。飞书接入不会授予付费许可，模型仍走独立 `worker prepare/approve/step`。
+本文的低层连接器对飞书只执行 GET；[原表审核](FEISHU_NATIVE_REVIEW.md)负责原任务的脚本、版本与成片回写。可选 Base 结果同步只追加另一个快照表，不是审核入口。飞书接入不会授予付费许可，模型仍走独立 `worker prepare/approve/step`。
 
 容器连接器复用按次启动的中继；a14 新增固定 `open.feishu.cn:443` 出站目的地，继续验证 TLS 证书并拒绝私网解析。普通启动不启用中继；模型 worker 的 HTTP 客户端仍只允许自己的模型/素材域名。连接器支持飞书中国区，未声称支持国际 Lark 域名。
 
@@ -90,6 +90,6 @@ vfctl queue-template --project brand --credential-id 实际n8n凭据ID
 
 ## 证据与未完成项
 
-云端验收使用官方响应结构的回环 HTTP fixture、不同身份/完整字段分页、多次独立 CLI 进程、真实 SQLite/PostgreSQL、合成供应商和实际 FFmpeg 解码，演练脚本退回→新版本→视频退回→再修订→审核，以及真实 n8n 队列读取、跨项目拒绝、撤销和升级失效。只有对应提交的 Actions 通过后才记为技术验收；没有真实飞书账户、真实付费模型或真人操作验收。
+云端验收使用官方响应结构的回环 HTTP fixture、不同身份/完整字段分页、多次独立 CLI 进程、真实 SQLite/PostgreSQL、合成供应商和实际 FFmpeg 解码，演练脚本退回→新版本→视频退回→再修订→审核，以及真实 n8n 队列读取、跨项目拒绝、撤销和升级失效。只有对应提交的 Actions 通过后才记为技术验收；这些合成回归不代替真实身份和业务验收；当前实测范围见 [交付检查](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/DELIVERY_ACCEPTANCE.md)。
 
 API 契约参考飞书官方：[用户信息](https://open.feishu.cn/document/server-docs/authentication-management/login-state-management/get)、[记录读取](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-record/get)、[字段分页](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app-table-field/list) 及 [官方 Python SDK](https://github.com/larksuite/oapi-sdk-python)。
