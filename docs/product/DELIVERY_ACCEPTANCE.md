@@ -1,6 +1,6 @@
 # 产品交付检查
 
-当前固定版本为 **0.1.0a32，MIT 开源测试版**。官网、完整 Skill、源码和安装包可匿名读取。已完成的技术检查见 [a32 云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085)；真实业务与独立人员验收尚未完成。
+当前固定版本为 **0.1.0a33，MIT 开源测试版**。官网、完整 Skill、源码和安装包可匿名读取。已完成的技术检查见 [a33 发行回执](DELIVERY_A33_RESULT.md)；真实业务与独立人员验收尚未完成。
 
 ## 已完成的交付
 
@@ -30,9 +30,9 @@
 
 实施步骤与记录要求见 [独立验收指南](INDEPENDENT_ACCEPTANCE.md)。资料或真实身份缺失时记录具体阻塞；不得把未执行改为通过。默认 CLI/飞书路径不需要产品业务域名或员工网页。测试时新建独立 Base，不修改生产表，密钥和原始运行证据留在客户私有环境。
 
-2026-10-11，候选 [PR #18](https://github.com/ChuluuMGL/video-factory/pull/18) 与 [PR #21](https://github.com/ChuluuMGL/video-factory/pull/21) 在复用的 Ubuntu 22.04 测试机完成单账号原表闭环：脚本退回、第二版复审通过、单次 MiniMax H3 中国区生成、完整解码校验、视频附件回写，最后由本人在原表选择「视频通过」。认证事件回执与服务器账本均核对到第二版 `accepted`。原始供应商与审核证据保留私有环境。候选[云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/38063621975)已通过；此结果不代表公开 a32 已包含修复，也不关闭空白 Ubuntu 24.04 独立安装、真实脚本模型、第二项目或跨账号权限验收。
+2026-10-11，候选 [PR #18](https://github.com/ChuluuMGL/video-factory/pull/18) 与 [PR #21](https://github.com/ChuluuMGL/video-factory/pull/21) 在复用的 Ubuntu 22.04 测试机完成单账号原表闭环：脚本退回、第二版复审通过、单次 MiniMax H3 中国区生成、完整解码校验、视频附件回写，最后由本人在原表选择「视频通过」。认证事件回执与服务器账本均核对到第二版 `accepted`。原始供应商与审核证据保留私有环境。候选[云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/38063621975)已通过；相关修复已随 a33 公开；此开发候选的真实结果也不关闭空白 Ubuntu 24.04 独立安装、真实脚本模型、第二项目或跨账号权限验收。
 
-先完成修复合并、新固定包、云端升级及官网同步，再推进不依赖第二身份的验收。第二位真实员工权限测试留到最后。
+修复合并、新固定包及官网同步已完成。接着完成测试机升级后的业务续接和不依赖第二身份的验收。第二位真实员工权限测试留到最后。
 ## 后续能力
 
 a32 已提供可按项目显式启用的 Base 结果同步，但真实飞书权限与附件回读仍待验收，见 [工作清单](COMPLETION_WORK.md)。旧网页工作区及其 ACME/统一门户候选不属于当前默认交付路径；不以网页上线替代 CLI、飞书和私网 runner 的验收。
