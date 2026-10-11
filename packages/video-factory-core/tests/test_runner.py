@@ -21,7 +21,7 @@ class StackFixture:
 
 
 class RunnerTests(unittest.TestCase):
-    def test_companion_has_only_private_executor_and_egress(self):
+    def test_companion_has_only_private_executor_egress_and_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             stack = StackFixture(tmp)
             base = {'services': {'runtime': {'environment': {'VF_CONTAINER_MODE': '1'}},
@@ -29,11 +29,12 @@ class RunnerTests(unittest.TestCase):
                                             'healthcheck': {'test': ['CMD', 'true']}}}}
             with patch.object(runner, 'compose_document', return_value=base):
                 value = runner.document(stack, runner.plan(stack, 'brand'))
-            self.assertEqual(set(value['services']), {'executor', 'egress'})
+            self.assertEqual(set(value['services']), {'executor', 'egress', 'events'})
             self.assertEqual(value['services']['executor']['networks']['ledger']['aliases'],
                              ['vf-executor-' + __import__('hashlib').sha256(b'brand').hexdigest()[:12]])
             self.assertNotIn('ports', value['services']['executor'])
             self.assertNotIn('ports', value['services']['egress'])
+            self.assertNotIn('ports', value['services']['events'])
             self.assertNotIn('public', value['networks'])
             self.assertEqual(value['networks']['ledger']['name'], 'vf-customer-' + 'a' * 12 + '_private')
             self.assertEqual(set(value['secrets']), {'runtime_dsn', 'runtime_master'})
@@ -48,7 +49,7 @@ class RunnerTests(unittest.TestCase):
                 runner.apply(stack, runner.plan(stack, 'brand'))
             self.assertFalse((stack.root / 'data/runners/brand').exists())
 
-    def test_status_requires_both_healthy_components(self):
+    def test_status_requires_private_components(self):
         with tempfile.TemporaryDirectory() as tmp:
             stack = StackFixture(tmp)
             root = runner.directory(stack, 'brand')
@@ -56,10 +57,31 @@ class RunnerTests(unittest.TestCase):
             (root / 'runner.json').write_text(json.dumps(runner.plan(stack, 'brand')))
             rows = [{'Service': name, 'State': 'running', 'Health': 'healthy'}
                     for name in ('executor', 'egress')]
+            rows.append({'Service':'events','State':'running','Health':''})
             with patch.object(runner, 'compose', side_effect=lambda *_: json.dumps(rows).encode()):
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'running')
                 rows[1]['Health'] = 'unhealthy'
                 self.assertEqual(runner.status(stack, 'brand')['status'], 'incomplete')
+
+    def test_restored_runner_rebinds_without_executing_source_compose(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stack = StackFixture(tmp)
+            root = runner.directory(stack, 'brand')
+            root.mkdir(parents=True)
+            previous = runner.plan(stack, 'brand') | {'stack_instance': 'c' * 12,
+                                                       'runtime_image': 'sha256:' + 'd' * 64}
+            (root / 'runner.json').write_text(json.dumps(previous))
+            (root / 'compose.json').write_text(json.dumps({'source_root': '/old/server'}))
+            (root / 'runner.json').chmod(0o600)
+            (root / 'compose.json').chmod(0o600)
+            with (patch.object(runner, 'compose') as compose,
+                  patch.object(runner, 'document', return_value={'candidate': True}),
+                  patch.object(runner, 'status', return_value={'status': 'running'})):
+                result = runner.apply(stack, runner.plan(stack, 'brand'))
+            self.assertEqual(result['status'], 'running')
+            self.assertEqual(json.loads((root / 'runner.json').read_text()), runner.plan(stack, 'brand'))
+            self.assertEqual(json.loads((root / 'compose.json').read_text()), {'candidate': True})
+            self.assertEqual([call.args[2] for call in compose.call_args_list], ['up'])
 
     def test_production_setup_accepts_private_runner_without_web(self):
         stack = SimpleNamespace(lock=nullcontext, status=lambda: {'infrastructure_ready': True})

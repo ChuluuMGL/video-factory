@@ -145,7 +145,7 @@ def import_bundle(directory, expected_sha, wheels, locks):
     return value
 
 
-def export_bundle(directory, wheelhouse):
+def export_bundle(directory, wheelhouse, source_root=None):
     from .stack import admin_host, local_engine, images, run, ASSETS
     from .setup_deploy import release_manifest
     admin_host(); local_engine()
@@ -154,22 +154,59 @@ def export_bundle(directory, wheelhouse):
         raise RuntimeFault('IMAGE_BUNDLE_EMPTY_DIRECTORY_REQUIRED')
     wheels = release_manifest(wheelhouse)
     locks = images()
-    for role in ('python', 'ffmpeg', 'postgres', 'n8n', 'gateway'):
-        run(['docker', 'pull', '--platform', 'linux/amd64', locks[role]], timeout=600)
+    source_images = None
+    replace_dependencies = False
+    if source_root is not None:
+        from .stack import Stack
+        source = Stack(source_root)
+        old = source.config.get('image_bundle')
+        if old is None: raise RuntimeFault('IMAGE_BUNDLE_SOURCE_OFFLINE_REQUIRED')
+        validate_manifest(old, source.config['wheels'], locks)
+        product = lambda values: {name: digest for name, digest in values.items()
+                                  if name.startswith('video_factory_core-')}
+        if product(wheels) == product(source.config['wheels']):
+            raise RuntimeFault('IMAGE_BUNDLE_UPGRADE_WHEELS_CHANGED')
+        other = lambda values: {name: digest for name, digest in values.items()
+                                if not name.startswith('video_factory_core-')}
+        replace_dependencies = other(wheels) != other(source.config['wheels'])
+        source_images = verify_loaded(old)
+    else:
+        for role in ('python', 'ffmpeg', 'postgres', 'n8n', 'gateway'):
+            run(['docker', 'pull', '--platform', 'linux/amd64', locks[role]], timeout=600)
     with tempfile.TemporaryDirectory(prefix='.image-build-', dir=directory) as temporary:
         context = Path(temporary)
-        shutil.copyfile(ASSETS/'Dockerfile', context/'Dockerfile')
+        if source_images is None:
+            shutil.copyfile(ASSETS/'Dockerfile', context/'Dockerfile')
+        else:
+            install = ('--no-index --find-links=/wheels --only-binary=:all: '
+                       '--upgrade --force-reinstall ' if replace_dependencies else
+                       '--no-index --no-deps --force-reinstall ')
+            (context/'Dockerfile').write_text(
+                'FROM '+source_images['runtime']+'\n'
+                'USER root\n'
+                'COPY wheels /wheels\n'
+                'RUN python -m pip install '+install+
+                '/wheels/video_factory_core-*.whl && rm -rf /wheels\n'
+                'USER 10001:10001\n')
         (context/'wheels').mkdir()
-        for name in wheels:
+        for name in wheels if source_images is None or replace_dependencies else (
+                name for name in wheels if name.startswith('video_factory_core-')):
             shutil.copyfile(wheelhouse/name, context/'wheels'/name)
-        if release_manifest(context/'wheels') != wheels:
+        expected = wheels if source_images is None or replace_dependencies else {
+            name: digest for name, digest in wheels.items() if name.startswith('video_factory_core-')}
+        if release_manifest(context/'wheels') != expected:
             raise RuntimeFault('IMAGE_BUNDLE_WHEELS_CHANGED')
         iidfile = directory/'runtime.iid'
-        run(['docker', 'build', '--platform', 'linux/amd64', '--network=none', '--iidfile', str(iidfile),
-             '--build-arg', 'PYTHON_IMAGE='+locks['python'], '--build-arg', 'FFMPEG_IMAGE='+locks['ffmpeg'], str(context)], timeout=900)
+        build = ['docker', 'build', '--platform', 'linux/amd64', '--network=none', '--pull=false',
+                 '--iidfile', str(iidfile)]
+        if source_images is None:
+            build += ['--build-arg', 'PYTHON_IMAGE='+locks['python'],
+                      '--build-arg', 'FFMPEG_IMAGE='+locks['ffmpeg']]
+        run([*build, str(context)], timeout=900)
         runtime_id = iidfile.read_text().strip()
         ids = {'runtime': inspect_image(runtime_id)}
-        ids.update({role: inspect_image(locks[role]) for role in ROLES if role != 'runtime'})
+        ids.update({role: inspect_image(locks[role] if source_images is None else source_images[role])
+                    for role in ROLES if role != 'runtime'})
         iidfile.unlink()
     archive = directory/'images.tar'
     # Saving bare IDs can produce a complete Docker manifest.json but an OCI

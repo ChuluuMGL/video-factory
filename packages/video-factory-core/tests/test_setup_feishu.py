@@ -118,9 +118,23 @@ class SetupFeishuTests(unittest.TestCase):
 
     def test_invalid_raw_values_duplicate_fields_and_arrays_not_saved(self):
         for value in ({'task': 'sk-never-save-this-raw-secret'}, {'task': 'fldScript'},
-                      {'submitters': 'ou_submitter'}, {'submitters': ['ou_submitter', 'ou_submitter']}):
+                      {'submitters': 'ou_submitter'}, {'submitters': ['ou_submitter', 'ou_submitter']},
+                      {'script_reviewer': 'user_not_an_app_open_id'}):
             with self.assertRaises((SetupError, RuntimeFault)): self.session.answer(value, 1)
             self.assertEqual(self.session.read(), self.draft)
+
+    def test_app_scoped_reviewer_ids_can_be_corrected_before_binding(self):
+        result = self.session.answer({'submitters': ['ou_verified'],
+            'script_reviewer': 'ou_verified', 'video_reviewer': 'ou_verified'}, 1)
+        self.assertEqual(result['status'], 'connection_draft_ready')
+        corrected = self.session.read()
+        prepared = self.service.prepare(self.admin, corrected, 'ou_verified')
+        self.assertEqual(prepared['plan']['binding']['submitters'], ['ou_verified'])
+        self.assertEqual(prepared['plan']['binding']['script_reviewers'], ['ou_verified'])
+        self.assertEqual(prepared['plan']['binding']['video_reviewers'], ['ou_verified'])
+        self.assertEqual(self.service.apply(self.admin, corrected, 'ou_verified',
+                         prepared['plan_sha256'])['status'], 'connection_binding_saved')
+        self.assertTrue(self.service.status(self.admin, corrected)['binding_matches_draft'])
 
     def test_operation_snapshot_requires_no_writable_lock_or_directory(self):
         self.session.lock_path.unlink()

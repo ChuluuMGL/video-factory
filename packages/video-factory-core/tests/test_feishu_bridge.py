@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from video_factory.runtime_store import RuntimeStore,RuntimeFault
 from video_factory.feishu_bridge import FeishuBridge
 from video_factory.feishu_client import FeishuClient
@@ -149,6 +150,17 @@ class FeishuTests(unittest.TestCase):
 
 
 class ClientTests(unittest.TestCase):
+    def test_read_error_reports_only_numeric_feishu_code(self):
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):return False
+            def read(self,limit):return b'{"code":99991672,"msg":"private details"}'
+        with patch('video_factory.feishu_client.build_opener') as opener:
+            opener.return_value.open.return_value=Response()
+            with self.assertRaisesRegex(RuntimeFault,'^FEISHU_READ_REJECTED_CODE_99991672$'):
+                FeishuClient('synthetic-token').get('/drive/v1/files/bascnFixture/get_subscribe?file_type=bitable')
+
     def test_pagination_is_complete_and_loops_fail_closed(self):
         client=FeishuClient('synthetic-token');calls=[]
         def get(path):

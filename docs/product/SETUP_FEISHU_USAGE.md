@@ -39,6 +39,8 @@ vfctl setup-feishu configure \
 
 每个答案保存后可以退出续填。终端导入成员可输入逗号分隔的 open_id。Agent 使用同一命令的 `--json`，遵守返回的 `next_question.input_schema`，以 `--answers /绝对路径/answers.json --expect-revision 当前版本` 提交答案；也支持 `--answers -` 从 stdin 读取。成员答案必须是 JSON 数组，不能填姓名或文件路径。重复字段映射、未知字段、无效 ID 和过期 revision 会被拒绝。
 
+`open_id` 属于当前飞书应用的身份空间。若 Setup 中的审核人 ID 来自另一应用，在首次本人授权后先对比计划中的 `verified_operator.open_id` 与 `submitters`、`script_reviewers`、`video_reviewers`。预计由本人操作却不一致时，取消计划，以 `setup-feishu configure --answers ... --expect-revision ...` 在连接草稿中修正 `submitters`，并可填写 `script_reviewer`、`video_reviewer` 为当前应用返回的 `ou_...`；重新运行同一 `setup-run` 后再确认。修正只影响尚未绑定的项目连接，不改原 Base 记录。不要把另一应用的 open_id 当成已验证的成员。
+
 ```json
 {"submitters":["ou_真实员工open_id"]}
 ```

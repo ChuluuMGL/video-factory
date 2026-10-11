@@ -10,7 +10,7 @@
 
 ## What it does
 
-Video Factory connects product information, script generation, video generation and human review into a maintainable project workflow. Administrators install and configure it through an AI agent and the CLI; teams organize tasks in their own Feishu Base by default.
+Video Factory is being built to connect product information, script generation, video generation and human review in a maintainable project workflow. Administrators install and configure it through an AI agent and the CLI; the intended daily team surface is the project's Feishu Base task table.
 
 - **Independent deployment:** customers manage their services, database, accounts and credentials.
 - **Multiple projects:** reuse infrastructure while configuring products, Feishu and models per project.
@@ -24,7 +24,9 @@ The installer runs on the customer's server. The Skill guides the AI agent. The 
 
 Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
 
-a32 passed cloud regression for fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL and real n8n migration and cold restore, and disconnected installation with both Docker storage modes. Earlier a29 testing covered real Feishu Base creation, task import and script revision/review, with an agent operating a single account. **Live Feishu binding and paid model generation on a new a32 deployment, separate employee identities and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
+a32 passed cloud regression for fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL and real n8n migration and cold restore, and disconnected installation with both Docker storage modes. On October 7, 2026, a temporary ECS also completed single-account live Feishu authorization and readback of a new test Base, one SKU, and two test tasks without model calls. Earlier a29 testing covered task import and script revision/review with an agent operating one account. **Task import on the new a32 deployment, paid model generation, separate employee identities, and complete independent customer acceptance remain unverified.** Historical project examples do not establish acceptance of this installer.
+
+The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) has written one test script to its original Feishu task row on a temporary ECS. One real account selected script approval in Base; the authenticated event advanced the server task. An authorized H3 video request also succeeded earlier. This candidate is not released. Return-and-revision review in the original row, video writeback and Base review, a second employee identity, and independent installation remain separate acceptance gates.
 
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
@@ -69,14 +71,14 @@ The operational guides and installer interactions are currently primarily in Chi
 | Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
 | Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
 | Feishu Base | Project information, source tasks and employees' daily view |
-| Controlled review commands | Agent-assisted import and review with the operator's Feishu identity |
+| Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
 
-a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project; live Feishu permissions and attachment receipts still need acceptance. Existing web review code is outside the recommended first-install path. Full Feishu-side review and independent employee acceptance remain open. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+a32 can enable [Base result synchronization](docs/product/BASE_RESULTS.md) per project, but it only appends snapshots to a separate result table. The [PR #18 candidate](https://github.com/ChuluuMGL/video-factory/pull/18) writes a script and version to the **original task record** and receives Base review events; one real account's script approval and rejection have passed. Review of a revised script, video writeback and video review remain unverified. Terminal review is a technical test path. A persistent employee web interface is outside the recommended first-install path. See the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
 - Installers: [customer guide](docs/product/CUSTOMER_GUIDE.md), [complete Skill](skills/video-factory-setup/SKILL.md), [acceptance guide](docs/product/INDEPENDENT_ACCEPTANCE.md).
-- Maintainers: [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
+- Maintainers: [troubleshooting and issues](docs/product/TROUBLESHOOTING.en.md), [product definition](docs/product/PRD.md), [status](docs/product/STATUS.md), [migration scope](docs/product/MIGRATION.md), [publication review](docs/product/PUBLICATION_REVIEW.md).
 - Security and data: [security reporting](SECURITY.md), [data handling](PRIVACY.md).
 
 This repository contains generic source, synthetic tests, installers and product documentation. The former TikTok project repository remains a private historical archive. It is not a customer installation entry point and must not be made public as part of this repository's publication.

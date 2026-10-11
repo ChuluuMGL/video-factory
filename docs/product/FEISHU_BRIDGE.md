@@ -1,6 +1,21 @@
 # 飞书任务、员工身份与审核接入（a15）
 
-这是客户服务上的连接器候选：读取指定 Base/表/记录，把不可变输入快照存入产品账本，再由经过飞书身份验证的项目成员审核。原生 `vfctl feishu` 和容器 `vfctl stack-feishu` 共用同一实现。真实租户接入、员工界面和 OAuth 登录向导尚待验收；当前需操作员准备用户授权凭据并执行 CLI。
+这是客户服务上的连接器候选：读取指定 Base/表/记录，把不可变输入快照存入产品账本，再由经过飞书身份验证的项目成员提交测试用审核。`vfctl stack-feishu-session` 是当前逐条技术验收入口，不是员工在 Base 中审核的最终产品流程；兼容命令 `vfctl feishu` / `vfctl stack-feishu` 仍接受操作者自行准备的私有用户 Token 文件。飞书内审核仍须开发和真实验收。
+
+## 当前测试用终端操作
+
+在客户服务器的私有 TTY 中运行。命令读取 Setup 已加密保存的飞书应用密钥，显示飞书官方授权地址；本人授权后，终端显示操作计划，输入 `yes` 才提交。飞书用户 Token 只留在短时容器内存，不写文件；不会打开 Video Factory 网页、调用模型或自动扫全表。
+
+```sh
+vfctl stack-feishu-session import --stack-root /srv/video-factory \
+  --project brand --record rec实际记录ID --expected-revision 0
+
+vfctl stack-feishu-session review --stack-root /srv/video-factory \
+  --project brand --task 实际任务ID --revision 1 --stage script \
+  --decision reject --feedback '请修正具体产品名称' --event 本次唯一事件ID
+```
+
+先核对项目、来源记录、版本和计划，再确认。导入后的 `awaiting_script_review` 不是视频生成完成；审核通过也不授予模型费用许可。`--event` 建议由操作员提供并在异常恢复时复用；省略时命令会打印生成的事件 ID。原始来源发生变化、计划失效或身份不符会拒绝提交。
 
 来自 Setup 的项目优先使用 [接入向导](SETUP_FEISHU_USAGE.md)，逐题配置并核对已安装项目。向导绑定分开的 `script_reviewers` 与 `video_reviewers`；以下手工格式保留原有 `reviewers` 可审核两个阶段的语义。新增分阶段列表必须同时提供，且并集必须等于 reviewers。
 
@@ -26,7 +41,7 @@
 
 上面只是形状说明，中文占位值不能执行。映射字段必须实际存在、类型为文本，公式和其他类型会拒绝。按字段 ID 解析当前名称，读取全部字段分页。若项目来自 Setup，SKU 还必须属于该项目已保存的产品列表。
 
-用户授权 token 从私有文件读取，每次操作通过 `/authen/v1/user_info` 验证 tenant_key/open_id。账本只保存平台返回的身份标识，不保存原始用户 token、显示姓名、邮箱或电话；不自动改用应用身份。成员移除后连历史请求重放也会拒绝。恢复/迁移/升级/管理员恢复后，旧飞书绑定会暂停，管理员须重新核对成员并执行 bind（提供旧摘要）才能使用，避免旧备份恢复已撤销的权限。绑定更新必须提交旧摘要；同项目不能静默切换租户/Base/表/字段映射，换来源需要新项目。
+`stack-feishu-session` 在本次短时进程内取得用户授权 token；下述兼容命令才从私有文件读取。每次操作通过 `/authen/v1/user_info` 验证 tenant_key/open_id。账本只保存平台返回的身份标识，不保存原始用户 token、显示姓名、邮箱或电话；不自动改用应用身份。成员移除后连历史请求重放也会拒绝。恢复/迁移/升级/管理员恢复后，旧飞书绑定会暂停，管理员须重新核对成员并执行 bind（提供旧摘要）才能使用，避免旧备份恢复已撤销的权限。绑定更新必须提交旧摘要；同项目不能静默切换租户/Base/表/字段映射，换来源需要新项目。
 
 ## 容器中的操作步骤
 
@@ -59,7 +74,7 @@ vfctl stack-feishu prepare-review --stack-root /srv/video-factory --project bran
 
 产品执行依据账本内的不可变快照。审核时会回读来源并对比四个映射字段；不一致则要求核对，不覆盖员工内容。外部读取与本地提交之间不是分布式事务；这里只保证批准的是具体快照及任务版本，不声称远端行被锁定。若员工已提前修改当前待审记录，须由管理员核对并关闭旧任务版本，再导入新版本。
 
-本版本对飞书只执行 GET，不创建、覆盖或回写记录。状态、审核意见和结果保存在产品账本；Base 回写、飞书卡片/页面操作仍是后续功能。飞书接入不会授予付费许可，模型仍走独立 `worker prepare/approve/step`。
+本连接器对飞书只执行 GET，不创建、覆盖或回写审核记录。状态、审核意见和结果保存在产品账本；可选的 Base 结果同步是另一个功能，不等于飞书内审核。飞书接入不会授予付费许可，模型仍走独立 `worker prepare/approve/step`。
 
 容器连接器复用按次启动的中继；a14 新增固定 `open.feishu.cn:443` 出站目的地，继续验证 TLS 证书并拒绝私网解析。普通启动不启用中继；模型 worker 的 HTTP 客户端仍只允许自己的模型/素材域名。连接器支持飞书中国区，未声称支持国际 Lark 域名。
 

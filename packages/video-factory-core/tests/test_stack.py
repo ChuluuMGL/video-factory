@@ -3,6 +3,7 @@ import io
 import json
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 import tarfile
@@ -11,12 +12,19 @@ import unittest
 from unittest.mock import patch
 from cryptography.fernet import Fernet
 
-from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json, preflight
+from video_factory.stack import Stack, compose_document, images, validate_config, template, write_json, preflight, run as stack_run
 from video_factory.runtime_store import RuntimeFault
 from video_factory.postgres_store import PG_SCHEMA
 
 
 class StackTests(unittest.TestCase):
+    def test_docker_address_pool_failure_has_a_safe_diagnostic(self):
+        failure = subprocess.CompletedProcess(['docker', 'compose', 'up'], 1, b'',
+            b'Error response from daemon: all predefined address pools have been fully subnetted')
+        with patch('video_factory.stack.subprocess.run', return_value=failure):
+            with self.assertRaisesRegex(RuntimeFault, '^DOCKER_ADDRESS_POOL_EXHAUSTED$'):
+                stack_run(['docker', 'compose', 'up'])
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.parent=Path(self.temp.name)
         self.root=self.parent/'stack';self.root.mkdir(mode=0o700)

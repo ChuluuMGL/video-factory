@@ -10,7 +10,8 @@ from video_factory.runtime_store import RuntimeStore, RuntimeFault
 from video_factory.setup_project import import_project
 from video_factory.setup_feishu import ConnectionSession, SetupFeishu, describe
 from video_factory.feishu_bridge import meta
-from video_factory.feishu_provision import ProvisionClient, PRODUCT_FIELDS, TASK_FIELDS
+from video_factory.feishu_provision import ProvisionClient, PRODUCT_FIELDS, TASK_FIELDS, specification
+from video_factory.feishu_native_sync import REVIEW_FIELDS, STATUS_OPTIONS
 from video_factory.feishu_oauth import DeviceOAuth, SCOPES, CREATE_SCOPES
 
 
@@ -39,8 +40,12 @@ class Remote:
 
     def create_table(self, base, name, fields):
         tid = 'tblCreated'+str(len(self.tables))
-        self.tables[tid] = [{'field_id': 'fld'+str(len(self.tables))+str(i)+'Created', 'field_name': name, 'type': 1}
-                            for i, name in enumerate(fields)]
+        self.tables[tid] = [{'field_id': 'fld'+str(len(self.tables))+str(i)+'Created',
+                             'field_name': field if isinstance(field,str) else field[0],
+                             'type': 1 if isinstance(field,str) else field[1],
+                             **({'property':{'options':[{'name':option} for option in STATUS_OPTIONS]}}
+                                if not isinstance(field,str) and field[0]=='状态' else {})}
+                            for i, field in enumerate(fields)]
         return self.done('table', {'table_id': tid})
 
     def fields(self, base, table):
@@ -61,6 +66,15 @@ class Remote:
 
 
 class ProvisionTests(unittest.TestCase):
+    def test_create_table_sends_single_select_options(self):
+        calls=[]
+        client=ProvisionClient('synthetic-token')
+        with patch.object(client,'post',side_effect=lambda path,body: calls.append((path,body)) or {'table_id':'tblCreated'}):
+            client.create_table('bascnCreated','测试任务',list(TASK_FIELDS.values())+list(REVIEW_FIELDS.values()))
+        status=next(field for field in calls[0][1]['table']['fields'] if field['field_name']=='状态')
+        self.assertEqual(status['type'],3)
+        self.assertEqual([option['name'] for option in status['property']['options']],list(STATUS_OPTIONS))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         (self.root/'runtime').mkdir(mode=0o700)
@@ -83,6 +97,10 @@ class ProvisionTests(unittest.TestCase):
     def apply(self):
         return self.service.apply(self.admin, self.draft, 'synthetic-user-token', self.prepare()['plan_sha256'])
 
+    def test_test_base_name_does_not_repeat_prefix(self):
+        self.draft['setup']['configuration']['project']['base_target'] = 'VF 测试 · 安装演练'
+        self.assertEqual(specification(self.draft)['base']['name'], 'VF 测试 · 安装演练')
+
     def test_review_then_create_readback_bind_and_repeat_without_writes(self):
         plan = self.prepare(); self.assertEqual(self.remote.writes, [])
         self.assertEqual(len(plan['plan']['specification']['test_rows']), 2)
@@ -99,6 +117,9 @@ class ProvisionTests(unittest.TestCase):
             binding = meta(db, 'feishu:binding:new_brand')
         self.assertEqual(binding['base_token'], 'bascnCreated')
         self.assertEqual(set(binding['fields']), set(TASK_FIELDS))
+        status=next(f for f in self.remote.tables[binding['table_id']] if f['field_name']=='状态')
+        self.assertEqual(status['type'],3)
+        self.assertEqual([option['name'] for option in status['property']['options']],list(STATUS_OPTIONS))
 
     def test_folder_is_verified_in_create_receipt_not_unavailable_get_field(self):
         self.draft['answers']['folder_token'] = 'fldcnDestination'
@@ -166,6 +187,39 @@ class ProvisionTests(unittest.TestCase):
         self.apply()
         self.assertEqual(self.remote.writes, writes)
         self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_completed_recovery_preserves_edited_seed_rows(self):
+        self.apply(); writes = self.remote.writes.copy()
+        task = next(row for row in self.remote.rows.values() if row['fields'].get('任务编号') == 'VF_TEST_1')
+        task['fields']['来源版本'] = 'test-v3-global-key'
+        task['fields']['脚本'] = '人工审核后修改的脚本'
+        product = next(row for row in self.remote.rows.values() if row['fields'].get('SKU'))
+        product['fields']['规格'] = '验收过程中更新的规格'
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        result = self.apply()
+        self.assertEqual(result['status'], 'connection_binding_saved')
+        self.assertFalse(result['seed_content_unchanged'])
+        self.assertEqual(self.remote.writes, writes)
+        self.assertEqual(task['fields']['来源版本'], 'test-v3-global-key')
+        self.assertFalse(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_completed_recovery_rejects_changed_seed_identity(self):
+        self.apply(); writes = self.remote.writes.copy()
+        task = next(row for row in self.remote.rows.values() if row['fields'].get('任务编号') == 'VF_TEST_1')
+        task['fields']['任务编号'] = 'another-task'
+        with self.store.connect() as db: self.store.invalidate_worker_approvals(db)
+        with self.assertRaisesRegex(RuntimeFault, 'RECORD_READBACK_FAILED'): self.apply()
+        self.assertEqual(self.remote.writes, writes)
+        self.assertTrue(self.service.status(self.admin, self.draft)['requires_reconfirmation'])
+
+    def test_initial_create_requires_exact_record_readback(self):
+        def change_before_read(kind):
+            if kind == 'records':
+                self.remote.callback = None
+                next(iter(self.remote.rows.values()))['fields']['规格'] = 'changed before first binding'
+        self.remote.callback = change_before_read
+        with self.assertRaisesRegex(RuntimeFault, 'RECORD_READBACK_FAILED'): self.apply()
+        self.assertFalse(self.service.status(self.admin, self.draft)['binding_matches_draft'])
 
     def test_new_questions_need_no_remote_ids_and_reject_field_injection(self):
         new = ConnectionSession(self.root/'other.json'); new.start(self.setup)

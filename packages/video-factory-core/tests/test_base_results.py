@@ -31,6 +31,9 @@ class Remote:
         return result
     def tables(self, base): return copy.deepcopy(self.table_rows)
     def create_result_table(self, base, name):
+        if self.lose == 'table_forbidden':
+            self.calls.append('table_forbidden')
+            raise RuntimeFault('BASE_RESULTS_REQUEST_REJECTED_91403')
         self.table_rows.append({'name': name, 'table_id': 'tblResults'})
         return self.done('table', 'tblResults')
     def find(self, base, table, event):
@@ -94,6 +97,18 @@ class ResultsTests(unittest.TestCase):
         self.remote.table_rows = []; self.remote.lose = None
         with self.assertRaisesRegex(RuntimeFault, 'TABLE_UNKNOWN'): self.enable()
         self.assertEqual(self.remote.calls, ['table'])
+
+    def test_explicit_forbidden_keeps_destination_name_and_can_retry_after_permission_repair(self):
+        self.remote.lose = 'table_forbidden'
+        with self.assertRaisesRegex(RuntimeFault, 'APP_DOCUMENT_EDIT_REQUIRED'): self.enable()
+        with self.store.connect() as db:
+            config = meta(db, control_key('brand'))
+        self.assertFalse(config['table_attempted'])
+        self.assertIsNone(config['table_id'])
+        self.remote.lose = None
+        self.enable()
+        self.assertEqual(self.remote.calls, ['table_forbidden', 'table'])
+        self.assertEqual(self.remote.table_rows[0]['name'], config['table_name'])
 
     def test_lost_record_response_reconciles_without_resubmitting(self):
         self.enable(); self.remote.lose = 'record'

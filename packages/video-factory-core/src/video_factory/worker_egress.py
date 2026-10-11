@@ -13,7 +13,7 @@ import time
 from .h3_provider import MEDIA_HOSTS, ORIGINS
 from urllib.parse import urlsplit
 
-HOSTS = frozenset({'open.feishu.cn', 'accounts.feishu.cn', 'api.deepseek.com'} | MEDIA_HOSTS | {urlsplit(v).hostname for v in ORIGINS.values()})
+HOSTS = frozenset({'open.feishu.cn', 'accounts.feishu.cn', 'msg-frontier.feishu.cn', 'api.deepseek.com'} | MEDIA_HOSTS | {urlsplit(v).hostname for v in ORIGINS.values()})
 MAX_TRANSFER = 400 * 1024 * 1024
 
 

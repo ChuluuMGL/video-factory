@@ -40,6 +40,9 @@ def terminal_binding(service, oauth, *, read=input, write=print, clock=time.mono
     prepared = service.service.prepare(service.admin, draft, user)
     write('已验证飞书本人身份：' + json.dumps(identity, ensure_ascii=False, sort_keys=True))
     write('请核对即将连接或创建的 Base：' + json.dumps(prepared['plan'], ensure_ascii=False, sort_keys=True))
+    binding = prepared['plan'].get('binding')
+    if binding and identity['open_id'] not in (set(binding['submitters']) | set(binding['reviewers'])):
+        write('注意：当前飞书账号不在本项目导入或审核名单中。若预计由本人操作，请先取消并使用此应用返回的 open_id 修正连接草稿。')
     write('计划校验值：' + prepared['plan_sha256'])
     if read('确认上述飞书操作？输入 yes 后执行，其余输入取消> ').strip() != 'yes':
         return {'status': 'connection_not_confirmed', 'business_ready': False, 'feishu_writes': 0}

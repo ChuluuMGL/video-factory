@@ -21,6 +21,7 @@ QUESTIONS = (
     ('source_revision', '来源版本对应的文本字段 ID（fld 开头）', 'fld'),
     ('submitters', '允许导入任务的员工 open_id 数组', 'ou_'),
 )
+APP_SCOPED_REVIEWERS = ('script_reviewer', 'video_reviewer')
 
 
 def source_plan(setup):
@@ -41,7 +42,8 @@ def answer_value(field, value):
     if field == 'folder_token':
         if value != '': resource(value)
         return value
-    prefix = next((prefix for name, _, prefix in QUESTIONS if name == field), None)
+    prefix = ('ou_' if field in APP_SCOPED_REVIEWERS else
+              next((prefix for name, _, prefix in QUESTIONS if name == field), None))
     if prefix is None:
         raise SetupError('SETUP_FEISHU_UNKNOWN_FIELD')
     if field == 'submitters':
@@ -63,7 +65,8 @@ def validate_draft(draft):
         raise SetupError('SETUP_FEISHU_SESSION_INVALID')
     validate_session(draft['setup'])
     source_plan(draft['setup'])
-    allowed = {'workspace_kind', 'folder_token', 'submitters'} if is_create(draft) else {q[0] for q in QUESTIONS}
+    allowed = ({'workspace_kind', 'folder_token', 'submitters'} if is_create(draft)
+               else {q[0] for q in QUESTIONS} | set(APP_SCOPED_REVIEWERS))
     if set(draft['answers']) - allowed: raise SetupError('SETUP_FEISHU_UNKNOWN_FIELD')
     for field, value in draft['answers'].items():
         answer_value(field, value)
@@ -137,9 +140,9 @@ def draft_binding(draft):
     if describe(draft)['status'] != 'connection_draft_ready':
         raise RuntimeFault('SETUP_FEISHU_QUESTIONS_INCOMPLETE')
     config = source_plan(draft['setup'])['configuration']
-    script = config['project']['script_reviewer'].removeprefix('feishu:')
-    video = config['project']['video_reviewer'].removeprefix('feishu:')
     answers = draft['answers']
+    script = answers.get('script_reviewer', config['project']['script_reviewer'].removeprefix('feishu:'))
+    video = answers.get('video_reviewer', config['project']['video_reviewer'].removeprefix('feishu:'))
     return configuration({'tenant_key': config['deployment']['feishu_tenant'],
                           'base_token': config['project']['base_target'], 'table_id': answers['table_id'],
                           'fields': {k: answers[k] for k in ('task', 'sku_id', 'script', 'source_revision')},

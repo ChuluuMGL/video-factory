@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: 版本 / Version
-      placeholder: 0.1.0a31
+      placeholder: 0.1.0a32
     validations:
       required: true
   - type: dropdown
@@ -32,6 +32,17 @@ body:
       description: 使用合成数据。只提供脱敏错误码和必要步骤，不粘贴完整日志。
     validations:
       required: true
+  - type: input
+    id: error_code
+    attributes:
+      label: 错误码 / Error code
+      description: 只填短错误码，不粘贴完整日志；没有则留空。 / Short code only, no raw logs.
+      placeholder: FEISHU_OAUTH_DENIED_OR_EXPIRED
+  - type: textarea
+    id: checks
+    attributes:
+      label: 已做的安全检查 / Checks already performed
+      description: 说明已核对的状态和脱敏结果；不要附配置文件、令牌或完整截图。 / Sanitized results only.
   - type: checkboxes
     id: privacy
     attributes:

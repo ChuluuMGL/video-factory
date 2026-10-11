@@ -7,6 +7,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
+from unittest.mock import patch
 
 from video_factory.runtime_store import RuntimeStore, RuntimeFault, canonical
 from video_factory.worker import Worker, job_key
@@ -59,6 +60,58 @@ class WorkerTests(unittest.TestCase):
     def step(self,task='one',project='brand',**kwargs):
         return self.worker.step(self.token,project,task,1,self.key,self.root,**kwargs)
 
+    def auth_failure(self):
+        approved=self.approve()
+        self.provider.submit=lambda *args:(_ for _ in ()).throw(
+            ProviderRejected('PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'))
+        self.step(allow_paid=True)
+        return approved['request_plan_sha256']
+
+    def test_auth_recovery_archives_failure_and_requires_fresh_paid_approval(self):
+        plan=self.auth_failure()
+        self.store.put_secret(self.token,'replacement','synthetic-new-key',self.key)
+        result=self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:replacement','global')
+        self.assertEqual(result['state'],'ready')
+        self.assertEqual(result['provider_requests'],0)
+        with self.store.connect() as db:
+            archived=json.loads(db.execute('SELECT value FROM meta WHERE key=?',(result['failed_attempt'],)).fetchone()[0])
+        self.assertEqual(archived['failure_code'],'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY')
+        self.assertEqual(archived['expires_at'],0)
+        self.assertEqual(len(self.store.inspect_task(self.token,'brand','one')['reviews']),1)
+        with self.assertRaisesRegex(RuntimeFault,'APPROVAL_REQUIRED'):self.step(allow_paid=True)
+
+    def test_auth_recovery_rejects_unchanged_credentials_and_wrong_plan(self):
+        plan=self.auth_failure()
+        with self.assertRaisesRegex(RuntimeFault,'CONFIGURATION_UNCHANGED'):
+            self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','global')
+        with self.assertRaisesRegex(RuntimeFault,'PLAN_CHANGED'):
+            self.worker.recover_auth(self.token,'brand','one',1,'0'*64,'secret:fixture','cn')
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'failed')
+
+    def test_origin_migration_revokes_old_submit_permission(self):
+        self.approve()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            with self.assertRaisesRegex(RuntimeFault,'PROVIDER_ORIGIN_CHANGED'):
+                self.step(allow_paid=True)
+        self.assertEqual(self.provider.calls,0)
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['state'],'ready')
+
+    def test_auth_recovery_allows_origin_migration_with_same_key(self):
+        plan=self.auth_failure()
+        with patch.dict('video_factory.worker.ORIGINS', {'global':'https://api.minimax.cn'}):
+            result=self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','global')
+        self.assertEqual(result['state'],'ready')
+        self.assertEqual(result['provider_requests'],0)
+
+    def test_china_origin_matches_current_official_endpoint(self):
+        self.assertEqual(H3Provider('cn').origin,'https://api.minimax.cn')
+
+    def test_auth_recovery_never_retries_unknown_submission_or_provider_failure(self):
+        plan=self.approve()['request_plan_sha256'];self.provider.mode='unknown';self.step(allow_paid=True)
+        with self.assertRaisesRegex(RuntimeFault,'NOT_SAFE'):
+            self.worker.recover_auth(self.token,'brand','one',1,plan,'secret:fixture','cn')
+        self.assertEqual(self.provider.calls,1)
+
     def test_approval_and_explicit_submit_both_required(self):
         with self.assertRaisesRegex(RuntimeFault,'APPROVAL_REQUIRED'):self.step(allow_paid=True)
         self.approve()
@@ -85,6 +138,17 @@ class WorkerTests(unittest.TestCase):
         created=self.store.create_task(self.token,'brand','one',{'sku_id':'sku','script':'Revised','source_revision':'2'},1)
         self.assertEqual(created['state'],'awaiting_script_review')
         self.assertEqual(self.provider.calls,1)
+
+    def test_provider_auth_rejection_keeps_safe_diagnostic_without_retry(self):
+        self.approve()
+        self.provider.submit=lambda *args:(_ for _ in ()).throw(
+            ProviderRejected('PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY'))
+        result=self.step(allow_paid=True)
+        self.assertEqual(result['failure_code'],'PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY')
+        self.assertEqual(self.worker.status(self.token,'brand','one',1)['failure_code'],result['failure_code'])
+        replay=self.step(allow_paid=True)
+        self.assertEqual(replay['provider_requests'],0)
+        self.assertEqual(replay['failure_code'],result['failure_code'])
 
     def test_expired_approval_and_changed_key_stop_before_network(self):
         self.approve()
@@ -167,15 +231,27 @@ class WorkerTests(unittest.TestCase):
         p.call=lambda *a:(200,{'task':{'id':'wrong','model':'MiniMax-H3','status':'succeeded'}})
         with self.assertRaisesRegex(RuntimeFault,'UNVERIFIED'):p.poll('12345678901234','fixture')
         p.call=lambda *a:(402,{'error':{'type':'insufficient_balance_error'}})
-        with self.assertRaises(ProviderRejected):p.submit({},'fixture')
+        with self.assertRaisesRegex(ProviderRejected,'PROVIDER_BALANCE_REQUIRED'):p.submit({},'fixture')
 
     def test_reference_paths_and_unapproved_media_origins_are_rejected(self):
         bad=copy.deepcopy(self.spec);bad['references'][0]['path']='../runtime.sqlite3'
         with self.assertRaisesRegex(RuntimeFault,'PATH_INVALID'):request_body('script',self.assets,bad)
         import io
         p=H3Provider('global')
-        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a'):
+        for url in ('http://127.0.0.1/a','https://cdn.hailuoai.com.evil/a','https://key@cdn.hailuoai.com/a',
+                    'https://video-product.cdn.minimax.io.evil/a',
+                    'https://key@video-product.cdn.minimax.io/a'):
             with self.assertRaisesRegex(RuntimeFault,'HOST_NOT_APPROVED'):p.download(url,io.BytesIO())
+        class MediaOpener:
+            def open(self, request, timeout):
+                self.request=request
+                return io.BytesIO(b'fixture-media')
+        media_opener=MediaOpener()
+        with patch('video_factory.h3_provider.opener', return_value=media_opener):
+            output=io.BytesIO()
+            p.download('https://video-product.cdn.minimax.io/fixture.mp4',output)
+        self.assertEqual(output.getvalue(),b'fixture-media')
+        self.assertIsNone(media_opener.request.get_header('Authorization'))
 
 
 if __name__=='__main__':unittest.main()

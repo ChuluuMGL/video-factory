@@ -51,6 +51,13 @@ def plain_text(value):
     return value
 
 
+def select_text(value):
+    """Read a single-select value from the v1 API or its one-item list form."""
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], str):
+        value = value[0]
+    return plain_text(value)
+
+
 class FeishuBridge:
     def __init__(self,store,*,client_factory=FeishuClient):self.store=store;self.client_factory=client_factory
 

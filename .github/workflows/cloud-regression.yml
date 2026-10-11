@@ -160,7 +160,7 @@ jobs:
           set -euo pipefail
           mkdir -p ci-results
           python -m pip wheel --no-deps --wheel-dir ci-results/wheels ./packages/video-factory-core 2>&1 | tee ci-results/build.log
-          python -m pip download --only-binary=:all: --dest ci-results/dependencies "cryptography==46.0.5" "psycopg[binary]==3.3.6"
+          python -m pip download --only-binary=:all: --dest ci-results/dependencies "cryptography==46.0.5" "psycopg[binary]==3.3.6" "lark-oapi==1.7.3" "websockets==15.0.1"
           python -m pip install --no-index --find-links ci-results/dependencies ci-results/wheels/*.whl
           VF_CI_SCRIPT
       - name: Build MIT candidate release and validate Skill

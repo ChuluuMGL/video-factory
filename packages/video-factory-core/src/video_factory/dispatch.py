@@ -77,7 +77,31 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
 
 
 def dispatch_with_results(store, token, project, master_key, media_root):
+    from .feishu_native_sync import NativeSync
+    from .feishu_native_review import NativeReview
+    from .feishu_bridge import meta, save
+    native = NativeSync(store, master_key)
+    with store.connect() as db:
+        authorize(db, token, project)
+        native_config = meta(db, 'native:config:'+project)
+        native_context = native_config['context'] if native_config and native_config.get('enabled') else None
+    native_review = {'status':'disabled'}
+    if native_context:
+        try:
+            native_review = NativeReview(store, client_factory=lambda _: native.client(native_context)).process_one(project)
+        except Exception as error:
+            import re
+            code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'FEISHU_NATIVE_REVIEW_FAILED'
+            native_review = {'status':'attention_required','error':code,'automatic_resubmit':False}
     result = dispatch_one(store, token, project, master_key, media_root)
+    result['native_review'] = native_review
+    if native_context:
+        try:
+            result['native_sync'] = native.sync(project, media_root, lambda db: authorize(db, token, project))
+        except Exception as error:
+            import re
+            code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'FEISHU_NATIVE_SYNC_FAILED'
+            result['native_sync'] = {'status':'attention_required','error':code,'automatic_resubmit':False}
     from .base_results import BaseResults
     try:
         result['base_results'] = BaseResults(store, master_key).sync(
@@ -87,10 +111,10 @@ def dispatch_with_results(store, token, project, master_key, media_root):
         code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'BASE_RESULTS_SYNC_FAILED'
         # A Base outage must neither repeat a paid request nor erase its receipt.
         result['base_results'] = {'status': 'attention_required', 'error': code, 'automatic_resubmit': False}
-    from .feishu_bridge import save
     with store.connect() as db:
         authorize(db, token, project)
         save(db, 'results:last:'+project, result['base_results'])
+        if native_context: save(db, 'native:last:'+project, {'review':result['native_review'],'sync':result['native_sync']})
     return result
 
 

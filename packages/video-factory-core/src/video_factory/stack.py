@@ -50,6 +50,8 @@ def run(command, *, timeout=300, data=None):
         raise RuntimeFault('STACK_COMMAND_UNCERTAIN_CHECK_STATUS') from None
     if result.returncode:
         # Provider passwords and Docker env/connection strings must not leak.
+        if b'all predefined address pools have been fully subnetted' in result.stderr:
+            raise RuntimeFault('DOCKER_ADDRESS_POOL_EXHAUSTED')
         raise RuntimeFault('STACK_COMMAND_FAILED')
     return result.stdout
 
@@ -489,7 +491,9 @@ class Stack:
                 if not status['infrastructure_ready']:
                     raise RuntimeFault('UPGRADE_CANDIDATE_NOT_HEALTHY')
                 return {'status':'upgraded','active_root':str(candidate_root),'previous_root':str(self.root),
-                        'checkpoint':str(checkpoint),'previous_data_preserved':True,'candidate':status}
+                        'checkpoint':str(checkpoint),'previous_data_preserved':True,'candidate':status,
+                        'restored_execution_credentials_revoked':True,
+                        'next_step':'rerun production-setup for each previously enabled project schedule'}
             except Exception:
                 if candidate is not None:
                     try:candidate.compose('down','--timeout','30',timeout=120)

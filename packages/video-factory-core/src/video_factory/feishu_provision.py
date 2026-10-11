@@ -15,6 +15,7 @@ from .h3_provider import NoRedirect
 from .runtime_store import RuntimeFault, fingerprint
 
 TASK_FIELDS = {'task': '任务编号', 'sku_id': 'SKU', 'script': '脚本', 'source_revision': '来源版本'}
+from .feishu_native_sync import REVIEW_FIELDS, STATUS_OPTIONS, schema as review_schema
 PRODUCT_FIELDS = ('SKU', '商品名称', '规格', '事实来源')
 
 
@@ -48,8 +49,14 @@ class ProvisionClient(FeishuClient):
 
     def create_table(self, base, name, fields):
         resource(base)
+        def definition(field):
+            item = {'field_name': field if isinstance(field, str) else field[0],
+                    'type': 1 if isinstance(field, str) else field[1]}
+            if item['field_name'] == '状态' and item['type'] == 3:
+                item['property'] = {'options': [{'name': option} for option in STATUS_OPTIONS]}
+            return item
         value = self.post(f'/bitable/v1/apps/{base}/tables', {'table': {'name': name,
-            'default_view_name': '全部记录', 'fields': [{'field_name': f, 'type': 1} for f in fields]}})
+            'default_view_name': '全部记录', 'fields': [definition(f) for f in fields]}})
         return {'table_id': resource(value.get('table_id'), 'tbl')}
 
     def create_records(self, base, table, rows, client_token):
@@ -78,7 +85,9 @@ def is_create(draft):
 def specification(draft):
     project = draft['setup']['configuration']['project']
     test = draft['answers']['workspace_kind'] == 'test'
-    name = ('VF 测试 · ' if test else 'VF · ')+project['base_target']
+    prefix = 'VF 测试 · ' if test else 'VF · '
+    target = project['base_target']
+    name = target if target.startswith(prefix) else prefix + target
     if len(name) > 240 or any(ord(c) < 32 for c in name):
         raise RuntimeFault('FEISHU_NEW_BASE_NAME_INVALID')
     products = [dict(zip(PRODUCT_FIELDS, [p['sku_id'], p['name'], p['variant'], p['truth_source']]))
@@ -145,6 +154,10 @@ class Provisioner:
         plan = prepared['plan']; context = plan['context']; spec = plan['specification']
         store = self.service.store; key = journal_key(draft)
         client = self.service.provision_client_factory(user)
+        # Once a binding has completed, seeded rows belong to the customer's
+        # working Base. Their script, revision and product details may evolve.
+        # A partial first-time provision must still match every seeded value.
+        completed_binding = bool(context['previous_binding'])
         with store.connect() as db:
             if self.service.context(db, admin, draft) != context or fingerprint(meta(db, key)) != plan['journal_sha256']:
                 raise RuntimeFault('SETUP_FEISHU_CONTEXT_CHANGED')
@@ -187,14 +200,24 @@ class Provisioner:
         products = step('product_table', lambda _: client.create_table(base, spec['product_table_name'], PRODUCT_FIELDS))['table_id']
         self.verify_fields(client, base, products, PRODUCT_FIELDS)
         product_records = step('products', lambda ticket: client.create_records(base, products, spec['product_rows'], ticket))
-        self.verify_records(client, base, products, product_records, spec['product_rows'])
-        tasks = step('task_table', lambda _: client.create_table(base, spec['task_table_name'], list(TASK_FIELDS.values())))['table_id']
+        product_content_unchanged = self.verify_records(
+            client, base, products, product_records, spec['product_rows'],
+            anchors=('SKU',) if completed_binding else ())
+        tasks = step('task_table', lambda _: client.create_table(base, spec['task_table_name'],
+                     list(TASK_FIELDS.values())+list(REVIEW_FIELDS.values())))['table_id']
         ids = self.verify_fields(client, base, tasks, TASK_FIELDS.values())
         if spec['test_rows']:
             records = step('test_tasks', lambda ticket: client.create_records(base, tasks, spec['test_rows'], ticket))
-            self.verify_records(client, base, tasks, records, spec['test_rows'])
+            task_content_unchanged = self.verify_records(
+                client, base, tasks, records, spec['test_rows'],
+                anchors=('任务编号', 'SKU') if completed_binding else ())
+        else:
+            task_content_unchanged = True
         binding = binding_for(draft, base, tasks, {key: ids[name] for key, name in TASK_FIELDS.items()})
         FeishuBridge._schema(client, binding)
+        review_fields, _ = review_schema(client, base, tasks, binding)
+        if set(review_fields) != set(REVIEW_FIELDS):
+            raise RuntimeFault('FEISHU_PROVISION_REVIEW_SCHEMA_CHANGED')
         with store.connect() as db:
             if self.service.context(db, admin, draft) != context or meta(db, key) != journal:
                 raise RuntimeFault('SETUP_FEISHU_CONTEXT_CHANGED')
@@ -207,6 +230,7 @@ class Provisioner:
                 'product_table_id': products, 'task_table_id': tasks, 'binding_sha256': fingerprint(binding),
                 'plan_sha256': expected, 'test_task_count': len(spec['test_rows']), 'sku_count': len(spec['product_rows']),
                 'operator_identity_verified': True, 'field_schema_verified': True, 'records_verified': True,
+                'seed_content_unchanged': product_content_unchanged and task_content_unchanged,
                 'reviewer_identity_acceptance': 'not_run', 'business_ready': False, 'model_calls': 0,
                 'feishu_writes': len(journal['steps'])-len(plan['completed_steps'])}
 
@@ -223,11 +247,18 @@ class Provisioner:
         return ids
 
     @staticmethod
-    def verify_records(client, base, table, receipt, rows):
+    def verify_records(client, base, table, receipt, rows, anchors=()):
         # Response order isn't guaranteed: compare the actual record set.
+        record_ids = receipt['record_ids']
+        if len(record_ids) != len(rows) or len(set(record_ids)) != len(record_ids):
+            raise RuntimeFault('FEISHU_PROVISION_RECORD_READBACK_FAILED')
         actual = []
-        for rid in receipt['record_ids']:
+        for rid in record_ids:
             fields = client.record(base, table, rid)['fields']
             actual.append({name: plain_text(fields.get(name)) for name in rows[0]})
-        if sorted(map(fingerprint, actual)) != sorted(map(fingerprint, rows)):
+        if sorted(map(fingerprint, actual)) == sorted(map(fingerprint, rows)):
+            return True
+        if not anchors or sorted(fingerprint({name: row[name] for name in anchors}) for row in actual) != sorted(
+                fingerprint({name: row[name] for name in anchors}) for row in rows):
             raise RuntimeFault('FEISHU_PROVISION_RECORD_READBACK_FAILED')
+        return False
