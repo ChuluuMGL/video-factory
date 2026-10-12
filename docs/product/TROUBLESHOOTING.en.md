@@ -5,7 +5,7 @@ This index is for administrators, installers and their agents. First read the **
 | Symptom | Check first | Safe continuation |
 |---|---|---|
 | Interrupted installation | Pinned release, original Setup session, `vfctl stack status` | Resume the original session; do not delete it or recreate customer data. See [Setup](SETUP_RUN_USAGE.md). |
-| `DOCKER_ADDRESS_POOL_EXHAUSTED` | Docker networks and attached containers | Only remove an identified empty, rebuildable test network, then resume. |
+| `DOCKER_ADDRESS_POOL_EXHAUSTED` | Attached containers, their states and Compose directories; distinguish the active stack, runners and retired tests | Release only verified retired test-stack networks with recovery material preserved, then check both the authorization worker and runner before resuming. See below. |
 | No containers after a host reboot | `systemctl is-enabled docker`, `systemctl is-active docker`, then the target stack's container health | If Docker is disabled, the administrator checks host policy before enabling boot start and running a stop/start acceptance test. Healthy containers do not prove that the task ledger or event queue recovered. |
 | `FEISHU_OAUTH_DENIED_OR_EXPIRED` | Grant expiry, signed-in user, waiting terminal | Start one fresh user grant after reading current state. Do not recreate the Base. |
 | Uncertain Base creation | `setup-feishu status` and actual remote Base/table IDs | Stop automatic retries and reconcile the journal with the remote resources. See [Base recovery](BASE_CREATION.md). |
@@ -14,6 +14,18 @@ This index is for administrators, installers and their agents. First read the **
 | `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY` | Key region, original plan digest and absence of a provider receipt | Versions with `recover-auth` can archive a definite authentication rejection after correcting credentials, preserve script review and require a newly checked generation approval. Never use it for uncertain submissions or existing receipts. See [worker recovery](WORKER_USAGE.md). |
 | Video or attachment missing | Media decode and SHA-256, upload receipt, remote row and write intent | Read back and reconcile before retrying a write. See [result sync](BASE_RESULTS.md). |
 | Upgrade or restore failed | Old/new stack roots, containers, database, backup and restore receipt | Identify the running version and rollback path. A backup file alone is not a restore test. See [stack operations](STACK_USAGE.md). |
+
+## Exhausted Docker address pools
+
+Stopped containers can retain Compose networks. Repeated upgrades and restore drills can consume the available subnets even while the active stack is healthy. A new authorization worker or project runner may then fail to start; this does not indicate an incorrect password or model key.
+
+1. Inspect container states, attached networks and Compose working directories. Verify the new stack and preservation of review records and media hashes.
+2. For an identified retired test stack whose containers are all stopped and rebuildable, save a private inspection receipt before running Compose `down` with that stack's configuration. Preserve configuration, data, backup keys, volumes and images. Do not use global prune or remove volumes.
+3. Check the short-lived authorization worker and private runner separately, including health and published ports, before resuming the original Setup session. Do not recreate a Base or repeat a paid submission for this failure.
+
+If a failed wizard closed its administrator session, private password input is required again. Check startup first, before asking for that input. After restoring n8n scheduling, read actual execution records as well as the publication receipt.
+
+This recovery was verified on the a34 test host. Other address pools and customer environments require fresh ownership and state checks; test-stack cleanup must not be applied automatically to them.
 
 These are diagnostic entry points, not promises of automatic repair. An agent should start with read-only evidence, then present the specific repair and its verification. Permission expansion, credential rotation, data recovery, paid retries and employee review have separate authority.
 
