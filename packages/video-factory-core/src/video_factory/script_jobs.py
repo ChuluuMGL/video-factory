@@ -3,7 +3,6 @@
 Script generation does not authorize video spending. A generated draft enters the
 same two-stage review ledger; text timeouts never auto-submit again.
 """
-import hashlib
 import json
 import re
 import time
@@ -59,7 +58,7 @@ class ScriptJobs:
         if prepared['plan']['native_source']['record_id'] != record:
             raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CONFLICT')
         source = prepared['plan']['native_source']
-        if (source['script_digest'] != hashlib.sha256(prepared['plan']['brief'].encode()).hexdigest()
+        if (source['script_digest'] != fingerprint(prepared['plan']['brief'])
                 or source['source_revision'] != plain_text(fields.get(names['source_revision']))):
             raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CHANGED')
         return prepared
