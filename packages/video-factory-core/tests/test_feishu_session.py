@@ -21,6 +21,14 @@ class OAuth:
 class Bridge:
     def __init__(self): self.calls = []
 
+    def prepare_record(self, token, project, record, revision):
+        self.calls.append(('prepare-script', token, project, record, revision))
+        return {'plan': {'project': project, 'max_submissions': 1}, 'plan_sha256': 'plan-script'}
+
+    def submit_record(self, token, project, record, plan, revision):
+        self.calls.append(('submit-script', token, project, record, plan, revision))
+        return {'state': 'script_queued'}
+
     def prepare_import(self, token, project, record, revision):
         self.calls.append(('prepare-import', token, project, record, revision))
         return {'plan': {'project': project, 'record': record}, 'plan_sha256': 'plan-import'}
@@ -47,6 +55,21 @@ def options(**updates):
 
 
 class SessionTests(unittest.TestCase):
+    def test_script_request_needs_explicit_confirmation_and_queues_only(self):
+        bridge=Bridge(); output=[]
+        args=options(action='generate-script')
+        arguments(args)
+        result=terminal_operation(bridge,OAuth(),args,read=lambda _:'yes',write=output.append,sleep=lambda _:None)
+        self.assertEqual(result['state'],'script_queued')
+        self.assertEqual(result['model_calls'],0)
+        self.assertEqual([x[0] for x in bridge.calls],['prepare-script','submit-script'])
+        self.assertNotIn('synthetic-secret-token',json.dumps(output+[result]))
+        self.assertTrue(any('一次付费脚本' in x for x in output))
+        bridge=Bridge()
+        result=terminal_operation(bridge,OAuth(),args,read=lambda _:'no',write=lambda _:None,sleep=lambda _:None)
+        self.assertEqual(result['status'],'not_confirmed')
+        self.assertEqual([x[0] for x in bridge.calls],['prepare-script'])
+
     def test_import_requires_review_and_keeps_user_token_out_of_output(self):
         bridge = Bridge(); output = []
         result = terminal_operation(bridge, OAuth(), options(), read=lambda _: 'yes',

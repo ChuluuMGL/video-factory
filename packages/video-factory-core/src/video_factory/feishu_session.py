@@ -1,4 +1,4 @@
-"""One Feishu user grant for a reviewed terminal import or script/video decision.
+"""One Feishu user grant for a reviewed import, script request or technical decision.
 
 The user token exists only in this short-lived worker's memory. No Video Factory
 web listener, token file, or model call is involved.
@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .feishu_bridge import meta
-from .script_jobs import GeneratedReviewBridge
+from .script_jobs import GeneratedReviewBridge, ScriptJobs
 from .feishu_oauth import DeviceOAuth
 from .postgres_store import selected_store
 from .runtime_cli import secret_input
@@ -22,8 +22,8 @@ from .stack_worker import execute_interactive
 def register(commands):
     for container in (False, True):
         parser = commands.add_parser('stack-feishu-session' if container else 'feishu-session',
-                                     help='terminal Feishu authorization and reviewed task import/review')
-        parser.add_argument('action', choices=('import', 'review'))
+                                     help='terminal Feishu authorization and reviewed task import/script request/review')
+        parser.add_argument('action', choices=('import', 'review', 'generate-script'))
         parser.add_argument('--stack-root' if container else '--root', type=Path, required=True)
         parser.add_argument('--project', required=True)
         if not container: parser.add_argument('--master-key-file', type=Path, required=True)
@@ -39,12 +39,14 @@ def register(commands):
 
 def arguments(args):
     identifier(args.project)
-    if args.action == 'import':
+    if args.action in ('import', 'generate-script'):
         if not args.record or args.task or args.event or args.feedback or args.stage != 'script' or args.decision != 'accept':
             raise RuntimeFault('FEISHU_SESSION_ARGUMENTS_INVALID')
     elif not args.task or args.record or args.expected_revision != 0 or (args.decision == 'reject' and not args.feedback.strip()):
         raise RuntimeFault('FEISHU_SESSION_ARGUMENTS_INVALID')
     if args.event: identifier(args.event)
+    if args.action == 'generate-script' and args.event:
+        raise RuntimeFault('FEISHU_SESSION_ARGUMENTS_INVALID')
 
 
 def terminal_operation(bridge, oauth, args, *, read=input, write=print,
@@ -63,16 +65,23 @@ def terminal_operation(bridge, oauth, args, *, read=input, write=print,
             break
         if response['status'] == 'slow_down': interval = min(interval+5, 60)
     if user is None: raise RuntimeFault('FEISHU_OAUTH_DENIED_OR_EXPIRED')
-    if args.action == 'import':
+    if args.action == 'generate-script':
+        prepared = bridge.prepare_record(user, args.project, args.record, args.expected_revision)
+    elif args.action == 'import':
         prepared = bridge.prepare_import(user, args.project, args.record, args.expected_revision)
     else:
         prepared = bridge.prepare_review(user, args.project, args.task, args.revision,
                                          args.stage, args.decision, args.feedback)
     write('请核对本次操作：' + json.dumps(prepared['plan'], ensure_ascii=False, sort_keys=True))
     write('计划校验值：' + prepared['plan_sha256'])
+    if args.action == 'generate-script':
+        write('确认会授权本记录的一次付费脚本生成，交给 n8n 与私网 Runner 执行；不会授权视频费用。脚本与成片审核仍在飞书原表。')
     if read('确认上述操作？输入 yes 后执行，其余输入取消> ').strip() != 'yes':
         return {'status': 'not_confirmed', 'feishu_writes': 0, 'model_calls': 0}
-    if args.action == 'import':
+    if args.action == 'generate-script':
+        result = bridge.submit_record(user, args.project, args.record,
+                                      prepared['plan_sha256'], args.expected_revision)
+    elif args.action == 'import':
         result = bridge.import_task(user, args.project, args.record,
                                     prepared['plan_sha256'], args.expected_revision)
     else:
@@ -99,7 +108,7 @@ def run(args):
             raise RuntimeFault('FEISHU_APP_PROFILE_MISSING')
         app_secret = store.resolve_secret(profile['credential_ref'][7:], secret_input(args.master_key_file, ''))
         oauth = DeviceOAuth(profile['app_id'], app_secret)
-        result = terminal_operation(bridge, oauth, args)
+        result = terminal_operation(ScriptJobs(store) if args.action == 'generate-script' else bridge, oauth, args)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0 if result.get('status') != 'not_confirmed' else 2
     except (RuntimeFault, KeyboardInterrupt, EOFError) as error:

@@ -33,6 +33,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 - 遇到 `DOCKER_ADDRESS_POOL_EXHAUSTED`，只读核对 Docker 网络及连接容器；只清理确认无容器且可重建的旧测试网络，再续接原 session。容器未启动时不得称飞书已授权。
 - 新建 Base 回执保存在客户数据库。读取失败后用原 session 续接；创建结果未知或恢复了未完成检查点时，读取 `setup-feishu status` 并核对远端，禁止直接清理日志重建。详见随包 `docs/product/BASE_CREATION.md`。
 - 已完成绑定的 Base 续接应保留用户后续修改的商品内容和测试任务脚本；核对原记录及 SKU、任务编号。身份字段或记录缺失时停止对账，不把内容改回初始化值。
+- 发起脚本生成前检查固定发行 CLI 是否支持 `stack-feishu-session generate-script`；a33 尚不支持。支持时只读取用户指定的原任务表记录，核对真实 SKU、创作要求和版本，本人飞书授权并确认单次付费计划后入队。不得启用旧网页代替此入口；脚本及成片人工审核始终留在原表。按随包 `docs/product/FEISHU_BRIDGE.md` 操作，未知提交不得重复生成。
 - 已存在同版本 CLI 可校验复用；半安装 CLI 目录保留，改用新的空前缀诊断安装。客户 stack 与 session 必须放在 CLI 目录之外。
 - `setup-run` 退出后使用原 session/stack 续接。恢复、升级及停机备份需依照用户已授权的具体对象和停机范围；未获授权时先给出具体计划，不自行扩展授权。
 - 模型提交、付费重试、员工审核、外部发布分别遵循用户授权；安装或修复指令本身不包含这些动作。未知模型提交不得重发，先查询已有供应商回执。
