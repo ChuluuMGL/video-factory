@@ -36,6 +36,41 @@ class ScriptJobs:
         self.native_app_client_factory=native_app_client_factory
         self.provider=provider or ScriptProvider()
 
+    def prepare_record(self, user, project, record, expected_revision=0):
+        """Prepare one explicitly selected original Base row, never a table scan."""
+        from .feishu_client import resource
+        from .feishu_results_client import ResultClient
+        resource(record, 'rec')
+        _, _, binding, _, _, _ = self.bridge._session(user, project, 'submitters')
+        with self.store.connect() as db:
+            native = meta(db, 'native:config:'+project)
+            if not native or not native.get('enabled'):
+                raise RuntimeFault('SCRIPT_NATIVE_REVIEW_REQUIRED')
+            target = native['context']['target']
+            if target['base_token'] != binding['base_token'] or target['table_id'] != binding['table_id']:
+                raise RuntimeFault('SCRIPT_NATIVE_TARGET_CHANGED')
+        client = (self.source_client_factory or ResultClient)(user)
+        fields = client.record(binding['base_token'], binding['table_id'], record)['fields']
+        names = native['names']
+        prepared = self.prepare(user, project, plain_text(fields.get(names['task'])),
+                                plain_text(fields.get(names['sku_id'])), plain_text(fields.get(names['script'])),
+                                expected_revision)
+        if prepared['plan']['native_source']['record_id'] != record:
+            raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CONFLICT')
+        source = prepared['plan']['native_source']
+        if (source['script_digest'] != fingerprint(prepared['plan']['brief'])
+                or source['source_revision'] != plain_text(fields.get(names['source_revision']))):
+            raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CHANGED')
+        return prepared
+
+    def submit_record(self, user, project, record, expected_plan, expected_revision=0):
+        prepared = self.prepare_record(user, project, record, expected_revision)
+        if prepared['plan_sha256'] != expected_plan:
+            raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+        plan = prepared['plan']
+        return self.submit(user, expected_plan, project=project, task=plan['task'],
+                           sku_id=plan['sku']['sku_id'], brief=plan['brief'], expected_revision=expected_revision)
+
     def prepare(self,user,project,task,sku_id,brief,expected_revision=0):
         identifier(task)
         if not isinstance(brief,str) or not 1<=len(brief)<=6000:raise RuntimeFault('SCRIPT_BRIEF_REQUIRED')

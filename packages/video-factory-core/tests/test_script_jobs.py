@@ -91,7 +91,9 @@ class ScriptTests(unittest.TestCase):
             def find_task(self,base,table,name,task):
                 return {'record_id':'recFixture','fields':dict(self.fields)}
             def record(self,base,table,record):
-                return {'record_id':record,'fields':dict(self.fields)}
+                value={'record_id':record,'fields':dict(self.fields)}
+                if getattr(self,'mutate_after_read',False): self.fields['脚本']='Concurrent edit'
+                return value
         source=Source()
         names={'task':'任务编号','sku_id':'SKU','script':'脚本','source_revision':'来源版本','status':'状态'}
         with self.f.store.connect() as db:
@@ -100,9 +102,21 @@ class ScriptTests(unittest.TestCase):
         jobs=ScriptJobs(self.f.store,client_factory=self.f.bridge.client_factory,
                         source_client_factory=lambda _:source,native_app_client_factory=lambda _:source,
                         provider=self.provider)
-        plan=jobs.prepare('synthetic-user-token',**self.args)
+        plan=jobs.prepare_record('synthetic-user-token',self.f.project,'recFixture')
+        self.assertEqual(plan['plan']['brief'],'Base brief')
         self.assertEqual(plan['plan']['native_source']['record_id'],'recFixture')
-        jobs.submit('synthetic-user-token',plan['plan_sha256'],**self.args)
+        source.fields['脚本']='Changed after human confirmation'
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_PLAN_CHANGED'):
+            jobs.submit_record('synthetic-user-token',self.f.project,'recFixture',plan['plan_sha256'])
+        self.assertEqual(self.provider.calls,0)
+        source.fields['脚本']='Base brief'
+        source.mutate_after_read=True
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_NATIVE_SOURCE_CHANGED'):
+            jobs.prepare_record('synthetic-user-token',self.f.project,'recFixture')
+        source.mutate_after_read=False;source.fields['脚本']='Base brief'
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_NATIVE_SOURCE_CONFLICT'):
+            jobs.prepare_record('synthetic-user-token',self.f.project,'recDifferent')
+        jobs.submit_record('synthetic-user-token',self.f.project,'recFixture',plan['plan_sha256'])
         with self.f.store.connect() as db:
             self.assertEqual(meta(db,native_source_key(self.f.project,'generated_one'))['record_id'],'recFixture')
         self.assertEqual(self.provider.calls,0)
@@ -114,3 +128,10 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(jobs.step(self.cap,self.f.project,'generated_one',1,self.key)['state'],'awaiting_script_review')
         row=self.f.store.inspect_task(self.f.admin,self.f.project,'generated_one')['versions'][0]
         self.assertEqual(json.loads(row['input'])['source_revision'],'source_v1')
+
+    def test_record_script_request_requires_native_review_and_submitter(self):
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_NATIVE_REVIEW_REQUIRED'):
+            self.jobs.prepare_record('synthetic-user-token',self.f.project,'recFixture')
+        with self.assertRaises(RuntimeFault):
+            self.jobs.prepare_record('synthetic-user-token','another_project','recFixture')
+        self.assertEqual(self.provider.calls,0)
