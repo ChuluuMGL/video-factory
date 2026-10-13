@@ -1,6 +1,6 @@
 # Video Factory 固定版本发行包
 
-本包交付固定版本 CLI、完整依赖 wheels、哈希锁、Skill 和操作手册。它不包含 Docker 引擎或服务镜像，不是已公开发布的下载地址，也不代表真实客户业务验收。
+本包交付固定版本 CLI、依赖下载清单、哈希锁、Skill 和操作手册。使用官网或 GitHub 固定发行取得可信版本与摘要；源码目录不代替固定下载包。包不包含 Docker 引擎或服务镜像，也不代表真实客户业务验收。
 
 ## 准备与来源核对
 
@@ -36,9 +36,9 @@ python3.12 /root/verified-release/install.py --prefix /opt/vf-cli-VERSION --mani
 
 安装同事可使用包内 `docs/product/OPERATOR_ACCEPTANCE.md` 逐项记录结果。统一向导默认新建 Base，也支持绑定已有 Base。新建模式无需提前准备表或字段 ID。
 
-详见 发行包中的 `docs/product/SETUP_RUN_USAGE.md`：欢迎选项 → 安装计划确认 → 管理员 → 加密应用凭据 → 飞书授权 → 员工入口。支持新建与绑定 Base；个人身份和权限必须实际验证。`setup-run` 可通过同一 session 续接；同客户新项目可复用同一服务。
+详见发行包中的 `docs/product/SETUP_RUN_USAGE.md`：欢迎选项 → 安装计划确认 → 管理员 → 加密应用凭据 → 飞书授权 → Base 绑定回读，随后结束 Setup。支持新建与绑定 Base；个人身份和权限必须实际验证。`setup-run` 可通过同一 session 续接；同客户新项目可复用同一服务。员工日常使用飞书原任务表。
 
-模型 API Key 的引用与模型选项仍属于配置，付费生成必须单独按任务授权；安装完成不自动生成视频。当前常驻 HTTPS、真实客户/员工接管、完整自动业务调度尚未验收。
+模型 API Key 的引用与模型选项仍属于配置，付费生成必须单独按任务授权；安装完成不自动生成视频。非作者独立安装、不同真实员工权限及客户接管仍须分别验收。
 
 ## Skill 与维护
 
@@ -48,4 +48,6 @@ python3.12 /root/verified-release/install.py --prefix /opt/vf-cli-VERSION --mani
 
 服务镜像无法下载时，使用随包 `docs/product/OFFLINE_IMAGES.md` 的可信离线镜像包，并在 `setup-run` 增加 `--image-bundle` 与 `--image-manifest-sha256`。不要绕过镜像校验或切换未知镜像源。
 
-a31 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
+公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
+
+含下载错误分类的版本会区分连接中断与官方源拒绝。依赖获取失败发生在 CLI 安装前；在同一已验证发行目录续接会保留并核验完整文件，不把半个下载文件当作 wheel。若已创建部分 CLI 前缀，保留诊断并改用新的独立空前缀；不要删业务数据或绕过哈希校验。固定旧版错误提示以它自己的实现为准。

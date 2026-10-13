@@ -5,6 +5,8 @@
 | 现象或错误 | 先检查 | 安全续接 |
 |---|---|---|
 | 安装中断、继续安装 | 固定包版本、原 Setup session、`vfctl stack status` | 使用原 session 续接；不要删除它或重建客户数据。见[安装操作](SETUP_RUN_USAGE.md)。 |
+| 外部依赖下载中断 | 含下载错误分类的版本返回 `DEPENDENCY_DOWNLOAD_INTERRUPTED`；服务器访问官方依赖文件源的网络与空闲磁盘 | 在同一已验证发行目录重试，完整且哈希匹配的 wheel 会复用；下载不完整的字节不会成为 wheel。不输入产品密码、不重建服务、不调用模型。 |
+| `DEPENDENCY_DOWNLOAD_HTTP_REJECTED` | 官方依赖源访问是否被代理或网络策略拒绝 | 恢复受信下载渠道后续接；不换未知源、不关闭 TLS 或哈希校验。若还只有 `CLI_BOOTSTRAP_FAILED`，保留现场并核对该固定版本是否含新分类。 |
 | `DOCKER_ADDRESS_POOL_EXHAUSTED` | Docker 网络、附着容器的状态与 Compose 目录；区分当前栈、Runner 和停用演练栈 | 只释放已确认停用且保留恢复材料的旧测试栈网络；先复测授权 worker 和 Runner，再恢复原 session。见下节。 |
 | 主机重启后所有容器都没起来 | `systemctl is-enabled docker`、`systemctl is-active docker`，再查目标 stack 的容器健康状态 | 若 Docker 被禁用，管理员先确认主机策略，再启用开机启动并做一次停机重启验收；容器健康不等于任务账本和事件队列已恢复。 |
 | 飞书授权过期或 `FEISHU_OAUTH_DENIED_OR_EXPIRED` | 授权页时限、本人账号、终端是否仍在等待 | 重新发起**一次**本人授权；先回读本地状态，不因授权超时重建 Base。 |
