@@ -115,18 +115,30 @@ def prepare_dependencies(bundle, expected):
         # Keep partial bytes outside the verified bundle; failed downloads leave no partial install.
         import tempfile
         with tempfile.TemporaryFile() as temp:
-            with build_opener(ProxyHandler({}),NoRedirect()).open(Request(item['url']),timeout=90) as response:
-                require(response.status==200,'DEPENDENCY_DOWNLOAD_FAILED')
-                total=0;h=hashlib.sha256()
-                while True:
-                    chunk=response.read(1024*1024)
-                    if not chunk:break
-                    total+=len(chunk);require(total<=item['size'],'DEPENDENCY_SIZE_MISMATCH')
-                    h.update(chunk);temp.write(chunk)
-            require(total==item['size'] and h.hexdigest()==item['sha256'],'DEPENDENCY_HASH_MISMATCH')
+            download_dependency(build_opener(ProxyHandler({}),NoRedirect()),Request(item['url']),temp,item)
             temp.seek(0)
             fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
             with os.fdopen(fd,'wb') as out:shutil.copyfileobj(temp,out)
+
+
+def download_dependency(opener, request, temp, item):
+    """Verify complete bytes before exposing a wheel; redact upstream diagnostics."""
+    from urllib.error import HTTPError, URLError
+    from http.client import IncompleteRead
+    try:
+        with opener.open(request,timeout=90) as response:
+            require(response.status==200,'DEPENDENCY_DOWNLOAD_FAILED')
+            total=0;h=hashlib.sha256()
+            while True:
+                chunk=response.read(1024*1024)
+                if not chunk:break
+                total+=len(chunk);require(total<=item['size'],'DEPENDENCY_SIZE_MISMATCH')
+                h.update(chunk);temp.write(chunk)
+    except HTTPError:
+        raise ValueError('DEPENDENCY_DOWNLOAD_HTTP_REJECTED') from None
+    except (URLError, TimeoutError, ConnectionError, IncompleteRead):
+        raise ValueError('DEPENDENCY_DOWNLOAD_INTERRUPTED') from None
+    require(total==item['size'] and h.hexdigest()==item['sha256'],'DEPENDENCY_HASH_MISMATCH')
 
 
 def run(argv):

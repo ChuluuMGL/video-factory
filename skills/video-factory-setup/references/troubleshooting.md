@@ -3,6 +3,7 @@
 先只读核对正在运行的 CLI 版本、项目、原 Setup session、stack 状态和准确错误码；再区分安装、Docker、飞书身份、Base 记录、n8n、模型调用与媒体回写。不要重装覆盖未知状态，不要因超时重发付费任务。需要完整的分层排障索引时阅读仓库 `docs/product/TROUBLESHOOTING.md`；单独下载 Skill 时可访问 https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/TROUBLESHOOTING.md 。
 
 - 安装中断：沿用原 session，核对已保存的步骤和固定发行版。
+- 依赖下载：在含下载错误分类的版本中，`DEPENDENCY_DOWNLOAD_INTERRUPTED` 表示连接或响应中断，`DEPENDENCY_DOWNLOAD_HTTP_REJECTED` 表示官方依赖源拒绝。先查服务器网络与磁盘，再续接同一已验证发行目录；只复用完整且哈希匹配的 wheel。不改用未知源、不绕过校验，不让用户重复输入产品密码。CLI 前缀若已部分安装，保留诊断并用新的独立空前缀；发行依赖目录和业务数据不删除。
 - Docker 地址池用尽：停止的演练容器仍可能占用旧网络。核对网络归属与 Compose 目录，仅处理全部停用且有恢复材料的旧测试栈；保留数据卷和镜像，不执行全局 prune。先分别验证授权 worker、私网 Runner 能启动，再让用户输入密码续接；详见排障索引。
 - 飞书授权过期：核对现有绑定和远端 Base，再发起一次本人授权；不重建表。
 - 本人建表成功但应用访问被拒绝：本人授权与应用的 Base 访问权分别检查。核对新表“更多 → 添加文档应用”中的专用应用 ID 和权限，管理员确认提交后先复测读取，再启用审核订阅；在请求隐藏密码前完成权限界面检查。不重建表、换审核人或重试模型。
