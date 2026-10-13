@@ -331,7 +331,12 @@ jobs:
           set -euo pipefail
           sudo systemctl stop docker.service docker.socket containerd.service
           for store in classic containerd; do
-            sudo unshare --net -- "$(command -v python)" .github/scripts/offline-stack-smoke.py /root/vf-offline-bundle /root/vf-offline-cli/release/wheels /root/vf-offline-cli/venv/bin/vfctl "$store" 2> "ci-offline/diagnostics-$store.log" | tee "ci-offline/result-$store.json"
+            if ! sudo unshare --net -- "$(command -v python)" .github/scripts/offline-stack-smoke.py /root/vf-offline-bundle /root/vf-offline-cli/release/wheels /root/vf-offline-cli/venv/bin/vfctl "$store" 2> "ci-offline/diagnostics-$store.log" | tee "ci-offline/result-$store.json"; then
+              # Feed private diagnostics to safe-ci's capture, never to the
+              # public log. It exports exception types and locations only.
+              cat "ci-offline/diagnostics-$store.log" >&2
+              exit 1
+            fi
           done
           sudo "$(command -v python)" - <<'PY'
           import json,pathlib,hashlib
