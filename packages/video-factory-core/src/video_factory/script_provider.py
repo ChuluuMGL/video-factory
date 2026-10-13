@@ -3,6 +3,7 @@ import json
 import os
 from http.client import HTTPSConnection
 from urllib.request import Request,build_opener,ProxyHandler
+from urllib.error import HTTPError
 from .h3_provider import NoRedirect,TunnelHandler
 from .runtime_store import RuntimeFault,canonical
 
@@ -42,4 +43,11 @@ class ScriptProvider:
                 if (not isinstance(script,str) or not script.strip() or len(script.encode('utf-16-le'))//2>6500
                         or not isinstance(receipt,str) or not 1<=len(receipt)<=256):raise ValueError
                 return {'script':script,'provider_id':receipt,'requested_model':MODEL}
+        except HTTPError as error:
+            # Never retain upstream bodies, URLs or headers: they may contain
+            # credentials or customer content. Classification does not retry.
+            code={400:'SCRIPT_REQUEST_REJECTED',401:'SCRIPT_AUTH_REJECTED',
+                  402:'SCRIPT_BALANCE_REJECTED',403:'SCRIPT_ACCESS_REJECTED',
+                  422:'SCRIPT_REQUEST_REJECTED',429:'SCRIPT_RATE_LIMITED'}.get(error.code)
+            raise RuntimeFault(code or 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
         except Exception:raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None

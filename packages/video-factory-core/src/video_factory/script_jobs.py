@@ -229,7 +229,18 @@ class ScriptJobs:
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
         try:result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
-        except Exception:return {'state':'script_submission_unknown','automatic_resubmit':False}
+        except Exception as error:
+            allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
+                     'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'}
+            code=str(error) if isinstance(error,RuntimeFault) and str(error) in allowed else 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'
+            with self.store.connect() as db:
+                current=meta(db,key(project,task,revision))
+                if current!=job:raise RuntimeFault('SCRIPT_INTENT_CHANGED')
+                current['submission_error']=code
+                save(db,key(project,task,revision),current)
+            # Preserve the original intent and existing no-resubmit boundary.
+            # An HTTP diagnosis alone never authorizes a new paid request.
+            return {'state':'script_submission_unknown','error':code,'automatic_resubmit':False}
         with self.store.connect() as db:
             # Persist provider receipt even if subsequent draft attachment fails.
             job['provider_id']=result['provider_id'];job['result']=result;job['state']='received'

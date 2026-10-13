@@ -1,5 +1,6 @@
 import json
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch,MagicMock
 from video_factory.script_provider import ScriptProvider,MODEL
 from video_factory.runtime_store import RuntimeFault
@@ -30,3 +31,12 @@ class ScriptProviderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'):
                 ScriptProvider().generate({},'brief','','synthetic-key')
             self.assertEqual(opener.return_value.open.call_count,1)
+    def test_http_rejection_is_classified_without_response_or_retry(self):
+        for status,code in ((401,'SCRIPT_AUTH_REJECTED'),(402,'SCRIPT_BALANCE_REJECTED'),
+                            (429,'SCRIPT_RATE_LIMITED'),(503,'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY')):
+            with self.subTest(status=status),patch('video_factory.script_provider.build_opener') as opener:
+                opener.return_value.open.side_effect=HTTPError('https://secret.invalid',status,'private detail',{},None)
+                with self.assertRaises(RuntimeFault) as raised:
+                    ScriptProvider().generate({},'brief','','synthetic-key')
+                self.assertEqual(str(raised.exception),code)
+                self.assertEqual(opener.return_value.open.call_count,1)
