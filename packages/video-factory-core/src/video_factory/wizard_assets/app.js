@@ -10,12 +10,12 @@ async function poll(){
   if(v.prompt?.id!==current?.id){current=v.prompt; $('answer').value='';$('form').hidden=!current;$('quit').hidden=!current;
    if(current){$('label').textContent=current.label;$('answer').type=current.hidden?'password':'text';$('answer').focus();}}
   $('status').textContent=current?'请填写当前问题。':'正在执行，请稍候…';
- } catch(e){$('status').textContent=e.message;stopped=true;$('form').hidden=true;$('answer').value='';}
+ } catch(e){$('status').textContent=e.message;stopped=true;current=null;$('form').hidden=true;$('quit').hidden=true;$('answer').value='';}
  if(!stopped)setTimeout(poll,800);
 }
 async function submit(answer){ if(busy||!current)return;busy=true;
  try {await request('/api/answer',{id:current.id,answer});$('answer').value='';$('form').hidden=true;}
- catch(e){$('status').textContent=e.message;} finally {busy=false;}
+ catch(e){$('status').textContent=e.message;} finally {$('answer').value='';busy=false;}
 }
 $('form').onsubmit=e=>{e.preventDefault();submit($('answer').value);}; $('quit').onclick=()=>submit(':quit');
 (async()=>{try{let key=location.hash.slice(1);history.replaceState(null,'','/');if(key){await request('/api/unlock',{key});key='';}await poll();}catch(e){$('status').textContent=e.message;}})();

@@ -29,6 +29,8 @@ vfctl setup-run \
 
 ## 退出与恢复
 
+候选 a35 增加安装后项目配置的连续路径：`vfctl feishu-review enable --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json --configure-models`。它在原表审核配置后继续模型密钥与调度问答，只输入一次管理员密码；各修改仍单独核对，密钥隐藏输入，结束或失败时撤销同一管理会话。需要素材时可附带 `--video-assets` 的非秘密 JSON。认证仍最长 15 分钟，不续期、不保存密码或 token 文件；过期保留完成步骤，用原 session 续接。无法提供私有 TTY 时，可显式增加 `--browser-input`，使用现有临时 loopback 输入通道和可信 SSH 隧道，结束关闭，不部署员工网页。固定 a34 不含连续参数，先核对实际 CLI 帮助与发行回执。首次 `setup-run` 仍在飞书绑定回读后结束，不发起模型生成。
+
 - 选择“不”、`:quit`、Ctrl+C 可在对应阶段退出，已完成配置继续保留。重新运行相同命令，重新核对计划与登录后继续。
 - 应用密钥以 vault 密文保留，数据库备份必须与服务器主密钥一起恢复，沿用现有 stack 冷备/升级流程。Setup JSON、命令参数和终端输出都不包含密钥值。
 - 临时管理员会话最长 15 分钟。终端授权需要的临时 token 与固定连接草稿放在该 stack 的私有输入目录，仅容器用户 10001 可读，正常结束、取消和可处理的信号退出时删除；随后只撤销本次管理员会话，不影响其他员工。

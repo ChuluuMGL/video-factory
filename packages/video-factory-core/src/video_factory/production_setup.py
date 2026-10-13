@@ -79,7 +79,7 @@ def schedule(stack,session,token,*,activate=False):
         raise
 
 
-def welcome(args,read=input,hidden=getpass.getpass,write=print):
+def welcome(args,read=input,hidden=getpass.getpass,write=print,*,admin_token=None):
     stack=Stack(args.stack_root);session=SessionStore(args.session).read()
     write('Video Factory · 项目生产配置')
     write('脚本模型为 DeepSeek Flash；密钥保留在客户服务器。配置不会立即生成内容。')
@@ -87,8 +87,9 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
     write('当前项目：'+project)
     with stack.lock():
         if not stack.status()['infrastructure_ready']:raise RuntimeFault('PRODUCTION_HEALTHY_STACK_REQUIRED')
-        opened=rpc(stack,{'action':'open','session':session,'password':hidden('产品管理员密码: ')})
-    token=opened['token']
+        if admin_token is None:
+            opened=rpc(stack,{'action':'open','session':session,'password':hidden('产品管理员密码: ')})
+    token=opened['token'] if admin_token is None else admin_token
     try:
         if choice('配置或更换本项目脚本 API Key',read,write):
             secret=hidden('DeepSeek API Key（隐藏输入）: ')
@@ -136,7 +137,10 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
                 'executor': 'private_runner' if 'url' not in status else 'legacy_workspace',
                 'provider_requests':0,'human_acceptance':'not_run'}
     finally:
-        with stack.lock():rpc(stack,{'action':'close','token':token})
+        # A continuous caller owns and revokes its in-memory session. Never
+        # persist it, extend its lifetime or revoke another caller's session.
+        if admin_token is None:
+            with stack.lock():rpc(stack,{'action':'close','token':token})
 
 
 def cli(args):
