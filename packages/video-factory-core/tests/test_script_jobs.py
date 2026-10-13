@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
 from review_fixture import Fixture
@@ -58,6 +59,18 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(self.step()['state'],'script_submission_unknown')
         self.step();self.assertEqual(self.provider.calls,1)
         with self.assertRaisesRegex(RuntimeFault,'AUTH_EXECUTION'):self.jobs.step(self.cap,'other','generated_one',1,self.key)
+    def test_classified_rejection_is_saved_but_never_resubmitted(self):
+        self.queue()
+        with patch.object(self.provider,'generate',side_effect=RuntimeFault('SCRIPT_AUTH_REJECTED')) as generate:
+            result=self.step()
+            self.assertEqual(result['error'],'SCRIPT_AUTH_REJECTED')
+            self.assertFalse(result['automatic_resubmit'])
+            with self.f.store.connect() as db:
+                saved=meta(db,key(self.f.project,'generated_one',1))
+            self.assertEqual(saved['state'],'submission_unknown')
+            self.assertEqual(saved['submission_error'],'SCRIPT_AUTH_REJECTED')
+            self.step()
+            self.assertEqual(generate.call_count,1)
     def test_input_or_credential_drift_refused(self):
         planned=self.jobs.prepare('synthetic-user-token',**self.args)
         with self.assertRaisesRegex(RuntimeFault,'SCRIPT_PLAN_CHANGED'):self.jobs.submit('synthetic-user-token',planned['plan_sha256'],**(self.args|{'brief':'Changed'}))

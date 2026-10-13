@@ -96,3 +96,35 @@ class RunnerTests(unittest.TestCase):
             sessions.return_value.read.return_value = session
             result = production_setup.welcome(args, hidden=lambda _: 'synthetic-password', write=lambda _: None)
         self.assertEqual(result['status'], 'credentials_saved_schedule_not_changed')
+
+    def test_continuous_production_does_not_reprompt_or_revoke_borrowed_token(self):
+        stack=SimpleNamespace(lock=nullcontext,status=lambda:{'infrastructure_ready':True})
+        args=SimpleNamespace(stack_root=Path('/synthetic/stack'),session=Path('/synthetic/session'))
+        with (patch.object(production_setup,'Stack',return_value=stack),
+              patch.object(production_setup,'SessionStore') as sessions,
+              patch.object(production_setup,'runner_status',return_value={'status':'running'}),
+              patch.object(production_setup,'choice',side_effect=[False,False,False]),
+              patch.object(production_setup,'rpc') as calls):
+            sessions.return_value.read.return_value={'configuration':{'project':{'id':'brand'}}}
+            result=production_setup.welcome(args,hidden=lambda _:self.fail('password prompted twice'),write=lambda _:None,admin_token='fixture-token')
+            self.assertEqual(result['status'],'credentials_saved_schedule_not_changed')
+            calls.assert_not_called()
+
+    def test_script_auth_rejection_preserves_saved_credentials_and_closes_session(self):
+        stack = SimpleNamespace(lock=nullcontext, status=lambda: {'infrastructure_ready': True})
+        session = {'configuration': {'project': {'id': 'brand'}}}
+        args = SimpleNamespace(stack_root=Path('/synthetic/stack'), session=Path('/synthetic/session'))
+        def call_rpc(_, payload):
+            if payload['action']=='open':return {'token':'synthetic-token'}
+            if payload['action']=='script_check':raise RuntimeFault('SCRIPT_AUTH_REJECTED')
+            if payload['action']=='close':return {}
+            self.fail('rejected key must not be saved')
+        with (patch.object(production_setup, 'Stack', return_value=stack),
+              patch.object(production_setup, 'SessionStore') as sessions,
+              patch.object(production_setup, 'rpc', side_effect=call_rpc) as calls,
+              patch.object(production_setup, 'runner_status', return_value={'status': 'running'}),
+              patch.object(production_setup, 'choice', side_effect=[True, True])):
+            sessions.return_value.read.return_value=session
+            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_AUTH_REJECTED$'):
+                production_setup.welcome(args,read=lambda _:'fixture_owner',hidden=lambda _:'synthetic-secret',write=lambda _:None)
+            self.assertEqual([c.args[1]['action'] for c in calls.call_args_list],['open','script_check','close'])

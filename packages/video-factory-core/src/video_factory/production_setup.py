@@ -79,7 +79,7 @@ def schedule(stack,session,token,*,activate=False):
         raise
 
 
-def welcome(args,read=input,hidden=getpass.getpass,write=print):
+def welcome(args,read=input,hidden=getpass.getpass,write=print,*,admin_token=None):
     stack=Stack(args.stack_root);session=SessionStore(args.session).read()
     write('Video Factory · 项目生产配置')
     write('脚本模型为 DeepSeek Flash；密钥保留在客户服务器。配置不会立即生成内容。')
@@ -87,13 +87,20 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
     write('当前项目：'+project)
     with stack.lock():
         if not stack.status()['infrastructure_ready']:raise RuntimeFault('PRODUCTION_HEALTHY_STACK_REQUIRED')
-        opened=rpc(stack,{'action':'open','session':session,'password':hidden('产品管理员密码: ')})
-    token=opened['token']
+        if admin_token is None:
+            opened=rpc(stack,{'action':'open','session':session,'password':hidden('产品管理员密码: ')})
+    token=opened['token'] if admin_token is None else admin_token
     try:
         if choice('配置或更换本项目脚本 API Key',read,write):
             secret=hidden('DeepSeek API Key（隐藏输入）: ')
             billing=read('本客户费用账户标签> ').strip()
             if choice('确认将脚本密钥加密保存到本项目',read,write):
+                with stack.lock():ready=runner_status(stack,project).get('status')=='running'
+                if ready:
+                    with stack.lock():rpc(stack,{'action':'script_check','token':token,'session':session,'secret':secret})
+                    write('脚本密钥认证通过；未生成内容。余额与实际生成仍需单独验收。')
+                else:
+                    write('私网 Runner 尚未运行，本次只保存密钥，认证尚未验证；部署 Runner 后请续接本向导验证。')
                 with stack.lock():rpc(stack,{'action':'script','token':token,'session':session,'secret':secret,'billing_owner':billing})
                 write('脚本凭据已保存。');secret=None
         if choice('配置或更换本项目视频 API Key 与 SKU 素材',read,write):
@@ -130,7 +137,10 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
                 'executor': 'private_runner' if 'url' not in status else 'legacy_workspace',
                 'provider_requests':0,'human_acceptance':'not_run'}
     finally:
-        with stack.lock():rpc(stack,{'action':'close','token':token})
+        # A continuous caller owns and revokes its in-memory session. Never
+        # persist it, extend its lifetime or revoke another caller's session.
+        if admin_token is None:
+            with stack.lock():rpc(stack,{'action':'close','token':token})
 
 
 def cli(args):

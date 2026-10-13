@@ -104,12 +104,17 @@ class SetupAdmin:
         fields = {'open': {'action','session','password'}, 'close': {'action','token'},
                   'configure': {'action','token','session','app_id','app_secret','expected_profile'},
                   'status': {'action','token','draft'}, 'video': {'action','token','session','secret','billing_owner','region','assets'}, 'script': {'action','token','session','secret','billing_owner'},
+                  'script_check': {'action','token','session','secret'},
                   'base_results': {'action','token','session','operation','expected_plan','event','step'},
                   'native_review': {'action','token','session','operation','expected_plan'},
                   'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
         if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
         action = payload['action']
+        if action == 'script_check':
+            inspect_project(self.store,payload['token'],payload['session'])
+            from .script_provider import ScriptProvider
+            return ScriptProvider().authenticate(payload['secret'])
         if action == 'native_review':
             from .feishu_native_sync import NativeSync
             project = inspect_project(self.store, payload['token'], payload['session'])['project']
@@ -155,12 +160,12 @@ class SetupAdmin:
 def rpc(stack, payload):
     # The container's result (including a short-lived token on open) is consumed
     # in memory by the local OS administrator, never printed by the wizard.
-    if payload.get('action') in ('base_results', 'native_review'):
+    if payload.get('action') in ('base_results', 'native_review', 'script_check'):
         project = payload['session']['configuration']['project']['id']
         from .runner import directory as runner_directory, compose as runner_compose
         from .workspace import compose as workspace_compose
         has_runner = (runner_directory(stack, project)/'runner.json').exists()
-        if payload['action'] == 'native_review' and not has_runner:
+        if payload['action'] in ('native_review','script_check') and not has_runner:
             raise RuntimeFault('FEISHU_NATIVE_RUNNER_REQUIRED')
         companion = runner_compose if has_runner else workspace_compose
         raw = companion(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',

@@ -30,6 +30,18 @@ class SetupAdminTests(unittest.TestCase):
 
     def tearDown(self): self.temp.cleanup()
 
+    def test_script_authentication_checks_identity_without_saving_a_key(self):
+        payload={'action':'script_check','token':self.admin,'session':self.session,'secret':'synthetic-key'}
+        with patch('video_factory.script_provider.ScriptProvider.authenticate',return_value={'model_generation_requests':0}) as check:
+            self.assertEqual(self.helper.dispatch(payload),{'model_generation_requests':0})
+            check.assert_called_once_with('synthetic-key')
+        payload['token']='revoked-token'
+        with patch('video_factory.script_provider.ScriptProvider.authenticate') as check:
+            with self.assertRaises(RuntimeFault):self.helper.dispatch(payload)
+            check.assert_not_called()
+        with self.store.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM vault').fetchone()[0],0)
+
     def test_login_is_bounded_and_close_revokes_only_its_own_session(self):
         opened=self.helper.open(self.session,'synthetic-admin-password')
         self.assertLessEqual(opened['expires_at'],time.time()+900)
