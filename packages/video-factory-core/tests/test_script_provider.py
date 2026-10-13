@@ -6,6 +6,32 @@ from video_factory.script_provider import ScriptProvider,MODEL
 from video_factory.runtime_store import RuntimeFault
 
 class ScriptProviderTests(unittest.TestCase):
+    def test_authentication_reads_models_without_content_or_generation(self):
+        response=MagicMock();response.__enter__.return_value=response;response.status=200
+        response.read.return_value=json.dumps({'data':[{'id':MODEL}]}).encode()
+        with patch('video_factory.script_provider.build_opener') as opener:
+            opener.return_value.open.return_value=response
+            result=ScriptProvider().authenticate('synthetic-key')
+            request=opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url,'https://api.deepseek.com/models')
+            self.assertEqual(request.get_method(),'GET');self.assertIsNone(request.data)
+            self.assertEqual(opener.return_value.open.call_count,1)
+            self.assertEqual(result['model_generation_requests'],0)
+            self.assertNotIn('synthetic-key',str(result))
+
+    def test_authentication_rejection_and_unavailable_model_fail_closed(self):
+        with patch('video_factory.script_provider.build_opener') as opener:
+            opener.return_value.open.side_effect=HTTPError('https://secret.invalid',401,'private detail',{},None)
+            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_AUTH_REJECTED$'):
+                ScriptProvider().authenticate('synthetic-key')
+            self.assertEqual(opener.return_value.open.call_count,1)
+        response=MagicMock();response.__enter__.return_value=response;response.status=200
+        response.read.return_value=b'{"data":[]}'
+        with patch('video_factory.script_provider.build_opener') as opener:
+            opener.return_value.open.return_value=response
+            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_CONFIGURED_MODEL_UNAVAILABLE$'):
+                ScriptProvider().authenticate('synthetic-key')
+
     def call(self,value):
         response=MagicMock();response.__enter__.return_value=response;response.status=200
         response.read.return_value=json.dumps(value).encode()

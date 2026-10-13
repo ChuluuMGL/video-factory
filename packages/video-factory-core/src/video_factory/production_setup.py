@@ -94,6 +94,12 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print):
             secret=hidden('DeepSeek API Key（隐藏输入）: ')
             billing=read('本客户费用账户标签> ').strip()
             if choice('确认将脚本密钥加密保存到本项目',read,write):
+                with stack.lock():ready=runner_status(stack,project).get('status')=='running'
+                if ready:
+                    with stack.lock():rpc(stack,{'action':'script_check','token':token,'session':session,'secret':secret})
+                    write('脚本密钥认证通过；未生成内容。余额与实际生成仍需单独验收。')
+                else:
+                    write('私网 Runner 尚未运行，本次只保存密钥，认证尚未验证；部署 Runner 后请续接本向导验证。')
                 with stack.lock():rpc(stack,{'action':'script','token':token,'session':session,'secret':secret,'billing_owner':billing})
                 write('脚本凭据已保存。');secret=None
         if choice('配置或更换本项目视频 API Key 与 SKU 素材',read,write):

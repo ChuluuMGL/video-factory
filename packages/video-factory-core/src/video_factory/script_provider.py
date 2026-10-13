@@ -22,6 +22,29 @@ class ScriptHandler(TunnelHandler):
 
 
 class ScriptProvider:
+    def authenticate(self, secret):
+        """Read-only credential/model check; never submit customer content."""
+        if not isinstance(secret,str) or not secret or any(c.isspace() for c in secret):
+            raise RuntimeFault('SCRIPT_KEY_INVALID')
+        handlers=[ProxyHandler({}),NoRedirect()]
+        if os.environ.get('VF_WORKER_EGRESS')=='1':
+            if os.environ.get('VF_CONTAINER_MODE')!='1':raise RuntimeFault('CONTAINER_MODE_REQUIRED')
+            handlers.append(ScriptHandler())
+        request=Request('https://'+HOST+'/models',headers={'Authorization':'Bearer '+secret},method='GET')
+        try:
+            with build_opener(*handlers).open(request,timeout=20) as response:
+                raw=response.read(128*1024+1)
+                if response.status!=200 or len(raw)>128*1024:raise ValueError
+                value=json.loads(raw)
+                if not any(isinstance(item,dict) and item.get('id')==MODEL for item in value['data']):
+                    raise RuntimeFault('SCRIPT_CONFIGURED_MODEL_UNAVAILABLE')
+                return {'status':'authenticated','configured_model':MODEL,'model_generation_requests':0}
+        except HTTPError as error:
+            code={401:'SCRIPT_AUTH_REJECTED',403:'SCRIPT_ACCESS_REJECTED',429:'SCRIPT_RATE_LIMITED'}.get(error.code)
+            raise RuntimeFault(code or 'SCRIPT_AUTH_CHECK_INCOMPLETE') from None
+        except RuntimeFault:raise
+        except Exception:raise RuntimeFault('SCRIPT_AUTH_CHECK_INCOMPLETE') from None
+
     def generate(self,sku,brief,feedback,secret):
         if not isinstance(secret,str) or not secret or any(c.isspace() for c in secret):raise RuntimeFault('SCRIPT_KEY_INVALID')
         body={'model':MODEL,'stream':False,'max_tokens':2048,'thinking':{'type':'disabled'},
