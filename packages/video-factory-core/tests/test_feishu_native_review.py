@@ -202,6 +202,7 @@ class NativeReviewTests(unittest.TestCase):
                                             'credential_revision':1,'billing_owner':'fixture_account'})
             save(db,'production:config:brand',{
                 'enabled':True,'cost_enabled':cost_enabled,'cost_approvers':['ou_approver'],
+                'activation_id':'1234567890abcdef1234567890abcdef',
                 'app_id':'cli_fixture','tenant_key':'fixture_tenant',
                 'base_token':'bascnFixture','table_id':'tblFixture',
                 'fields':{'operation':'fldOperation','cost':'fldCost'},

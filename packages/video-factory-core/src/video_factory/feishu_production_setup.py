@@ -163,6 +163,7 @@ class ProductionSetup:
             if fingerprint(old) != plan['basis']['previous_config_sha256']:
                 raise RuntimeFault('PRODUCTION_SETUP_SOURCE_CHANGED')
             value = {'enabled': True, 'cost_enabled': cost_enabled, 'cost_approvers': list(approvers),
+                     'activation_id': uuid.uuid4().hex,
                      'app_id': plan['app_id'], 'tenant_key': plan['tenant_key'],
                      'base_token': base, 'table_id': table,
                      'fields': {key: found[key] for key in ('operation', 'cost')},

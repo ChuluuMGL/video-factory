@@ -52,7 +52,7 @@ def policy(store, project):
         deployment = deployment_row[0] if deployment_row else None
     if not native or not native.get('enabled') or not value or not value.get('enabled'):
         raise RuntimeFault('PRODUCTION_PLAN_DISABLED')
-    required = {'enabled', 'cost_enabled', 'cost_approvers', 'app_id', 'tenant_key',
+    required = {'enabled', 'cost_enabled', 'cost_approvers', 'activation_id', 'app_id', 'tenant_key',
                 'base_token', 'table_id', 'fields', 'names'}
     if set(value) != required or set(value['fields']) != {'operation', 'cost'} or set(value['names']) != {
             'operation', 'brief', 'plan', 'hint', 'cost'}:
@@ -60,6 +60,9 @@ def policy(store, project):
     if (type(value['cost_enabled']) is not bool or not isinstance(value['cost_approvers'], list)
             or not value['cost_approvers'] or len(value['cost_approvers']) > 100
             or len(set(value['cost_approvers'])) != len(value['cost_approvers'])):
+        raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
+    if not isinstance(value['activation_id'], str) or len(value['activation_id']) != 32 or any(
+            char not in '0123456789abcdef' for char in value['activation_id']):
         raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
     for approver in value['cost_approvers']: resource(approver, 'ou_')
     if not set(value['cost_approvers']).issubset(set(binding['submitters']) | set(binding['reviewers'])):

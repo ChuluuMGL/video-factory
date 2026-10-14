@@ -146,6 +146,20 @@ class ProductionSetupTests(unittest.TestCase):
         with self.store.connect() as db:
             self.assertFalse(meta(db, 'production:config:brand')['enabled'])
 
+    def test_reenable_revokes_plans_from_previous_activation(self):
+        plan = self.setup.prepare(self.admin, 'brand', ['ou_submitter'], True)
+        self.setup.enable(self.admin, 'brand', ['ou_submitter'], True, plan['plan_sha256'])
+        with self.store.connect() as db:
+            first = meta(db, 'production:config:brand')
+        self.setup.pause(self.admin, 'brand')
+        next_plan = self.setup.prepare(self.admin, 'brand', ['ou_submitter'], True)
+        self.setup.enable(self.admin, 'brand', ['ou_submitter'], True, next_plan['plan_sha256'])
+        with self.store.connect() as db:
+            second = meta(db, 'production:config:brand')
+        self.assertNotEqual(first['activation_id'], second['activation_id'])
+        self.assertNotEqual(first, second)
+        self.assertEqual(len(self.client.writes), len(FIELDS))
+
 
 if __name__ == '__main__':
     unittest.main()
