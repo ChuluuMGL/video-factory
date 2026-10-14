@@ -241,6 +241,29 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['status'],'idle')
         self.assertEqual(self.writes,1)
 
+    def test_real_base_event_echoes_unchanged_empty_selects(self):
+        self.enable_free_script_plans()
+        event=self.production_event(event_id='evt_echoed_empty_selects')
+        action=event['event']['action_list'][0]
+        for side in ('before_value','after_value'):
+            action[side].extend([{'field_id':'fldCost','field_value':''},
+                                 {'field_id':'fldStatus','field_value':''}])
+        self.reducer.enqueue_verified('brand',event)
+        result=self.reducer.process_one('brand')
+        self.assertEqual(result['result']['plans'][0]['status'],'plan_ready')
+        self.assertEqual(result['result']['provider_requests'],0)
+        self.assertEqual(self.writes,1)
+
+    def test_two_changed_controls_still_denied(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        event=self.production_event(event_id='evt_two_controls')
+        action=event['event']['action_list'][0]
+        action['before_value'].append({'field_id':'fldCost','field_value':''})
+        action['after_value'].append({'field_id':'fldCost','field_value':'optCostConfirm'})
+        self.reducer.enqueue_verified('brand',event)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'PRODUCTION_MIXED_EVENT_DENIED')
+        self.assertEqual(self.writes,0)
+
     def test_plan_requires_submitter_and_refuses_changed_input(self):
         self.enable_free_script_plans()
         self.reducer.enqueue_verified('brand',self.production_event(operator='ou_outsider',event_id='evt_outsider'))

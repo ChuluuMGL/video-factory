@@ -97,6 +97,20 @@ def _changed(action, field_id, option_names):
     return (before, after) if before != after and after is not None else None
 
 
+def _field_changed(action, field_id):
+    """Feishu may echo unchanged (including empty) select fields in an edit."""
+    values = []
+    for side in ('before_value', 'after_value'):
+        rows = [item for item in action.get(side, [])
+                if isinstance(item, dict) and item.get('field_id') == field_id]
+        if len(rows) > 1: raise RuntimeFault('FEISHU_EVENT_FIELD_AMBIGUOUS')
+        raw = rows[0].get('field_value') if rows else None
+        if raw is not None and (not isinstance(raw, str) or len(raw) > 16000):
+            raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
+        values.append(raw)
+    return values[0] != values[1]
+
+
 class NativeReview:
     def __init__(self, store, *, client_factory):
         self.store, self.client_factory = store, client_factory
@@ -258,14 +272,9 @@ class NativeReview:
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
-            has_operation = bool(operation_field and any(
-                item.get('field_id') == operation_field for side in ('before_value', 'after_value')
-                for item in action.get(side, []) if isinstance(item, dict)))
-            has_cost = bool(cost_field and any(
-                item.get('field_id') == cost_field for side in ('before_value', 'after_value')
-                for item in action.get(side, []) if isinstance(item, dict)))
-            has_status = any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
-                             for item in action.get(side, []) if isinstance(item, dict))
+            has_operation = bool(operation_field and _field_changed(action, operation_field))
+            has_cost = bool(cost_field and _field_changed(action, cost_field))
+            has_status = _field_changed(action, mapping['status'])
             if sum((has_operation, has_cost, has_status)) > 1:
                 raise RuntimeFault('PRODUCTION_MIXED_EVENT_DENIED')
             if has_operation:
