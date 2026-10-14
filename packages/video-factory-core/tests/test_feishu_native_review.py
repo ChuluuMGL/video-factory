@@ -248,6 +248,16 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['reason'],'PRODUCTION_PLAN_REQUIRES_RECONCILIATION')
         self.assertEqual(self.writes,1)
 
+    def test_confirmation_before_plan_is_denied_without_charging_or_resetting_cell(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        self.remote['费用确认']='确认此计划的一次生成'
+        self.reducer.enqueue_verified('brand',self.production_event())
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'PRODUCTION_COST_PREMATURE')
+        self.assertEqual(self.remote['费用确认'],'确认此计划的一次生成')
+        self.assertEqual(self.writes,0)
+        with self.store.connect() as db:
+            self.assertIsNone(db.execute("SELECT id FROM tasks WHERE id='new_task'").fetchone())
+
     def test_lost_write_response_requires_readback_and_does_not_repeat_write(self):
         self.enable_free_script_plans()
         self.lose_write_response=True
@@ -301,6 +311,29 @@ class NativeReviewTests(unittest.TestCase):
             save(db,'production:config:brand',policy)
             with self.assertRaisesRegex(RuntimeFault,'PRODUCTION_APPROVAL_CHANGED'):
                 check_production_gate(db,job['plan'])
+
+    def test_closed_revision_can_request_new_plan_on_same_original_row(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        self.reducer.enqueue_verified('brand',self.production_event())
+        self.reducer.process_one('brand')
+        self.remote['费用确认']='确认此计划的一次生成'
+        self.reducer.enqueue_verified('brand',self.cost_event())
+        self.reducer.process_one('brand')
+        old_summary=self.remote['生成计划']
+        with self.store.connect() as db:
+            db.execute("UPDATE tasks SET state='rejected' WHERE project='brand' AND id='new_task' AND revision=1")
+        self.remote.update({'状态':'脚本退回','来源版本':'input_v2',
+                            '创作要求':'Use the revised product description',
+                            '费用确认':'未确认'})
+        self.reducer.enqueue_verified('brand',self.production_event(event_id='evt_plan_v2'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['plans'][0]['status'],'plan_ready')
+        self.assertNotEqual(self.remote['生成计划'],old_summary)
+        self.assertIn('版本 2',self.remote['生成计划'])
+        self.remote['费用确认']='确认此计划的一次生成'
+        self.reducer.enqueue_verified('brand',self.cost_event(event_id='evt_cost_v2'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['approvals'][0]['revision'],2)
+        with self.store.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM tasks WHERE project='brand' AND id='new_task'").fetchone()[0],2)
 
 
 if __name__=='__main__':unittest.main()

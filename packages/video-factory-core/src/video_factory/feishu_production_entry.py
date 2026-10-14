@@ -104,6 +104,9 @@ class ProductionEntry:
         remote = client.record(base, table, record_id)['fields']
         if select_text(remote.get(names['operation'])) != REQUEST:
             raise RuntimeFault('PRODUCTION_REQUEST_REMOTE_CHANGED')
+        cost_value = remote.get(names['cost'])
+        if cost_value not in (None, '', []) and select_text(cost_value) != '未确认':
+            raise RuntimeFault('PRODUCTION_COST_PREMATURE')
         task = identifier(plain_text(remote.get(native['names']['task'])))
         sku = plain_text(remote.get(native['names']['sku_id']))
         source_revision = plain_text(remote.get(native['names']['source_revision']))
@@ -158,15 +161,28 @@ class ProductionEntry:
             old = meta(db, key)
             if old:
                 if old['snapshot'] != snapshot:
-                    raise RuntimeFault('PRODUCTION_PLAN_REQUIRES_RECONCILIATION')
-                if old['state'] == 'ready':
+                    previous = old['snapshot']
+                    if (old['state'] != 'confirmed' or expected_revision != previous['expected_revision'] + 1
+                            or source_revision == previous['source_revision']
+                            or remote.get(names['plan']) != old['summary']):
+                        raise RuntimeFault('PRODUCTION_PLAN_REQUIRES_RECONCILIATION')
+                    # A closed revision can be followed by an explicit new
+                    # request on the same row. Preserve the prior approval
+                    # receipt before replacing the active plan pointer.
+                    save(db, 'production:plan-history:' + fingerprint([project, record_id,
+                                                                         previous, old['approval_event']]), old)
+                    old = None
+                if old and old['state'] == 'ready':
                     if old['expires_at'] <= now:
                         raise RuntimeFault('PRODUCTION_PLAN_EXPIRED')
                     if remote.get(names['plan']) != old['summary'] or not source_still_matches(remote):
                         raise RuntimeFault('PRODUCTION_PLAN_REMOTE_CHANGED')
+                    if select_text(remote.get(names['cost'])) != '未确认':
+                        raise RuntimeFault('PRODUCTION_COST_REMOTE_CHANGED')
                     return {'status': 'plan_ready', 'plan_sha256': digest, 'replayed': True, 'provider_requests': 0}
-                if old['state'] != 'write_unknown': raise RuntimeFault('PRODUCTION_PLAN_STATE_INVALID')
-            else:
+                elif old and old['state'] != 'write_unknown':
+                    raise RuntimeFault('PRODUCTION_PLAN_STATE_INVALID')
+            if not old:
                 save(db, key, {'snapshot': snapshot, 'summary': summary, 'state': 'write_unknown',
                                'event_id': event_id, 'expires_at': now + PLAN_LIFETIME})
         if old:
@@ -187,6 +203,8 @@ class ProductionEntry:
                 raise RuntimeFault('PRODUCTION_PLAN_WRITE_UNKNOWN')
         if not source_still_matches(remote):
             raise RuntimeFault('PRODUCTION_PLAN_REMOTE_CHANGED')
+        if select_text(remote.get(names['cost'])) != '未确认':
+            raise RuntimeFault('PRODUCTION_COST_REMOTE_CHANGED')
         with self.store.connect() as db:
             current = meta(db, key)
             if not current or current['snapshot'] != snapshot or current['summary'] != summary:

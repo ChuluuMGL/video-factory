@@ -33,7 +33,8 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'PRODUCTION_PLAN_NOT_READY','PRODUCTION_COST_ALREADY_CONFIRMED',
                  'PRODUCTION_TASK_REVISION_CHANGED','PRODUCTION_TASK_SOURCE_CONFLICT',
                  'PRODUCTION_COST_TRANSITION_INVALID','PRODUCTION_COST_APPROVAL_DISABLED',
-                 'PRODUCTION_REVIEW_STATE_CONFLICT','PRODUCTION_SOURCE_REVISION_MUST_ADVANCE'}
+                 'PRODUCTION_REVIEW_STATE_CONFLICT','PRODUCTION_SOURCE_REVISION_MUST_ADVANCE',
+                 'PRODUCTION_COST_PREMATURE'}
 
 
 def source_key(project, task):
@@ -143,11 +144,12 @@ class NativeReview:
         prefix = 'native:event:' + identifier(project) + ':'
         pattern = prefix.replace('\\', '\\\\').replace('_', '\\_') + '%'
         with self.store.connect() as db:
-            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' ORDER BY key LIMIT 1001",
+            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
+                              "AND json_extract(value,'$.status')='pending' ORDER BY rowid LIMIT 1001",
                               (pattern,)).fetchall()
             if len(rows)>1000: raise RuntimeFault('FEISHU_EVENT_QUEUE_CAPACITY')
             pending = [(row['key'],json.loads(row['value'])) for row in rows
-                       if json.loads(row['value']).get('project')==project and json.loads(row['value'])['status']=='pending']
+                       if json.loads(row['value']).get('project')==project]
         for key, value in pending:
             try: result = self.consume_verified(project, value['event'])
             except RuntimeFault as error:
