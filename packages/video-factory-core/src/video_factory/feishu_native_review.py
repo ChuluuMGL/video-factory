@@ -9,6 +9,7 @@ import time
 
 from .feishu_bridge import FeishuBridge, meta, save, plain_text, select_text
 from .feishu_client import resource
+from .postgres_store import PostgresStore
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
 EVENT_TYPE = 'drive.file.bitable_record_changed_v1'
@@ -166,10 +167,18 @@ class NativeReview:
     def process_one(self, project):
         prefix = 'native:event:' + identifier(project) + ':'
         pattern = prefix.replace('\\', '\\\\').replace('_', '\\_') + '%'
+        if isinstance(self.store, PostgresStore):
+            # PostgreSQL has neither SQLite's json_extract nor rowid. Sort by
+            # the receipt timestamp so a cost confirmation cannot overtake
+            # the earlier request that prepared its plan.
+            query = ("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
+                     "AND value::jsonb ->> 'status' = 'pending' "
+                     "ORDER BY COALESCE((value::jsonb ->> 'received_at_ns')::bigint, 0), key LIMIT 1001")
+        else:
+            query = ("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
+                     "AND json_extract(value,'$.status')='pending' ORDER BY rowid LIMIT 1001")
         with self.store.connect() as db:
-            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
-                              "AND json_extract(value,'$.status')='pending' ORDER BY rowid LIMIT 1001",
-                              (pattern,)).fetchall()
+            rows = db.execute(query, (pattern,)).fetchall()
             if len(rows)>1000: raise RuntimeFault('FEISHU_EVENT_QUEUE_CAPACITY')
             pending = [(row['key'],json.loads(row['value'])) for row in rows
                        if json.loads(row['value']).get('project')==project]
