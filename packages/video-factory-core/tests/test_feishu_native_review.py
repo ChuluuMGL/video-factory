@@ -351,6 +351,10 @@ class NativeReviewTests(unittest.TestCase):
         image.write_bytes(b'synthetic-reference-image')
         self.store.put_secret(self.admin, 'video', 'synthetic-video-key', self.master)
         with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            native = meta(db, 'native:config:brand')
+            native['context'] = {'synthetic': 'fixture'}
+            save(db, 'native:config:brand', native)
             save(db, 'native:source:' + fingerprint(['brand', 'task_one']),
                  {'record_id': 'recFixture'})
             save(db, 'video:profile:brand', {'credential_ref': 'secret:video',
