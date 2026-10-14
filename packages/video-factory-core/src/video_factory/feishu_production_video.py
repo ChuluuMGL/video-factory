@@ -6,7 +6,8 @@ import time
 from .feishu_bridge import FeishuBridge, meta, plain_text, save, select_text
 from .feishu_client import resource
 from .feishu_native_review import _changed, source_key
-from .feishu_production_entry import _single_select, config_key, plan_key, policy, PLAN_LIFETIME
+from .feishu_production_entry import (_single_select, approval_event_follows_plan,
+                                      config_key, plan_key, policy, PLAN_LIFETIME)
 from .runtime_store import RuntimeFault, RuntimeStore, fingerprint, identifier
 from .worker import Worker, job_key
 
@@ -164,7 +165,8 @@ class ProductionVideo:
                     raise RuntimeFault('PRODUCTION_VIDEO_PLAN_STATE_INVALID')
             if not old:
                 save(db, key, {'snapshot': snapshot, 'summary': summary, 'state': 'write_unknown',
-                               'event_id': event_id, 'expires_at': expiry})
+                               'event_id': event_id, 'expires_at': expiry,
+                               'created_at_ns': time.time_ns()})
         if old:
             remote = client.record(base, table, record)['fields']
             if remote.get(names['plan']) != summary:
@@ -215,6 +217,7 @@ class ProductionVideo:
             profile = meta(db, 'video:profile:' + project)
         if not saved or saved['state'] not in ('ready', 'confirmed') or not profile:
             raise RuntimeFault('PRODUCTION_VIDEO_PLAN_NOT_READY')
+        approval_event_follows_plan(self.store, project, event_id, saved)
         snapshot = saved['snapshot']
         if (saved['expires_at'] <= self.clock()
                 or snapshot['binding_sha256'] != fingerprint(binding)

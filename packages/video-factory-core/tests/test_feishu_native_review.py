@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from cryptography.fernet import Fernet
 
-from video_factory.feishu_bridge import save
+from video_factory.feishu_bridge import meta, save
 from video_factory.feishu_native_review import NativeReview
 from video_factory.feishu_production_entry import plan_key
 from video_factory.feishu_production_video import video_plan_key
@@ -263,6 +263,27 @@ class NativeReviewTests(unittest.TestCase):
         with self.store.connect() as db:
             self.assertIsNone(db.execute("SELECT id FROM tasks WHERE id='new_task'").fetchone())
 
+    def test_delayed_cost_event_cannot_confirm_later_script_plan(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        self.reducer.enqueue_verified('brand', self.cost_event(event_id='evt_old_cost'))
+        self.reducer.consume_verified('brand', self.production_event())
+        self.remote['费用确认'] = '确认此计划的一次生成'
+        self.assertEqual(self.reducer.process_one('brand')['reason'],
+                         'PRODUCTION_COST_EVENT_BEFORE_PLAN')
+        with self.store.connect() as db:
+            self.assertIsNone(db.execute("SELECT id FROM tasks WHERE id='new_task'").fetchone())
+
+    def test_queued_production_event_dies_with_activation(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        self.reducer.enqueue_verified('brand', self.production_event())
+        with self.store.connect() as db:
+            config = meta(db, 'production:config:brand')
+            config['activation_id'] = 'fedcba0987654321fedcba0987654321'
+            save(db, 'production:config:brand', config)
+        self.assertEqual(self.reducer.process_one('brand')['reason'],
+                         'PRODUCTION_EVENT_ACTIVATION_CHANGED')
+        self.assertEqual(self.writes, 0)
+
     def test_removed_cost_approver_cannot_use_unchanged_policy(self):
         self.enable_free_script_plans(cost_enabled=True)
         with self.store.connect() as db:
@@ -456,6 +477,16 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['reason'], 'PRODUCTION_VIDEO_SCRIPT_NOT_APPROVED')
         with self.store.connect() as db:
             from video_factory.feishu_bridge import meta
+            self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
+
+    def test_delayed_cost_event_cannot_confirm_later_video_plan(self):
+        self.enable_video_plan()
+        self.reducer.enqueue_verified('brand', self.video_cost_event(event_id='evt_old_video_cost'))
+        self.reducer.consume_verified('brand', self.video_event())
+        self.remote['费用确认'] = '确认此计划的一次视频生成'
+        self.assertEqual(self.reducer.process_one('brand')['reason'],
+                         'PRODUCTION_COST_EVENT_BEFORE_PLAN')
+        with self.store.connect() as db:
             self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
 
     def test_video_request_replaces_prior_confirmed_script_cost_with_unconfirmed_video_cost(self):

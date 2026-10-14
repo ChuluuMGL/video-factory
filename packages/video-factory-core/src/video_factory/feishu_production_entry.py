@@ -20,6 +20,18 @@ def config_key(project):
     return 'production:config:' + identifier(project)
 
 
+def approval_event_follows_plan(store, project, event_id, saved):
+    """Reject a delayed old click even if the current Base cell matches a new plan."""
+    from .feishu_native_review import queue_key
+    with store.connect() as db:
+        queued = meta(db, queue_key(project, event_id))
+    created = saved.get('created_at_ns')
+    if (not isinstance(created, int) or not queued
+            or not isinstance(queued.get('received_at_ns'), int)
+            or queued['received_at_ns'] <= created):
+        raise RuntimeFault('PRODUCTION_COST_EVENT_BEFORE_PLAN')
+
+
 def plan_key(project, record):
     return 'production:plan:' + fingerprint([identifier(project), resource(record, 'rec')])
 
@@ -204,7 +216,8 @@ class ProductionEntry:
                     raise RuntimeFault('PRODUCTION_PLAN_STATE_INVALID')
             if not old:
                 save(db, key, {'snapshot': snapshot, 'summary': summary, 'state': 'write_unknown',
-                               'event_id': event_id, 'expires_at': now + PLAN_LIFETIME})
+                               'event_id': event_id, 'expires_at': now + PLAN_LIFETIME,
+                               'created_at_ns': time.time_ns()})
         if old:
             remote = client.record(base, table, record_id)['fields']
             if remote.get(names['plan']) != summary:
@@ -268,6 +281,7 @@ class ProductionEntry:
             saved = meta(db, plan_key(project, record_id))
         if not saved or saved['state'] not in ('ready', 'confirmed'):
             raise RuntimeFault('PRODUCTION_PLAN_NOT_READY')
+        approval_event_follows_plan(self.store, project, event_id, saved)
         snapshot = saved['snapshot']
         if (snapshot['binding_sha256'] != fingerprint(binding)
                 or snapshot['native_sha256'] != fingerprint(native)
