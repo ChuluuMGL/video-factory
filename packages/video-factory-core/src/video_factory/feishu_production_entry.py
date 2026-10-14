@@ -136,6 +136,14 @@ class ProductionEntry:
             expected_revision = latest['revision'] if latest else 0
             if latest and latest['state'] not in ('rejected', 'accepted', 'failed'):
                 raise RuntimeFault('PRODUCTION_TASK_NOT_READY')
+            feedback = ''
+            if latest:
+                from .script_jobs import key as script_key, previous_feedback
+                if not meta(db, script_key(project, task, expected_revision)):
+                    raise RuntimeFault('PRODUCTION_TASK_SOURCE_CONFLICT')
+                feedback = previous_feedback(db, project, task, expected_revision)
+                if latest['state'] == 'rejected' and not feedback.strip():
+                    raise RuntimeFault('PRODUCTION_REVIEW_FEEDBACK_MISSING')
             secret = db.execute('SELECT revision FROM vault WHERE alias=?',
                                 (profile['credential_ref'][7:],)).fetchone()
             if not secret or secret[0] != profile['credential_revision']:
@@ -143,6 +151,7 @@ class ProductionEntry:
         now = self.clock()
         snapshot = {'project': project, 'record_id': record_id, 'task': task, 'sku_id': sku,
                     'source_revision': source_revision, 'brief_sha256': hashlib.sha256(brief.encode()).hexdigest(),
+                    'feedback_sha256': hashlib.sha256(feedback.encode()).hexdigest(),
                     'expected_revision': expected_revision, 'model': profile['model'],
                     'billing_owner': profile['billing_owner'], 'credential_revision': profile['credential_revision'],
                     'binding_sha256': fingerprint(binding), 'native_sha256': fingerprint(native),
@@ -300,10 +309,16 @@ class ProductionEntry:
                     (project, snapshot['task'], snapshot['expected_revision'])).fetchone()[0])
                 if previous_input['source_revision'] == snapshot['source_revision']:
                     raise RuntimeFault('PRODUCTION_SOURCE_REVISION_MUST_ADVANCE')
+                from .script_jobs import previous_feedback
+                feedback = previous_feedback(db, project, snapshot['task'], snapshot['expected_revision'])
+                if hashlib.sha256(feedback.encode()).hexdigest() != snapshot['feedback_sha256']:
+                    raise RuntimeFault('PRODUCTION_REVIEW_FEEDBACK_CHANGED')
+            else:
+                feedback = ''
             revision = snapshot['expected_revision'] + 1
             from .script_jobs import key as script_key
             job_plan = {'project': project, 'task': snapshot['task'], 'sku': product, 'brief': brief,
-                        'feedback': '', 'revision': revision, 'actor': snapshot['requester'],
+                        'feedback': feedback, 'revision': revision, 'actor': snapshot['requester'],
                         'deployment': deployment, 'configuration_digest': project_digest,
                         'binding_sha256': fingerprint(binding), 'profile': profile,
                         'max_submissions': 1, 'native_config_sha256': fingerprint(native),

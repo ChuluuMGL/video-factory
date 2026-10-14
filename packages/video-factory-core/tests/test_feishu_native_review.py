@@ -321,7 +321,9 @@ class NativeReviewTests(unittest.TestCase):
         self.reducer.process_one('brand')
         old_summary=self.remote['生成计划']
         with self.store.connect() as db:
-            db.execute("UPDATE tasks SET state='rejected' WHERE project='brand' AND id='new_task' AND revision=1")
+            db.execute("UPDATE tasks SET state='awaiting_script_review' WHERE project='brand' AND id='new_task' AND revision=1")
+            self.store._review(db,'feishu:fixture_tenant:ou_reviewer','evt_revision_reject',
+                               'brand','new_task',1,'script','reject','Change the product description')
         self.remote.update({'状态':'脚本退回','来源版本':'input_v2',
                             '创作要求':'Use the revised product description',
                             '费用确认':'未确认'})
@@ -334,6 +336,9 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.reducer.process_one('brand')['result']['approvals'][0]['revision'],2)
         with self.store.connect() as db:
             self.assertEqual(db.execute("SELECT count(*) FROM tasks WHERE project='brand' AND id='new_task'").fetchone()[0],2)
+            from video_factory.feishu_bridge import meta
+            self.assertIn('Change the product description',
+                          meta(db,script_key('brand','new_task',2))['plan']['feedback'])
 
 
 if __name__=='__main__':unittest.main()

@@ -14,6 +14,18 @@ from .script_provider import ScriptProvider,MODEL
 def key(project,task,revision):return 'script:job:'+fingerprint([project,task,revision])
 
 
+def previous_feedback(db, project, task, revision):
+    # IDs are validated by the caller; escape LIKE wildcards in task IDs.
+    task_match='%'+'"task":"'+task.replace('_', '\\_')+'"%'
+    project_match='%'+'"project":"'+project.replace('_', '\\_')+'"%'
+    audit=db.execute("SELECT receipt FROM events WHERE receipt LIKE ? ESCAPE '\\' AND receipt LIKE ? ESCAPE '\\' LIMIT 501",
+                     (task_match,project_match)).fetchall()
+    if len(audit)>500: raise RuntimeFault('SCRIPT_HISTORY_REQUIRES_REVIEW')
+    rows=[json.loads(v[0]) for v in audit]
+    return '\n'.join(r.get('feedback','') for r in rows if r.get('project')==project
+                     and r.get('task')==task and r.get('revision')==revision)[-8000:]
+
+
 def check_production_gate(db, plan):
     gate = plan.get('production_gate')
     if not gate: return
@@ -109,13 +121,7 @@ class ScriptJobs:
             feedback=''
             if previous:
                 if not meta(db,key(project,task,expected_revision)):raise RuntimeFault('SCRIPT_TASK_SOURCE_CONFLICT')
-                # IDs are validated; bind LIKE patterns and escape underscore.
-                task_match='%"task":"'+task.replace('_', '\\_')+'"%'
-                project_match='%"project":"'+project.replace('_', '\\_')+'"%'
-                audit=db.execute("SELECT receipt FROM events WHERE receipt LIKE ? ESCAPE '\\' AND receipt LIKE ? ESCAPE '\\' LIMIT 501",(task_match,project_match)).fetchall()
-                if len(audit)>500:raise RuntimeFault('SCRIPT_HISTORY_REQUIRES_REVIEW')
-                rows=[json.loads(v[0]) for v in audit]
-                feedback='\n'.join(r.get('feedback','') for r in rows if r.get('project')==project and r.get('task')==task and r.get('revision')==expected_revision)
+                feedback=previous_feedback(db,project,task,expected_revision)
         native_source=None
         if native:
             from .feishu_results_client import ResultClient
