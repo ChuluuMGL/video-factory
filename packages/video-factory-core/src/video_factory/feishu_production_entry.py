@@ -160,7 +160,9 @@ class ProductionEntry:
                     'deployment': deployment, 'max_submissions': 1, 'requester': actor}
         digest = fingerprint(snapshot)
         summary = ('脚本计划 ' + digest[:16] + '｜SKU ' + sku + '｜版本 ' + str(expected_revision + 1)
+                   + '｜创作要求摘要 ' + snapshot['brief_sha256'][:12]
                    + '｜模型 ' + profile['model'] + '｜费用账户 ' + profile['billing_owner']
+                   + '｜有效至 ' + time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(now + PLAN_LIFETIME))
                    + ('｜最多 1 次提交；等待指定负责人确认' if current_config['cost_enabled']
                       else '｜最多 1 次提交；费用确认尚未启用，不会生成'))
         key = plan_key(project, record_id)
