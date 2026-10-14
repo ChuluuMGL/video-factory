@@ -11,7 +11,7 @@ from video_factory.feishu_native_review import NativeReview
 from video_factory.feishu_production_entry import plan_key
 from video_factory.feishu_production_video import video_plan_key
 from video_factory.script_jobs import check_production_gate, key as script_key
-from video_factory.worker import check_video_production_gate, check_video_production_remote, job_key
+from video_factory.worker import Worker, check_video_production_gate, check_video_production_remote, job_key
 from video_factory.feishu_native_sync import item_key
 from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, fingerprint
 
@@ -408,6 +408,18 @@ class NativeReviewTests(unittest.TestCase):
         self.remote['费用确认'] = '未确认'
         with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_VIDEO_REMOTE_CHANGED'):
             check_video_production_remote(self.store, self.master, job, job['plan'], lambda _: Client(self))
+        submissions = []
+        class Provider:
+            def submit(self, body, secret):
+                submissions.append(body)
+                return '1234567890'
+        worker = Worker(self.store, provider_factory=lambda _: Provider(),
+                        media_preflight=lambda: None,
+                        source_client_factory=lambda _: Client(self))
+        with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_VIDEO_REMOTE_CHANGED'):
+            worker.step(self.admin, 'brand', 'task_one', 1, self.master,
+                        Path(self.tmp.name), allow_paid=True)
+        self.assertEqual(submissions, [])
         self.remote['费用确认'] = '确认此计划的一次视频生成'
         with self.store.connect() as db:
             from video_factory.feishu_bridge import meta
