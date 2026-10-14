@@ -23,7 +23,12 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
                  'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
                  'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN',
-                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS'}
+                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS',
+                 'PRODUCTION_REQUEST_REMOTE_CHANGED','PRODUCTION_BRIEF_TOO_LONG',
+                 'PRODUCTION_EXISTING_PLAN_REQUIRES_RECONCILIATION',
+                 'PRODUCTION_SKU_NOT_IN_PROJECT','PRODUCTION_TASK_NOT_READY',
+                 'PRODUCTION_PLAN_REQUIRES_RECONCILIATION','PRODUCTION_MIXED_EVENT_DENIED',
+                 'PRODUCTION_PLAN_EXPIRED','PRODUCTION_PLAN_REMOTE_CHANGED'}
 
 
 def source_key(project, task):
@@ -95,6 +100,7 @@ class NativeReview:
         with self.store.connect() as db:
             binding = self.bridge._binding(db, project)
             config = meta(db, 'native:config:'+project)
+            production = meta(db, 'production:config:'+project)
             if not config or not config.get('enabled') or header.get('app_id') != config['app_id']:
                 raise RuntimeFault('FEISHU_NATIVE_REVIEW_DISABLED')
             if (header.get('tenant_key') != binding['tenant_key'] or event.get('file_token') != binding['base_token']
@@ -106,12 +112,17 @@ class NativeReview:
             reduced['event'] = {k: event[k] for k in ('file_type','file_token','table_id','operator_id') if k in event}
             reduced['event']['operator_id'] = {'open_id':event['operator_id']['open_id']}
             reduced['event']['action_list'] = []
+            allowed_fields = {config['fields']['status']}
+            if production and production.get('enabled'):
+                operation = production.get('fields', {}).get('operation')
+                if not isinstance(operation, str): raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
+                allowed_fields.add(operation)
             for action in actions:
                 if not isinstance(action, dict): raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
                 resource(action.get('record_id'), 'rec')
                 reduced['event']['action_list'].append({
                     'record_id': action['record_id'], 'action': action.get('action'),
-                    **{side: [item for item in action.get(side, []) if item.get('field_id') == config['fields']['status']]
+                    **{side: [item for item in action.get(side, []) if item.get('field_id') in allowed_fields]
                        for side in ('before_value','after_value')}})
             key = queue_key(project, event_id)
             old = meta(db, key)
@@ -183,11 +194,28 @@ class NativeReview:
         client = self.client_factory(config['app_id'])
         option_names = None
         results = []
+        plans = []
+        with self.store.connect() as db:
+            production = meta(db, 'production:config:'+project)
+        operation_field = (production.get('fields', {}).get('operation')
+                           if production and production.get('enabled') else None)
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
-            if not any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
-                       for item in action.get(side, []) if isinstance(item, dict)):
+            has_operation = bool(operation_field and any(
+                item.get('field_id') == operation_field for side in ('before_value', 'after_value')
+                for item in action.get(side, []) if isinstance(item, dict)))
+            has_status = any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
+                             for item in action.get(side, []) if isinstance(item, dict))
+            if has_operation and has_status:
+                raise RuntimeFault('PRODUCTION_MIXED_EVENT_DENIED')
+            if has_operation:
+                from .feishu_production_entry import ProductionEntry
+                receipt = ProductionEntry(self.store, self.client_factory).prepare_verified(
+                    project, event_id, operator, record_id, action, production)
+                if receipt: plans.append(receipt)
+                continue
+            if not has_status:
                 continue
             if option_names is None:
                 fields = [field for field in client.fields(binding['base_token'], binding['table_id'])
@@ -269,4 +297,4 @@ class NativeReview:
                                              project, task, revision, stage, decision, feedback)
                 save(db, key, {'request': request, 'receipt': receipt})
                 results.append(receipt)
-        return {'project': project, 'reviewed': results, 'provider_requests': 0}
+        return {'project': project, 'reviewed': results, 'plans': plans, 'provider_requests': 0}

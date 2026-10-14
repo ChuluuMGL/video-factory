@@ -4,9 +4,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from cryptography.fernet import Fernet
 
 from video_factory.feishu_bridge import save
 from video_factory.feishu_native_review import NativeReview
+from video_factory.feishu_production_entry import plan_key
 from video_factory.feishu_native_sync import item_key
 from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, fingerprint
 
@@ -25,7 +27,9 @@ IDS={'status':'fldStatus','review_revision':'fldReviewRevision','script_digest':
 class Client:
     def __init__(self, fixture): self.fixture=fixture
     def fields(self,base,table):
-        return [{'field_id':'fldStatus','field_name':'状态','type':3,
+        return [{'field_id':'fldOperation','field_name':'生产操作','type':3,
+                 'property':{'options':[{'id':'optRequestScript','name':'申请脚本计划'}]}},
+                {'field_id':'fldStatus','field_name':'状态','type':3,
                  'property':{'options':[{'id':key,'name':name} for key,name in (
                      ('optPending','脚本待审核'),('optApproved','脚本通过'),
                      ('optRejected','脚本退回'),('optVideoPending','视频待审核'),
@@ -33,6 +37,13 @@ class Client:
     def record(self,base,table,record):
         assert (base,table,record)==('bascnFixture','tblFixture','recFixture')
         return {'record_id':record,'fields':dict(self.fixture.remote)}
+    def update_record(self,base,table,record,fields):
+        assert (base,table,record)==('bascnFixture','tblFixture','recFixture')
+        self.fixture.writes+=1
+        self.fixture.remote.update(fields)
+        if getattr(self.fixture,'lose_write_response',False):
+            raise RuntimeError('synthetic lost response')
+        return record
 
 
 class NativeReviewTests(unittest.TestCase):
@@ -44,6 +55,7 @@ class NativeReviewTests(unittest.TestCase):
         self.remote={'任务编号':'task_one','SKU':'sku_one','来源版本':'source_one',
                      '脚本':'Generated script','脚本摘要':hashlib.sha256(b'Generated script').hexdigest(),
                      '状态':'脚本通过','审核目标版本':'1','审核意见':''}
+        self.writes=0
         self.reducer=NativeReview(self.store,client_factory=lambda _:Client(self))
         with self.store.connect() as db:
             save(db,'feishu:binding:brand',BINDING)
@@ -168,6 +180,69 @@ class NativeReviewTests(unittest.TestCase):
         self.remote.update({'状态':'视频通过','视频摘要':digest,'视频':[{'file_token':'fileFixture'}]})
         event=self.event(before='视频待审核',after='视频通过',event_id='evt_video')
         self.assertEqual(self.reducer.consume_verified('brand',event)['reviewed'][0]['state'],'accepted')
+
+    def enable_free_script_plans(self):
+        self.remote.update({'任务编号':'new_task','来源版本':'input_v1',
+                            '生产操作':'申请脚本计划','创作要求':'Show only the stated packaging facts',
+                            '生成计划':'','生产提示':''})
+        master=Fernet.generate_key()
+        self.store.put_secret(self.admin,'script','synthetic-script-key',master)
+        with self.store.connect() as db:
+            save(db,'setup:project:brand',{'configuration':{'project':{'products':[
+                {'sku_id':'sku_one','name':'Synthetic product','truth_source':'Synthetic package facts'}]}}})
+            save(db,'script:profile:brand',{'model':'deepseek-chat','credential_ref':'secret:script',
+                                            'credential_revision':1,'billing_owner':'fixture_account'})
+            save(db,'production:config:brand',{
+                'enabled':True,'app_id':'cli_fixture','tenant_key':'fixture_tenant',
+                'base_token':'bascnFixture','table_id':'tblFixture','fields':{'operation':'fldOperation'},
+                'names':{'operation':'生产操作','brief':'创作要求','plan':'生成计划','hint':'生产提示'}})
+
+    def production_event(self, *, operator='ou_submitter', event_id='evt_plan'):
+        event=self.event(operator=operator,event_id=event_id)
+        action=event['event']['action_list'][0]
+        action['before_value']=[{'field_id':'fldOperation','field_value':''}]
+        action['after_value']=[{'field_id':'fldOperation','field_value':'optRequestScript'}]
+        return event
+
+    def test_verified_request_prepares_one_zero_cost_plan_and_replays(self):
+        self.enable_free_script_plans()
+        event=self.production_event()
+        self.reducer.enqueue_verified('brand',event)
+        result=self.reducer.process_one('brand')['result']
+        self.assertEqual(result['provider_requests'],0)
+        self.assertEqual(result['plans'][0]['status'],'plan_ready')
+        self.assertEqual(self.writes,1)
+        self.assertIn('费用确认尚未启用',self.remote['生成计划'])
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            saved=meta(db,plan_key('brand','recFixture'))
+            self.assertEqual(saved['state'],'ready')
+            self.assertIsNone(db.execute("SELECT id FROM tasks WHERE id='new_task'").fetchone())
+        self.assertTrue(self.reducer.enqueue_verified('brand',event)['replayed'])
+        self.assertEqual(self.reducer.process_one('brand')['status'],'idle')
+        self.assertEqual(self.writes,1)
+
+    def test_plan_requires_submitter_and_refuses_changed_input(self):
+        self.enable_free_script_plans()
+        self.reducer.enqueue_verified('brand',self.production_event(operator='ou_outsider',event_id='evt_outsider'))
+        self.assertEqual(self.reducer.process_one('brand')['status'],'denied')
+        self.assertEqual(self.writes,0)
+        self.reducer.enqueue_verified('brand',self.production_event())
+        self.reducer.process_one('brand')
+        self.remote['创作要求']='Changed after plan'
+        self.reducer.enqueue_verified('brand',self.production_event(event_id='evt_changed'))
+        self.assertEqual(self.reducer.process_one('brand')['reason'],'PRODUCTION_PLAN_REQUIRES_RECONCILIATION')
+        self.assertEqual(self.writes,1)
+
+    def test_lost_write_response_requires_readback_and_does_not_repeat_write(self):
+        self.enable_free_script_plans()
+        self.lose_write_response=True
+        self.reducer.enqueue_verified('brand',self.production_event())
+        with self.assertRaisesRegex(RuntimeFault,'PRODUCTION_PLAN_WRITE_UNKNOWN'):
+            self.reducer.process_one('brand')
+        self.lose_write_response=False
+        self.assertEqual(self.reducer.process_one('brand')['result']['plans'][0]['status'],'plan_ready')
+        self.assertEqual(self.writes,1)
 
 
 if __name__=='__main__':unittest.main()
