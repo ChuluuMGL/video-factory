@@ -9,7 +9,9 @@ from cryptography.fernet import Fernet
 from video_factory.feishu_bridge import save
 from video_factory.feishu_native_review import NativeReview
 from video_factory.feishu_production_entry import plan_key
+from video_factory.feishu_production_video import video_plan_key
 from video_factory.script_jobs import check_production_gate, key as script_key
+from video_factory.worker import check_video_production_gate, check_video_production_remote, job_key
 from video_factory.feishu_native_sync import item_key
 from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, fingerprint
 
@@ -29,10 +31,12 @@ class Client:
     def __init__(self, fixture): self.fixture=fixture
     def fields(self,base,table):
         return [{'field_id':'fldOperation','field_name':'生产操作','type':3,
-                 'property':{'options':[{'id':'optRequestScript','name':'申请脚本计划'}]}},
+                 'property':{'options':[{'id':'optRequestScript','name':'申请脚本计划'},
+                                        {'id':'optRequestVideo','name':'申请视频计划'}]}},
                 {'field_id':'fldCost','field_name':'费用确认','type':3,
                  'property':{'options':[{'id':'optNotConfirmed','name':'未确认'},
-                                         {'id':'optCostConfirm','name':'确认此计划的一次生成'}]}},
+                                         {'id':'optCostConfirm','name':'确认此计划的一次生成'},
+                                         {'id':'optVideoConfirm','name':'确认此计划的一次视频生成'}]}},
                 {'field_id':'fldStatus','field_name':'状态','type':3,
                  'property':{'options':[{'id':key,'name':name} for key,name in (
                      ('optPending','脚本待审核'),('optApproved','脚本通过'),
@@ -60,6 +64,7 @@ class NativeReviewTests(unittest.TestCase):
                      '脚本':'Generated script','脚本摘要':hashlib.sha256(b'Generated script').hexdigest(),
                      '状态':'脚本通过','审核目标版本':'1','审核意见':''}
         self.writes=0
+        self.master=Fernet.generate_key()
         self.reducer=NativeReview(self.store,client_factory=lambda _:Client(self))
         with self.store.connect() as db:
             save(db,'feishu:binding:brand',BINDING)
@@ -189,8 +194,7 @@ class NativeReviewTests(unittest.TestCase):
         self.remote.update({'任务编号':'new_task','来源版本':'input_v1',
                             '生产操作':'申请脚本计划','创作要求':'Show only the stated packaging facts',
                             '生成计划':'','生产提示':'','费用确认':'未确认','状态':''})
-        master=Fernet.generate_key()
-        self.store.put_secret(self.admin,'script','synthetic-script-key',master)
+        self.store.put_secret(self.admin,'script','synthetic-script-key',self.master)
         with self.store.connect() as db:
             save(db,'setup:project:brand',{'configuration':{'project':{'products':[
                 {'sku_id':'sku_one','name':'Synthetic product','truth_source':'Synthetic package facts'}]}}})
@@ -339,6 +343,93 @@ class NativeReviewTests(unittest.TestCase):
             from video_factory.feishu_bridge import meta
             self.assertIn('Change the product description',
                           meta(db,script_key('brand','new_task',2))['plan']['feedback'])
+
+    def enable_video_plan(self, *, cost_enabled=True):
+        self.reducer.consume_verified('brand', self.event(event_id='evt_script_approved'))
+        self.enable_free_script_plans(cost_enabled=cost_enabled)
+        image = Path(self.tmp.name) / 'reference.jpg'
+        image.write_bytes(b'synthetic-reference-image')
+        self.store.put_secret(self.admin, 'video', 'synthetic-video-key', self.master)
+        with self.store.connect() as db:
+            save(db, 'native:source:' + fingerprint(['brand', 'task_one']),
+                 {'record_id': 'recFixture'})
+            save(db, 'video:profile:brand', {'credential_ref': 'secret:video',
+                                             'billing_owner': 'fixture_video_account',
+                                             'region': 'cn', 'assets': {'sku_one': {
+                                                 'assets_root': self.tmp.name,
+                                                 'specification': {'duration': 6, 'references': [
+                                                     {'path': 'reference.jpg',
+                                                      'sha256': hashlib.sha256(image.read_bytes()).hexdigest()}]}}}})
+        self.remote.update({'任务编号': 'task_one', 'SKU': 'sku_one', '来源版本': 'source_one',
+                            '脚本': 'Generated script',
+                            '脚本摘要': hashlib.sha256(b'Generated script').hexdigest(),
+                            '审核目标版本': '1', '状态': '脚本通过',
+                            '生产操作': '申请视频计划', '费用确认': '未确认',
+                            '生成计划': '', '生产提示': ''})
+
+    def video_event(self, *, event_id='evt_video_plan', operator='ou_submitter'):
+        event = self.production_event(operator=operator, event_id=event_id)
+        action = event['event']['action_list'][0]
+        action['after_value'][0]['field_value'] = 'optRequestVideo'
+        return event
+
+    def video_cost_event(self, *, event_id='evt_video_cost', operator='ou_approver'):
+        event = self.cost_event(operator=operator, event_id=event_id)
+        event['event']['action_list'][0]['after_value'][0]['field_value'] = 'optVideoConfirm'
+        return event
+
+    def test_video_plan_and_separate_cost_event_queue_exact_worker_job(self):
+        self.enable_video_plan()
+        self.reducer.enqueue_verified('brand', self.video_event())
+        result = self.reducer.process_one('brand')['result']['plans'][0]
+        self.assertEqual(result['status'], 'video_plan_ready')
+        self.assertEqual(result['provider_requests'], 0)
+        self.assertIn('MiniMax-H3', self.remote['生成计划'])
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            self.assertEqual(meta(db, video_plan_key('brand', 'recFixture'))['state'], 'ready')
+            self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
+        self.remote['费用确认'] = '确认此计划的一次视频生成'
+        event = self.video_cost_event()
+        self.reducer.enqueue_verified('brand', event)
+        approved = self.reducer.process_one('brand')['result']['approvals'][0]
+        self.assertEqual(approved['status'], 'video_approved')
+        self.assertEqual(approved['provider_requests'], 0)
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            job = meta(db, job_key('brand', 'task_one', 1))
+            check_video_production_gate(db, job, job['plan'])
+            self.assertEqual(meta(db, video_plan_key('brand', 'recFixture'))['state'], 'confirmed')
+        check_video_production_remote(self.store, self.master, job, job['plan'], lambda _: Client(self))
+        self.remote['费用确认'] = '未确认'
+        with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_VIDEO_REMOTE_CHANGED'):
+            check_video_production_remote(self.store, self.master, job, job['plan'], lambda _: Client(self))
+        self.remote['费用确认'] = '确认此计划的一次视频生成'
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            config = meta(db, 'production:config:brand')
+            config['cost_enabled'] = False
+            save(db, 'production:config:brand', config)
+            with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_VIDEO_APPROVAL_CHANGED'):
+                check_video_production_gate(db, job, job['plan'])
+        self.assertTrue(self.reducer.enqueue_verified('brand', event)['replayed'])
+
+    def test_video_cost_before_plan_and_changed_script_never_queue(self):
+        self.enable_video_plan()
+        self.remote['费用确认'] = '确认此计划的一次视频生成'
+        self.reducer.enqueue_verified('brand', self.video_cost_event(event_id='evt_early_video'))
+        self.assertEqual(self.reducer.process_one('brand')['reason'], 'PRODUCTION_VIDEO_PLAN_NOT_READY')
+        self.assertEqual(self.writes, 0)
+        self.remote['费用确认'] = '未确认'
+        self.reducer.enqueue_verified('brand', self.video_event())
+        self.reducer.process_one('brand')
+        self.remote['脚本'] = 'tampered'
+        self.remote['费用确认'] = '确认此计划的一次视频生成'
+        self.reducer.enqueue_verified('brand', self.video_cost_event(event_id='evt_changed_video'))
+        self.assertEqual(self.reducer.process_one('brand')['reason'], 'PRODUCTION_VIDEO_SCRIPT_NOT_APPROVED')
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
 
 
 if __name__=='__main__':unittest.main()

@@ -45,8 +45,9 @@ class ProductionSetupTests(unittest.TestCase):
         self.store.put_project(self.admin, 'brand', {'video_route': 'deferred',
                                                      'credential_ref': 'secret:fixture',
                                                      'billing_owner': 'fixture'})
-        self.store.put_secret(self.admin, 'script', 'synthetic-key-only', Fernet.generate_key())
-        self.store.put_secret(self.admin, 'feishu_fixture', 'synthetic-app-secret', Fernet.generate_key())
+        master_key = Fernet.generate_key()
+        self.store.put_secret(self.admin, 'script', 'synthetic-key-only', master_key)
+        self.store.put_secret(self.admin, 'feishu_fixture', 'synthetic-app-secret', master_key)
         self.client = Client()
         binding = {'tenant_key': 'fixture_tenant', 'base_token': 'bascnFixture',
                    'table_id': 'tblFixture', 'fields': {'task': 'fldTask', 'sku_id': 'fldSkuId',

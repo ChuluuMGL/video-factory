@@ -99,6 +99,10 @@ class ProductionEntry:
                        names['cost'], '未确认')
         from .feishu_native_review import _changed
         changed = _changed(action, current_config['fields']['operation'], options)
+        if changed and changed[1] == '申请视频计划':
+            from .feishu_production_video import ProductionVideo
+            return ProductionVideo(self.store, self.client_factory, self.clock).prepare_verified(
+                project, event_id, operator, record_id, action, config)
         if not changed or changed[1] != REQUEST or changed[0] == REQUEST:
             return None
         remote = client.record(base, table, record_id)['fields']
@@ -247,6 +251,10 @@ class ProductionEntry:
             raise RuntimeFault('PRODUCTION_FIELD_SCHEMA_CHANGED')
         from .feishu_native_review import _changed, source_key
         changed = _changed(action, current_config['fields']['cost'], options)
+        if changed and changed[1] == '确认此计划的一次视频生成':
+            from .feishu_production_video import ProductionVideo
+            return ProductionVideo(self.store, self.client_factory, self.clock).confirm_verified(
+                project, event_id, operator, record_id, action, config)
         if not changed or changed[1] != COST_CONFIRM:
             return None
         if changed[0] != '未确认':

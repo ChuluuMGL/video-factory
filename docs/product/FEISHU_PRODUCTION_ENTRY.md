@@ -2,7 +2,7 @@
 
 2026-10-14，[P0-4 开发任务 #35](https://github.com/ChuluuMGL/video-factory/issues/35) 的方案，**尚未启用**。固定 a35 的生成请求仍由 CLI 提交，原表审核已经完成单账号真实验收。本项继续同一产品和后端，不新增员工网页或通用工作台。用户已选择费用确认由指定负责人逐条执行。管理员仍须按具体项目绑定真实负责人；未完成绑定时不启用付费入口。
 
-候选开发分支实现了从 SDK 已验证事件准备脚本计划的零费用处理、异常写入回读，以及指定负责人独立确认后在原脚本账本排入一次任务的后端关口。现增加管理员 CLI 的字段预览、显式启用和暂停候选：`vfctl feishu-production enable|status|pause --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json`。启用时可先只开放零费用计划；暂停保留表字段并使未提交计划失效。它默认关闭，视频计划和真实原表验收尚未完成；不能在客户表启用，也不属于固定 a35。候选代码的测试结果以对应 PR 的云端检查为准。完整关闭条件仍按下文执行。
+候选开发分支实现了从 SDK 已验证事件准备脚本与视频计划的零费用处理、异常写入回读，以及指定负责人对各自计划独立确认后排入现有脚本或 H3 账本的后端关口。管理员 CLI 候选支持字段预览、显式启用和暂停：`vfctl feishu-production enable|status|pause --stack-root /opt/video-factory --session /root/vf-private/customer.setup.json`。启用时可先只开放零费用计划；暂停保留表字段并使未提交计划失效。它默认关闭，视频代码仍待云端回归及真实原表验收；不能在客户表启用，也不属于固定 a35。候选代码的测试结果以对应 PR 的云端检查为准。完整关闭条件仍按下文执行。
 
 ## 员工操作
 
