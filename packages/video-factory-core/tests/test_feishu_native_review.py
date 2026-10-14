@@ -447,5 +447,19 @@ class NativeReviewTests(unittest.TestCase):
             from video_factory.feishu_bridge import meta
             self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
 
+    def test_video_request_replaces_prior_confirmed_script_cost_with_unconfirmed_video_cost(self):
+        self.enable_video_plan()
+        with self.store.connect() as db:
+            save(db, plan_key('brand', 'recFixture'), {
+                'state': 'confirmed', 'snapshot': {'task': 'task_one', 'expected_revision': 0}})
+        self.remote['费用确认'] = '确认此计划的一次生成'
+        self.reducer.enqueue_verified('brand', self.video_event(event_id='evt_video_after_script'))
+        self.assertEqual(self.reducer.process_one('brand')['result']['plans'][0]['status'],
+                         'video_plan_ready')
+        self.assertEqual(self.remote['费用确认'], '未确认')
+        with self.store.connect() as db:
+            from video_factory.feishu_bridge import meta
+            self.assertIsNone(meta(db, job_key('brand', 'task_one', 1)))
+
 
 if __name__=='__main__':unittest.main()

@@ -6,7 +6,7 @@ import time
 from .feishu_bridge import FeishuBridge, meta, plain_text, save, select_text
 from .feishu_client import resource
 from .feishu_native_review import _changed, source_key
-from .feishu_production_entry import _single_select, config_key, policy, PLAN_LIFETIME
+from .feishu_production_entry import _single_select, config_key, plan_key, policy, PLAN_LIFETIME
 from .runtime_store import RuntimeFault, RuntimeStore, fingerprint, identifier
 from .worker import Worker, job_key
 
@@ -104,14 +104,21 @@ class ProductionVideo:
         remote = client.record(base, table, record)['fields']
         if select_text(remote.get(names['operation'])) != VIDEO_REQUEST:
             raise RuntimeFault('PRODUCTION_VIDEO_REMOTE_CHANGED')
-        if remote.get(names['cost']) not in (None, '', []) and select_text(remote[names['cost']]) != '未确认':
+        cost = remote.get(names['cost'])
+        cost = select_text(cost) if cost not in (None, '', []) else '未确认'
+        if cost not in ('未确认', '确认此计划的一次生成'):
             raise RuntimeFault('PRODUCTION_VIDEO_COST_PREMATURE')
         with self.store.connect() as db:
             profile = meta(db, 'video:profile:' + project)
+            script_plan = meta(db, plan_key(project, record)) if cost != '未确认' else None
         if not profile:
             raise RuntimeFault('PRODUCTION_VIDEO_PROFILE_REQUIRED')
         task, sku, revision, source_revision, script = self._source(
             project, record, remote, native, profile)
+        if cost != '未确认' and (not script_plan or script_plan.get('state') != 'confirmed'
+                                  or script_plan['snapshot']['task'] != task
+                                  or script_plan['snapshot']['expected_revision'] + 1 != revision):
+            raise RuntimeFault('PRODUCTION_VIDEO_COST_PREMATURE')
         prepared = self._worker_plan(project, binding, operator, config, digest,
                                      'request', task, revision, sku, profile)
         now = self.clock()
