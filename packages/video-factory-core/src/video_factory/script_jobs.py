@@ -7,11 +7,28 @@ import json
 import re
 import time
 from .runtime_store import RuntimeFault,canonical,fingerprint,identifier
-from .feishu_bridge import FeishuBridge,meta,save,plain_text
+from .feishu_bridge import FeishuBridge,meta,save,plain_text,select_text
 from .script_provider import ScriptProvider,MODEL
 
 
 def key(project,task,revision):return 'script:job:'+fingerprint([project,task,revision])
+
+
+def check_production_gate(db, plan):
+    gate = plan.get('production_gate')
+    if not gate: return
+    from .feishu_production_entry import config_key
+    current = meta(db, gate['plan_key'])
+    policy = meta(db, config_key(plan['project']))
+    if (not current or current.get('state') != 'confirmed'
+            or fingerprint(current.get('snapshot')) != gate['snapshot_sha256']
+            or current.get('approver') != gate['approver']
+            or current.get('expires_at') != gate['expires_at']
+            or not policy or not policy.get('enabled') or not policy.get('cost_enabled')
+            or fingerprint(policy) != gate['policy_sha256']
+            or gate['approver'].split(':')[-1] not in policy.get('cost_approvers', [])
+            or gate['expires_at'] <= time.time()):
+        raise RuntimeFault('PRODUCTION_APPROVAL_CHANGED')
 
 
 def profile(store,token,project,credential_ref,billing_owner):
@@ -187,6 +204,7 @@ class ScriptJobs:
             setup=meta(db,'setup:project:'+project)
             if (settings!=plan['profile'] or fingerprint(binding)!=plan['binding_sha256'] or not setup
                     or plan['sku'] not in setup['configuration']['project']['products']):raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+            check_production_gate(db,plan)
             native=meta(db,'native:config:'+project)
             native=native if native and native.get('enabled') else None
             if fingerprint(native)!=plan.get('native_config_sha256',fingerprint(None)):
@@ -204,9 +222,13 @@ class ScriptJobs:
             if (plain_text(remote.get(names['task']))!=task
                     or plain_text(remote.get(names['sku_id']))!=plan['sku']['sku_id']
                     or plain_text(remote.get(names['source_revision']))!=source['source_revision']
-                    or fingerprint(plain_text(remote.get(names['script'])))!=source['script_digest']
+                    or fingerprint(plain_text(remote.get(source.get('source_field',names['script']))))!=source['script_digest']
                     or status!=('脚本退回' if revision>1 else '')):
                 raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CHANGED')
+            if source.get('cost_field') and (
+                    select_text(remote.get(source['cost_field'])) != source['cost_value']
+                    or plain_text(remote.get(source['plan_field'])) != source['plan_value']):
+                raise RuntimeFault('PRODUCTION_APPROVAL_REMOTE_CHANGED')
         secret=self.store.resolve_secret(settings['credential_ref'][7:],master_key)
         if not secret or any(c.isspace() for c in secret):raise RuntimeFault('SCRIPT_KEY_INVALID')
         with self.store.connect() as db:
@@ -218,6 +240,7 @@ class ScriptJobs:
             current_native=current_native if current_native and current_native.get('enabled') else None
             if fingerprint(current_native)!=plan.get('native_config_sha256',fingerprint(None)):
                 raise RuntimeFault('SCRIPT_NATIVE_CONFIGURATION_CHANGED')
+            check_production_gate(db,plan)
             if plan.get('native_source'):
                 from .feishu_native_review import source_key as native_source_key
                 if meta(db,native_source_key(project,task))!={'record_id':plan['native_source']['record_id']}:

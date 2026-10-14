@@ -28,7 +28,12 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'PRODUCTION_EXISTING_PLAN_REQUIRES_RECONCILIATION',
                  'PRODUCTION_SKU_NOT_IN_PROJECT','PRODUCTION_TASK_NOT_READY',
                  'PRODUCTION_PLAN_REQUIRES_RECONCILIATION','PRODUCTION_MIXED_EVENT_DENIED',
-                 'PRODUCTION_PLAN_EXPIRED','PRODUCTION_PLAN_REMOTE_CHANGED'}
+                 'PRODUCTION_PLAN_EXPIRED','PRODUCTION_PLAN_REMOTE_CHANGED',
+                 'PRODUCTION_COST_APPROVER_DENIED','PRODUCTION_COST_REMOTE_CHANGED',
+                 'PRODUCTION_PLAN_NOT_READY','PRODUCTION_COST_ALREADY_CONFIRMED',
+                 'PRODUCTION_TASK_REVISION_CHANGED','PRODUCTION_TASK_SOURCE_CONFLICT',
+                 'PRODUCTION_COST_TRANSITION_INVALID','PRODUCTION_COST_APPROVAL_DISABLED',
+                 'PRODUCTION_REVIEW_STATE_CONFLICT','PRODUCTION_SOURCE_REVISION_MUST_ADVANCE'}
 
 
 def source_key(project, task):
@@ -115,8 +120,10 @@ class NativeReview:
             allowed_fields = {config['fields']['status']}
             if production and production.get('enabled'):
                 operation = production.get('fields', {}).get('operation')
-                if not isinstance(operation, str): raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
-                allowed_fields.add(operation)
+                cost = production.get('fields', {}).get('cost')
+                if not isinstance(operation, str) or not isinstance(cost, str):
+                    raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
+                allowed_fields.update((operation, cost))
             for action in actions:
                 if not isinstance(action, dict): raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
                 resource(action.get('record_id'), 'rec')
@@ -195,25 +202,37 @@ class NativeReview:
         option_names = None
         results = []
         plans = []
+        approvals = []
         with self.store.connect() as db:
             production = meta(db, 'production:config:'+project)
         operation_field = (production.get('fields', {}).get('operation')
                            if production and production.get('enabled') else None)
+        cost_field = (production.get('fields', {}).get('cost')
+                      if production and production.get('enabled') else None)
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
             has_operation = bool(operation_field and any(
                 item.get('field_id') == operation_field for side in ('before_value', 'after_value')
                 for item in action.get(side, []) if isinstance(item, dict)))
+            has_cost = bool(cost_field and any(
+                item.get('field_id') == cost_field for side in ('before_value', 'after_value')
+                for item in action.get(side, []) if isinstance(item, dict)))
             has_status = any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
                              for item in action.get(side, []) if isinstance(item, dict))
-            if has_operation and has_status:
+            if sum((has_operation, has_cost, has_status)) > 1:
                 raise RuntimeFault('PRODUCTION_MIXED_EVENT_DENIED')
             if has_operation:
                 from .feishu_production_entry import ProductionEntry
                 receipt = ProductionEntry(self.store, self.client_factory).prepare_verified(
                     project, event_id, operator, record_id, action, production)
                 if receipt: plans.append(receipt)
+                continue
+            if has_cost:
+                from .feishu_production_entry import ProductionEntry
+                receipt = ProductionEntry(self.store, self.client_factory).confirm_verified(
+                    project, event_id, operator, record_id, action, production)
+                if receipt: approvals.append(receipt)
                 continue
             if not has_status:
                 continue
@@ -297,4 +316,5 @@ class NativeReview:
                                              project, task, revision, stage, decision, feedback)
                 save(db, key, {'request': request, 'receipt': receipt})
                 results.append(receipt)
-        return {'project': project, 'reviewed': results, 'plans': plans, 'provider_requests': 0}
+        return {'project': project, 'reviewed': results, 'plans': plans,
+                'approvals': approvals, 'provider_requests': 0}
