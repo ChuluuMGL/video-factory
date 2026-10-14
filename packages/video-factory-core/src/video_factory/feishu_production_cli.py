@@ -45,7 +45,9 @@ def cli(args):
                                'operation': operation, 'approvers': approvers or [],
                                'cost_enabled': cost_enabled, 'expected_plan': expected_plan})
 
-        status = call('status')
+        # Emergency pause must remain possible even if the Feishu binding has
+        # since become invalid and status can no longer enumerate members.
+        status = call('status') if args.action != 'pause' else None
         if args.action == 'status':
             result = status
         elif args.action == 'pause':

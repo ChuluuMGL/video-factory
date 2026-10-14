@@ -18,7 +18,7 @@ from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, f
 
 BINDING={'tenant_key':'fixture_tenant','base_token':'bascnFixture','table_id':'tblFixture',
          'fields':{'task':'fldTask','sku_id':'fldSkuId','script':'fldScript','source_revision':'fldSource'},
-         'submitters':['ou_submitter'],'reviewers':['ou_reviewer'],
+         'submitters':['ou_submitter','ou_approver'],'reviewers':['ou_reviewer'],
          'script_reviewers':['ou_reviewer'],'video_reviewers':['ou_reviewer']}
 NAMES={'task':'任务编号','sku_id':'SKU','script':'脚本','source_revision':'来源版本',
        'status':'状态','review_revision':'审核目标版本','script_digest':'脚本摘要','feedback':'审核意见',
@@ -261,6 +261,16 @@ class NativeReviewTests(unittest.TestCase):
         self.assertEqual(self.writes,0)
         with self.store.connect() as db:
             self.assertIsNone(db.execute("SELECT id FROM tasks WHERE id='new_task'").fetchone())
+
+    def test_removed_cost_approver_cannot_use_unchanged_policy(self):
+        self.enable_free_script_plans(cost_enabled=True)
+        with self.store.connect() as db:
+            binding = dict(BINDING)
+            binding['submitters'] = ['ou_submitter']
+            save(db, 'feishu:binding:brand', binding)
+        from video_factory.feishu_production_entry import policy
+        with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_COST_APPROVER_NOT_BOUND'):
+            policy(self.store, 'brand')
 
     def test_lost_write_response_requires_readback_and_does_not_repeat_write(self):
         self.enable_free_script_plans()

@@ -62,6 +62,8 @@ def policy(store, project):
             or len(set(value['cost_approvers'])) != len(value['cost_approvers'])):
         raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
     for approver in value['cost_approvers']: resource(approver, 'ou_')
+    if not set(value['cost_approvers']).issubset(set(binding['submitters']) | set(binding['reviewers'])):
+        raise RuntimeFault('PRODUCTION_COST_APPROVER_NOT_BOUND')
     if (value['app_id'] != native['app_id'] or value['tenant_key'] != binding['tenant_key']
             or value['base_token'] != binding['base_token'] or value['table_id'] != binding['table_id']
             or not setup or not profile or not project_row or not deployment):

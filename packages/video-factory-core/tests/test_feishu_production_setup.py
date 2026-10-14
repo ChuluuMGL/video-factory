@@ -137,6 +137,15 @@ class ProductionSetupTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'PRODUCTION_PLAN_DISABLED'):
             policy(self.store, 'brand')
 
+    def test_pause_still_works_after_binding_is_revoked(self):
+        plan = self.setup.prepare(self.admin, 'brand', ['ou_submitter'], True)
+        self.setup.enable(self.admin, 'brand', ['ou_submitter'], True, plan['plan_sha256'])
+        with self.store.connect() as db:
+            db.execute("DELETE FROM meta WHERE key='feishu:binding:brand'")
+        self.setup.pause(self.admin, 'brand')
+        with self.store.connect() as db:
+            self.assertFalse(meta(db, 'production:config:brand')['enabled'])
+
 
 if __name__ == '__main__':
     unittest.main()
