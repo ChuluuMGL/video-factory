@@ -2,7 +2,7 @@ import json
 import unittest
 from urllib.error import HTTPError
 from unittest.mock import patch,MagicMock
-from video_factory.script_provider import ScriptProvider,MODEL
+from video_factory.script_provider import ScriptProvider,MODEL,PROVIDERS
 from video_factory.runtime_store import RuntimeFault
 
 class ScriptProviderTests(unittest.TestCase):
@@ -66,3 +66,33 @@ class ScriptProviderTests(unittest.TestCase):
                     ScriptProvider().generate({},'brief','','synthetic-key')
                 self.assertEqual(str(raised.exception),code)
                 self.assertEqual(opener.return_value.open.call_count,1)
+
+    def test_named_providers_have_fixed_hosts_and_one_post(self):
+        response=MagicMock();response.__enter__.return_value=response;response.status=200
+        response.read.return_value=b'{"id":"receipt","choices":[{"finish_reason":"stop","message":{"content":"Script"}}]}'
+        for name,(host,prefix,model) in PROVIDERS.items():
+            with self.subTest(name=name),patch('video_factory.script_provider.build_opener') as opener:
+                opener.return_value.open.return_value=response
+                client=ScriptProvider(name)
+                result=client.generate({},'brief','','synthetic-key')
+                request=opener.return_value.open.call_args.args[0]
+                self.assertEqual(request.full_url,f'https://{host}{prefix}/chat/completions')
+                self.assertEqual(request.get_method(),'POST')
+                self.assertEqual(json.loads(request.data)['model'],model)
+                self.assertEqual(result['provider'],name)
+                self.assertEqual(opener.return_value.open.call_count,1)
+                self.assertNotIn('synthetic-key',str(result))
+
+    def test_unverified_providers_do_not_spend_or_claim_authentication(self):
+        with patch('video_factory.script_provider.build_opener') as opener:
+            result=ScriptProvider('gemini').authenticate('synthetic-key')
+            self.assertEqual(result['status'],'not_verified')
+            self.assertEqual(result['model_generation_requests'],0)
+            opener.assert_not_called()
+        for name,model in [('untrusted','anything'),('openai','https://private.invalid'),('openai','../bad')]:
+            with self.subTest(name=name,model=model),self.assertRaises(RuntimeFault):
+                ScriptProvider(name,model)
+
+    def test_reasoning_is_not_written_as_script(self):
+        with self.assertRaisesRegex(RuntimeFault,'UNCERTAIN_NO_RETRY'):
+            self.call({'id':'receipt','choices':[{'finish_reason':'stop','message':{'content':'<think>private</think>script'}}]})

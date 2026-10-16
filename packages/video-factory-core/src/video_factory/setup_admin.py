@@ -73,7 +73,7 @@ class SetupAdmin:
             with self.store.connect() as db: db.execute('DELETE FROM vault WHERE alias=?', (alias,))
             raise
 
-    def script(self, token, session, secret, billing_owner):
+    def script(self, token, session, secret, billing_owner, provider='deepseek', model=None):
         from .script_jobs import profile
         from .runtime_store import identifier
         project = inspect_project(self.store, token, session)['project']
@@ -83,7 +83,7 @@ class SetupAdmin:
         alias='script_'+secrets.token_hex(16)
         self.store.put_secret(token,alias,secret,self.master_key)
         try:
-            return profile(self.store,token,project,'secret:'+alias,billing_owner)
+            return profile(self.store,token,project,'secret:'+alias,billing_owner,provider,model)
         except BaseException:
             with self.store.connect() as db: db.execute('DELETE FROM vault WHERE alias=?',(alias,))
             raise
@@ -108,13 +108,17 @@ class SetupAdmin:
                   'base_results': {'action','token','session','operation','expected_plan','event','step'},
                   'native_review': {'action','token','session','operation','expected_plan'},
                   'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
-        if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
+        script_fields={'action','token','session','secret','billing_owner','provider','model'}
+        check_fields={'action','token','session','secret','provider','model'}
+        if not isinstance(payload, dict) or (set(payload) != fields.get(payload.get('action'), set())
+                and not (payload.get('action')=='script' and set(payload)==script_fields)
+                and not (payload.get('action')=='script_check' and set(payload)==check_fields)):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
         action = payload['action']
         if action == 'script_check':
             inspect_project(self.store,payload['token'],payload['session'])
             from .script_provider import ScriptProvider
-            return ScriptProvider().authenticate(payload['secret'])
+            return ScriptProvider(payload.get('provider','deepseek'),payload.get('model')).authenticate(payload['secret'])
         if action == 'native_review':
             from .feishu_native_sync import NativeSync
             project = inspect_project(self.store, payload['token'], payload['session'])['project']
@@ -141,7 +145,8 @@ class SetupAdmin:
                 return helper.sync(project, Path('/media'), lambda db: self.store.authorize(db, payload['token'], 'admin'))
             raise RuntimeFault('BASE_RESULTS_ACTION_INVALID')
         if action == 'video':return self.video(payload['token'],payload['session'],payload['secret'],payload['billing_owner'],payload['region'],payload['assets'])
-        if action == 'script':return self.script(payload['token'],payload['session'],payload['secret'],payload['billing_owner'])
+        if action == 'script':return self.script(payload['token'],payload['session'],payload['secret'],payload['billing_owner'],
+                                                payload.get('provider','deepseek'),payload.get('model'))
         if action == 'execution_key':
             from .automation import issue_execution
             project=inspect_project(self.store,payload['token'],payload['session'])['project']
