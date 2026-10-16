@@ -260,6 +260,27 @@ try:
     assert not api.request('GET','/api/v1/workflows/'+report['workflow'])['active']
     report=verify_setup(api,root/'bindings','temporary-schema',schema_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     assert not api.request('GET','/api/v1/workflows/'+report['workflow'])['active']
+    phase='one-session project bundle and credential reuse'
+    from portable_n8n import project_credentials,configure_flows
+    def fixture_secret(prompt):
+        return 'synthetic-feishu-secret' if 'App Secret' in prompt else 'synthetic-model-key'
+    pool=project_credentials(api,root/'bindings','bundle','cli_fixture',['feishu','script','video'],fixture_secret)
+    assert project_credentials(api,root/'bindings','bundle','cli_fixture',['feishu','script','video'],lambda _: (_ for _ in ()).throw(AssertionError('REPEATED_KEY_PROMPT')))==pool
+    report=verify_setup(api,root/'bindings','bundle-probe',probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':pool['feishu']})
+    assert report['result']['base_read']=='verified'
+    bundle=configure_flows(api,root/'bindings','bundle','baseFixture','tableFixture',pool,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
+    assert bundle==configure_flows(api,root/'bindings','bundle','baseFixture','tableFixture',pool,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
+    assert set(bundle)=={'script','video-submit','video-poll','recover'}
+    for flow,item in bundle.items():
+        imported=api.request('GET','/api/v1/workflows/'+item['workflow'])
+        assert not imported['active']
+        for node in imported['nodes']:
+            for kind,ref in node.get('credentials',{}).items():
+                role='feishu' if kind=='httpCustomAuth' else 'script' if flow=='script' else 'video'
+                assert ref==pool[role]['existing']
+    assert state['model_calls']==3 and state['video_calls']==1, 'SETUP_MUST_NOT_CALL_MODELS'
+    for receipt in (root/'bindings').glob('*.json'):
+        assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')

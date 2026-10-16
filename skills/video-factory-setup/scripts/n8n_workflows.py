@@ -66,7 +66,7 @@ STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过'
 
 
 def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu.cn',
-                        script_origin='https://api.deepseek.com', video_origin='https://api.minimaxi.com'):
+                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn'):
     if flow not in ('script', 'video-submit', 'video-poll'):
         raise ValueError('FLOW_INVALID')
     url, nodes = start(base, table, feishu_origin)

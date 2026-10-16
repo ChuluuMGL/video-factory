@@ -119,6 +119,29 @@ class Portable(unittest.TestCase):
             self.assertNotIn(key,env)
         self.assertEqual(env['N8N_PORT'],'15679')
         self.assertEqual(env['N8N_USER_FOLDER'],str(self.root/'data'))
+    def test_project_keys_prompt_once_and_reuse_exact_references(self):
+        from portable_n8n import project_credentials
+        prompts=[]
+        def ask(prompt): prompts.append(prompt); return 'SYNTHETIC_PRIVATE_KEY'
+        first=project_credentials(self.api,self.root,'sample','cliFixture',['feishu','script','video'],ask)
+        second=project_credentials(self.api,self.root,'sample','cliFixture',['feishu','script','video'],ask)
+        self.assertEqual(first,second); self.assertEqual(len(prompts),3); self.assertEqual(len(self.api.posts),3)
+        self.assertNotIn('SYNTHETIC_PRIVATE_KEY',(self.root/'credentials-sample.json').read_text(encoding='utf-8'))
+        provision(self.api,self.root,'sample-probe',self.workflow,{'httpCustomAuth':first['feishu']})
+        self.assertEqual(len(self.api.posts),4)
+        self.assertEqual(self.api.posts[-1][1]['nodes'][1]['credentials']['httpCustomAuth'],first['feishu']['existing'])
+        with self.assertRaisesRegex(Fault,'SCOPE_CHANGED'):
+            project_credentials(self.api,self.root,'sample','cliOther',['feishu'],ask)
+        self.assertEqual(len(prompts),3)
+    def test_unknown_project_credential_creation_never_reprompts_or_duplicates(self):
+        from portable_n8n import project_credentials
+        self.api.fail=True
+        with self.assertRaises(Fault):
+            project_credentials(self.api,self.root,'sample','cliFixture',['feishu'],lambda _: 'SYNTHETIC_SECRET')
+        self.api.fail=False
+        with self.assertRaisesRegex(Fault,'UNKNOWN'):
+            project_credentials(self.api,self.root,'sample','cliFixture',['feishu'],lambda _: self.fail('must not ask again'))
+        self.assertEqual(len(self.api.posts),1)
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

@@ -154,6 +154,14 @@ def provision(api, root, project, workflow, credentials):
         for kind, spec in credentials.items():
             if kind in state['credentials']:
                 continue
+            if 'existing' in spec:
+                ref=spec['existing']
+                identifier(ref.get('id'))
+                if not isinstance(ref.get('name'),str) or not ref['name']:
+                    raise Fault('CREDENTIAL_REFERENCE_INVALID')
+                state['credentials'][kind]={'id':ref['id'],'name':ref['name']}
+                private_write(path,state)
+                continue
             name = f'Video Factory {project} {kind}'
             state['pending'] = {'kind': 'credential', 'name': name}
             private_write(path, state)
@@ -484,6 +492,58 @@ def verify_setup(api, root, project, template, credentials):
                 raise Fault('TEMPORARY_SETUP_HOOK_STILL_ACTIVE_DISABLE_IN_N8N')
 
 
+def project_credentials(api, root, project, app, roles, ask_secret=None):
+    """One n8n-encrypted credential per role; local checkpoints contain only IDs.
+
+    A resumed setup reuses these exact IDs. Credential rotation is an explicit
+    operation in n8n, never a silently ignored new key typed into this wizard.
+    """
+    ask_secret=ask_secret or secret
+    identifier(project); identifier(app)
+    with locked(root) as root:
+        path=root/('credentials-'+project+'.json')
+        state=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
+            'origin':api.url,'project':project,'app':app,'roles':{}}
+        if (state['origin'],state['project'],state['app'])!=(api.url,project,app):
+            raise Fault('PROJECT_CREDENTIAL_SCOPE_CHANGED')
+        if state.get('pending'): raise Fault('CREDENTIAL_CREATE_UNKNOWN_RECONCILE_IN_N8N')
+        for role in roles:
+            if role not in ('feishu','script','video'): raise Fault('CREDENTIAL_ROLE_INVALID')
+            if role in state['roles']: continue
+            if role=='feishu':
+                kind='httpCustomAuth'
+                data={'json':json.dumps({'body':{'app_id':app,'app_secret':ask_secret('飞书 App Secret（隐藏输入）: ')}})}
+            else:
+                key=ask_secret(('DeepSeek' if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入）: ')
+                if not key or any(c.isspace() for c in key) or key.lower().startswith('bearer '):
+                    raise Fault('RAW_PROVIDER_KEY_REQUIRED')
+                kind='httpHeaderAuth'; data={'name':'Authorization','value':'Bearer '+key}
+            name='Video Factory '+project+' '+role
+            state['pending']={'role':role,'name':name}; private_write(path,state)
+            created=api.request('POST','/api/v1/credentials',{'name':name,'type':kind,'data':data})
+            state['roles'][role]={'type':kind,'existing':{'id':identifier(created.get('id')),'name':name}}
+            state.pop('pending'); private_write(path,state)
+        return {role:state['roles'][role] for role in roles}
+
+
+def configure_flows(api, root, project, base, table, credentials, *, feishu_origin='https://open.feishu.cn',
+                    script_origin='https://api.deepseek.com',video_origin='https://api.minimax.cn'):
+    """Import a complete disabled bundle, with one shared project execution row."""
+    from n8n_workflows import production_workflow,guard_workflow,recovery_workflow
+    ledger=ensure_ledger(api,root,project,base,table)
+    result={}
+    for flow,role in [('script','script'),('video-submit','video'),('video-poll','video'),('recover',None)]:
+        if role and role not in credentials: continue
+        template=(recovery_workflow(base,table,ledger,feishu_origin=feishu_origin) if flow=='recover' else
+                  production_workflow(base,table,flow,feishu_origin=feishu_origin,
+                                      script_origin=script_origin,video_origin=video_origin))
+        if flow in ('script','video-submit'): template=guard_workflow(template,ledger)
+        selected={'httpCustomAuth':credentials['feishu']}
+        if role: selected['httpHeaderAuth']=credentials[role]
+        result[flow]=provision(api,root,project+'-'+flow,template,selected)
+    return result
+
+
 def welcome(root):
     import platform
     from n8n_workflows import probe_workflow, schema_workflow
@@ -493,25 +553,44 @@ def welcome(root):
     choice=input('选择 1/2/3/4: ').strip()
     if choice not in ('1','2','3','4'): raise Fault('INSTALL_CHOICE_REQUIRED')
     if choice in ('2','3'):
-        saved=install_local(root,'node' if choice=='2' else 'docker')
+        previous=root/'local.json'
+        port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else int(input('本机端口 [5678]: ').strip() or '5678')
+        saved=install_local(root,'node' if choice=='2' else 'docker',port)
         local_control(root,'start')
         url=saved['origin']
         print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')
     else:
         url=origin(input('已有 n8n 地址: ').strip())
-    api=API(url,secret('n8n API Key（隐藏输入）: '))
+    api=API(url,secret('n8n API Key（隐藏输入，本轮只需一次）: '))
     api.preflight()
-    project=identifier(input('项目标识（字母、数字、短横线）: ').strip())
-    base=identifier(input('飞书 Base token: ').strip())
-    table=identifier(input('任务表 table ID: ').strip())
-    app=identifier(input('飞书 App ID: ').strip())
-    app_secret=secret('飞书 App Secret（隐藏输入）: ')
-    credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':app,'app_secret':app_secret}})}}}
-    receipt=verify_setup(api,root/'bindings',project+'-probe',probe_workflow(base,table),credentials)
+    project=identifier(input('项目标识（字母、数字、短横线；续接用原标识）: ').strip())
+    bindings=root/'bindings'
+    path=bindings/('project-'+project+'.json')
+    if path.exists():
+        config=json.loads(path.read_text(encoding='utf-8'))
+        if config['origin']!=url: raise Fault('PROJECT_ORIGIN_CHANGED')
+        base,table,app=config['base'],config['table'],config['app']
+        print('续接已保存的项目：'+project+'；Base：'+base+'；任务表：'+table)
+    else:
+        base=identifier(input('飞书 Base token: ').strip())
+        table=identifier(input('任务表 table ID: ').strip())
+        app=identifier(input('飞书 App ID: ').strip())
+        with locked(bindings):
+            private_write(path,{'origin':url,'base':base,'table':table,'app':app})
+    credentials=project_credentials(api,bindings,project,app,['feishu'])
+    selected={'httpCustomAuth':credentials['feishu']}
+    receipt=verify_setup(api,bindings,project+'-probe',probe_workflow(base,table),selected)
     print('飞书读取检查完成。')
     if input('为这张表补齐审核字段（保留原字段与选项）？y/N: ').strip().lower()=='y':
-        receipt['schema']=verify_setup(api,root/'bindings',project+'-schema',schema_workflow(base,table),credentials)
-    receipt.update(project=project,production_ready=False,next='基础接入完成；继续逐条模型与审核验收，尚未开启自动生产。')
+        receipt['schema']=verify_setup(api,bindings,project+'-schema',schema_workflow(base,table),selected)
+    roles=[]
+    print('接下来可导入脚本、视频和恢复流程，均保持关闭，不会调用模型。')
+    if input('配置 DeepSeek 脚本流程？y/N: ').strip().lower()=='y': roles.append('script')
+    if input('配置 MiniMax H3 视频流程？y/N: ').strip().lower()=='y': roles.append('video')
+    if roles:
+        credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
+        receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
+    receipt.update(project=project,production_ready=False,next='接入和关闭状态的流程已保存；人工审核在飞书。尚未开启自动生产，继续逐条验收。')
     return receipt
 
 
