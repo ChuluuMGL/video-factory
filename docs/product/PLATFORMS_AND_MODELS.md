@@ -13,7 +13,7 @@ n8n 官方提供 [Docker Compose 安装](https://docs.n8n.io/deploy/host-n8n/ins
 
 如果只需**单独运行 n8n**，Windows 与 Mac 的路径相同：安装并启动 [Docker Desktop](https://docs.docker.com/desktop/)，确认 `docker compose version` 可用；按照 n8n 官方 Compose 指南创建持久卷、设置时区与访问地址，启动后访问本机 `http://localhost:5678`，再重启核对工作流和凭据仍在。生产 n8n 应另行规划 PostgreSQL、加密密钥、HTTPS、备份和更新。这个步骤不运行 `vfctl`，也不会获得 Video Factory 的任务、私网凭据或飞书接入。
 
-如果目标是**安装 Video Factory**，请在 Windows/Mac 的 Agent 中选择“远程 Ubuntu 主机”，经已核验指纹的 SSH 连接；在 Ubuntu 主机上按[完整安装路径](../../skills/video-factory-setup/references/complete-install.md)检查 `bootstrap.sh --check`，再部署产品自带的 n8n。已有独立 n8n 时，不用“再装一个 n8n”作为诊断：先核对是否属于本产品 stack；属于则续接原 session，不属于则保持隔离。
+如果目标是**安装 Video Factory**，请在 Windows/Mac 的 Agent 中选择“远程 Ubuntu 主机”，经已核验指纹的 SSH 连接；在 Ubuntu 主机上按[完整安装路径](https://github.com/ChuluuMGL/video-factory/blob/main/skills/video-factory-setup/references/complete-install.md)检查 `bootstrap.sh --check`，再部署产品自带的 n8n。已有独立 n8n 时，不用“再装一个 n8n”作为诊断：先核对是否属于本产品 stack；属于则续接原 session，不属于则保持隔离。
 
 客户遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED`、`LINUX_X86_64_ROOT_ADMIN_REQUIRED` 或 `LOCAL_DOCKER_ENGINE_REQUIRED` 时，Agent 应先回读目标主机的 `uname -s`、`uname -m`、`/etc/os-release`、Docker context、Compose 版本和可用空间，再决定是连接错机器、依赖缺失，还是平台不受支持。不能只因 n8n 网页能打开就继续 Setup。Ubuntu 服务器已有 n8n 时，也先核对其所有权、数据与备份，不覆盖现有实例。
 
