@@ -112,3 +112,5 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。本项目自有源码和文档采用 [MIT](LICENSE)；第三方依赖、镜像和案例媒体保留各自条款，见 [第三方说明](THIRD_PARTY_NOTICES.md)。欢迎通过 Issue 和 Pull Request 提出改进，参见 [贡献指南](CONTRIBUTING.md)。
 
 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
+
+本机和已有 n8n 的实际安装/接入正在 [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49) 验收，包含原生安装、Docker 和公共 API 导入。参见 [候选操作说明](docs/product/PORTABLE_N8N.md)；尚不是稳定发行。

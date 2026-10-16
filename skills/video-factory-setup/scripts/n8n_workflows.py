@@ -125,3 +125,60 @@ return [{json:{fields:{'视频链接':{link:task.content.url,text:'查看视频'
                   write('Write video for human review', '={{ $json }}')]
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
     return compile_nodes(nodes)
+
+
+def schema_workflow(base, table, *, feishu_origin='https://open.feishu.cn'):
+    """Add missing fields; preserve existing fields/options and reject type drift."""
+    _, nodes = start(base, table, feishu_origin)
+    fields_url=f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/fields'
+    script = r"""if ($json.code !== 0 || $json.data.has_more) throw new Error('SCHEMA_INVENTORY_INCOMPLETE');
+const fields=$json.data.items || [], specs=REQUIRED_FIELDS, statuses=REQUIRED_STATUSES;
+const changes=[];
+for (const [name,type] of Object.entries(specs)) {
+  const matches=fields.filter(f=>f.field_name===name);
+  if(matches.length>1 || (matches[0] && matches[0].type!==type)) throw new Error('SCHEMA_FIELD_TYPE_OR_NAME_CONFLICT');
+  const found=matches[0];
+  if (!found) {
+    const body={field_name:name,type};
+    if(type===3) body.property={options:statuses.map(name=>({name}))};
+    changes.push({json:{method:'POST',suffix:'',body}});
+  } else if(type===3) {
+    const options=found.property?.options || [];
+    const missing=statuses.filter(name=>!options.some(o=>o.name===name));
+    if(missing.length) {
+      if(!/^[A-Za-z0-9_-]+$/.test(found.field_id)) throw new Error('FIELD_ID_INVALID');
+      changes.push({json:{method:'PUT',suffix:'/'+found.field_id,body:{field_name:name,type,property:{...found.property,options:[...options,...missing.map(name=>({name}))]}}}});
+    }
+  }
+}
+return changes.length ? changes : [{json:{noop:true}}];""".replace('REQUIRED_FIELDS',json.dumps(FIELDS,ensure_ascii=False)).replace('REQUIRED_STATUSES',json.dumps(STATUSES,ensure_ascii=False))
+    nodes += [http('Read existing fields',fields_url+'?page_size=100',feishu=True),
+              code('Plan additive schema changes',script),
+              {'name':'Fields already ready','type':'n8n-nodes-base.if','typeVersion':2.2,
+               'parameters':{'conditions':{'options':{'caseSensitive':True,'leftValue':'','typeValidation':'strict','version':2},
+                  'conditions':[{'id':'noop','leftValue':'={{ $json.noop === true }}','rightValue':'','operator':{'type':'boolean','operation':'true','singleValue':True}}],
+                  'combinator':'and'},'options':{}}},
+              http('Apply missing fields','={{ '+json.dumps(fields_url)+' + $json.suffix }}',
+                   '={{ $json.method }}','={{ $json.body }}',feishu=True),
+              code('Schema receipt',"if (!$json.noop && $json.code !== 0) throw new Error('SCHEMA_CHANGE_INCOMPLETE_REREAD_FIELDS'); return [{json:{schema_change:'accepted',provider_requests:0}}];")]
+    workflow=compile_nodes(nodes)
+    workflow['connections']['Fields already ready']={'main':[
+        [{'node':'Schema receipt','type':'main','index':0}],
+        [{'node':'Apply missing fields','type':'main','index':0}]]}
+    return workflow
+
+
+def setup_hook(workflow, path):
+    """Temporary authenticated entry for zero-model setup checks only."""
+    identifier(path)
+    if any(n['name'] in ('Generate script','Submit video once','Poll existing video') for n in workflow['nodes']):
+        raise ValueError('SETUP_HOOK_MUST_NOT_CALL_MODELS')
+    workflow=json.loads(json.dumps(workflow))
+    start=workflow['nodes'][0]['name']
+    hook={'id':'vf-setup-hook','name':'Temporary setup check','type':'n8n-nodes-base.webhook',
+          'typeVersion':2,'position':[0,200],'parameters':{'httpMethod':'POST','path':path,
+          'responseMode':'lastNode','authentication':'headerAuth','options':{}},
+          'credentials':{'httpHeaderAuth':{'id':'UNBOUND','name':'UNBOUND'}}}
+    workflow['nodes'].append(hook)
+    workflow['connections'][hook['name']]=workflow['connections'][start]
+    return workflow

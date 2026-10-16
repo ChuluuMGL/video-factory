@@ -25,6 +25,8 @@
 
 若没有 n8n 且已有受支持 Ubuntu 主机，现版固定包会自行安装 n8n，再接项目与飞书；不要求预先单独安装 n8n。若已经有 n8n，保留已有工作流和凭据，先核对 API 可用性、飞书 Base 和产品执行端点的连接方式。**现版尚未支持直接把完整业务流程接入独立 n8n**：此时报告当前缺口及[接入路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md)，不得为了绕过检查暗中创建第二套服务，也不得把“n8n 可用”记为“Video Factory 安装成功”。若尚无 n8n、希望在本机试用，先说明 Node.js、Docker 与 n8n Cloud 的选择，再说明产品完整接入仍待开发与验收。已安装 Video Factory 的客户走原部署续接，不再运行首次安装识别。
 
+本分支的便携开发候选可通过 `scripts/portable_n8n.py` 实际安装本机 n8n 或接入已有实例，详见 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md)。不要把下方固定服务器发行包用于这条路线，也不要将手动测试工作流当作已完成自动生产。
+
 ## 3. 取得服务器发行包
 
 a31 起为公开固定发行。按指南给出的准确 Release 标签，匿名获取 archive、release.json 和 SHA256SUMS，不从浮动分支安装。无需索取 GitHub token；全部下载与安装在目标云端进行。服务器按固定摘要从上游获取服务镜像，公开发行不附带早期离线镜像包。

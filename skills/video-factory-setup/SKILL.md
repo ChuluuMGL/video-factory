@@ -15,6 +15,10 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 3. 固定版本、来源提交、发行包 SHA256 和清单 SHA256。先验证归档，再解压或执行包内代码。校验值必须来自可信交付记录；包内自报哈希不是发布者身份验证。
 4. 只用该包安装的 CLI 绝对路径。不要把 `isolated/vf` 或旧四项目 canary 当作客户安装器。不创建中央客户数据库，不自动启动旧 ECS、不另租服务器。
 
+## 便携接入开发候选
+
+本分支增加实际执行脚本 `scripts/portable_n8n.py` 和通用工作流模块 `scripts/n8n_workflows.py`。按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md) 区分本机安装与已有实例接入；不要将候选的合成测试说成稳定发行或全业务验收。已有实例直接 `check/connect`，不强制新装 Ubuntu。收费工作流仍为人工逐条验收候选，禁止擅自激活定时付费生产。
+
 ## 安装、配置与接入
 
 - 读取 [完整安装路径](references/complete-install.md) 并核对固定发行包。已有的常驻网页审核实现不是默认安装步骤；不得为了完成安装而部署网页或配置业务子域名。

@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import secrets
 import socket
 import subprocess
 import sys
@@ -181,7 +182,8 @@ def provision(api, root, project, workflow, credentials):
         for node in expected['nodes']:
             for kind in node.get('credentials', {}):
                 node['credentials'][kind] = state['credentials'][kind]
-        if saved.get('nodes') != expected['nodes'] or saved.get('connections') != expected['connections']:
+        if (saved.get('nodes') != expected['nodes'] or saved.get('connections') != expected['connections']
+                or any(saved.get('settings',{}).get(k) != v for k,v in expected['settings'].items())):
             raise Fault('WORKFLOW_READBACK_MISMATCH')
         state['verified_disabled'] = True
         private_write(path, state)
@@ -226,6 +228,15 @@ def install_local(root, mode, port=5678):
             if saved['mode'] != mode or saved['port'] != port:
                 raise Fault('LOCAL_INSTALL_EXISTS_REUSE_OR_CHOOSE_EMPTY_DIRECTORY')
             return saved
+        plan = {'mode': mode, 'version': N8N_VERSION, 'port': port}
+        plan_path = root / 'install-plan.json'
+        if plan_path.exists():
+            if json.loads(plan_path.read_text()) != plan:
+                raise Fault('INSTALL_PLAN_CHANGED_USE_ORIGINAL_PARAMETERS')
+        elif any(p.name != '.provision.lock' for p in root.iterdir()):
+            raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
+        else:
+            private_write(plan_path, plan)
         # New installs must not take over an existing listener, even if not n8n.
         with socket.socket() as probe:
             try:
@@ -309,7 +320,10 @@ def local_control(root, action):
             if not executable.is_file():
                 raise Fault('LOCAL_N8N_NOT_INSTALLED')
             flags = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
-            with open(os.devnull, 'w') as sink:
+            log_path = root / 'n8n-local.log'
+            if log_path.is_symlink(): raise Fault('SYMLINK_REJECTED')
+            log_fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
+            with os.fdopen(log_fd, 'w') as sink:
                 process = subprocess.Popen([shutil.which('node') or 'node', str(executable), 'start'],
                     cwd=root, env=environment(root, saved['port']), stdin=subprocess.DEVNULL,
                     stdout=sink, stderr=sink, **flags)
@@ -343,15 +357,85 @@ def local_control(root, action):
             for _ in range(120):
                 if health(saved['origin']):
                     return {'status': 'reachable', 'origin': saved['origin'], 'owner_setup': 'complete_in_n8n_editor'}
+                if saved['mode']=='node' and not process_identity(saved['pid']):
+                    raise Fault('START_FAILED_INSPECT_PRIVATE_N8N_LOG')
                 time.sleep(1)
             raise Fault('START_TIMEOUT_INSPECT_OWNED_N8N_PROCESS')
         return {'status': 'stopped', 'data_preserved': True}
+
+
+def verify_setup(api, root, project, template, credentials):
+    """Run a zero-model setup workflow through a temporary authenticated hook."""
+    from n8n_workflows import setup_hook
+    hook_path = 'vf-setup-' + identifier(project)
+    token = secrets.token_urlsafe(32)
+    credentials = {**credentials, 'httpHeaderAuth': {'type':'httpHeaderAuth',
+                   'data': {'name':'X-VF-Setup', 'value':token}}}
+    template = setup_hook(template, hook_path)
+    # A unique receipt namespace is required for each temporary hook token.
+    # Keep the durable regular workflow binding separate and disabled.
+    unique = project + '-' + secrets.token_hex(4)
+    saved = provision(api, root, unique, template, credentials)
+    workflow_id = saved['workflow']
+    activated = False
+    try:
+        activated = True  # Mark intent before POST: timeout is also deactivated.
+        api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
+        request = Request(api.url+'/webhook/'+hook_path, method='POST',data=b'{}',
+                          headers={'X-VF-Setup':token,'Content-Type':'application/json'})
+        try:
+            with build_opener(NoRedirect).open(request,timeout=180) as response:
+                raw=response.read(65537)
+                if len(raw)>65536: raise Fault('SETUP_CHECK_RESPONSE_TOO_LARGE')
+                value=json.loads(raw)
+        except (OSError,ValueError):
+            raise Fault('SETUP_CHECK_INCOMPLETE_READ_N8N_EXECUTION') from None
+        if not isinstance(value,(dict,list)):
+            raise Fault('SETUP_CHECK_RECEIPT_INVALID')
+        return {'workflow':workflow_id,'result':value,'provider_requests':0}
+    finally:
+        if activated:
+            api.request('POST','/api/v1/workflows/'+workflow_id+'/deactivate',{})
+            if api.request('GET','/api/v1/workflows/'+workflow_id).get('active'):
+                raise Fault('TEMPORARY_SETUP_HOOK_STILL_ACTIVE_DISABLE_IN_N8N')
+
+
+def welcome(root):
+    import platform
+    from n8n_workflows import probe_workflow, schema_workflow
+    print('Video Factory · 本机 / 已有 n8n 接入（开发候选）')
+    print('检测到系统：'+platform.system()+'；Node.js：'+str(bool(shutil.which('node')))+'；Docker：'+str(bool(shutil.which('docker'))))
+    print('1. 已有 n8n（本机或服务器）  2. 新装本机 Node.js n8n  3. 新装 Docker n8n  4. n8n Cloud')
+    choice=input('选择 1/2/3/4: ').strip()
+    if choice not in ('1','2','3','4'): raise Fault('INSTALL_CHOICE_REQUIRED')
+    if choice in ('2','3'):
+        saved=install_local(root,'node' if choice=='2' else 'docker')
+        local_control(root,'start')
+        url=saved['origin']
+        print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')
+    else:
+        url=origin(input('已有 n8n 地址: ').strip())
+    api=API(url,secret('n8n API Key（隐藏输入）: '))
+    api.preflight()
+    project=identifier(input('项目标识（字母、数字、短横线）: ').strip())
+    base=identifier(input('飞书 Base token: ').strip())
+    table=identifier(input('任务表 table ID: ').strip())
+    app=identifier(input('飞书 App ID: ').strip())
+    app_secret=secret('飞书 App Secret（隐藏输入）: ')
+    credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':app,'app_secret':app_secret}})}}}
+    receipt=verify_setup(api,root/'bindings',project+'-probe',probe_workflow(base,table),credentials)
+    print('飞书读取检查完成。')
+    if input('为这张表补齐审核字段（保留原字段与选项）？y/N: ').strip().lower()=='y':
+        receipt['schema']=verify_setup(api,root/'bindings',project+'-schema',schema_workflow(base,table),credentials)
+    receipt.update(project=project,production_ready=False,next='基础接入完成；继续逐条模型与审核验收，尚未开启自动生产。')
+    return receipt
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Video Factory 本机 n8n / 已有实例接入')
     parser.add_argument('--root', type=Path, default=Path.home() / '.video-factory/n8n')
     commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('welcome')
     install = commands.add_parser('install')
     install.add_argument('--mode', choices=['node', 'docker'], required=True)
     install.add_argument('--port', type=int, default=5678)
@@ -364,9 +448,26 @@ def main(argv=None):
     bind.add_argument('--project', required=True)
     bind.add_argument('--base', required=True)
     bind.add_argument('--table', required=True)
+    bind.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], default='probe')
+    bind.add_argument('--experimental-manual', action='store_true', help='允许导入人工逐条测试工作流；不表示支持并发/自动生产')
+    export = commands.add_parser('export')
+    export.add_argument('--base', required=True)
+    export.add_argument('--table', required=True)
+    export.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], required=True)
+    export.add_argument('--out', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'install':
+        if args.command == 'welcome':
+            value = welcome(args.root)
+        elif args.command == 'export':
+            from n8n_workflows import probe_workflow, schema_workflow, production_workflow
+            template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
+                        schema_workflow(args.base,args.table) if args.flow=='schema' else
+                        production_workflow(args.base,args.table,args.flow))
+            if args.out.exists(): raise Fault('EXPORT_EXISTS_CHOOSE_NEW_PATH')
+            private_write(args.out,template)
+            value={'exported':str(args.out),'credentials_included':False,'active':False,'production_ready':False}
+        elif args.command == 'install':
             value = install_local(args.root, args.mode, args.port)
         elif args.command in ('start', 'stop'):
             value = local_control(args.root, args.command)
@@ -375,15 +476,27 @@ def main(argv=None):
             if args.command == 'check':
                 value = api.preflight()
             else:
-                from n8n_workflows import probe_workflow
+                from n8n_workflows import probe_workflow, schema_workflow, production_workflow
+                if args.flow not in ('probe','schema') and not args.experimental_manual:
+                    raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
                 app_id = input('飞书 App ID: ').strip()
                 identifier(app_id)
                 app_secret = secret('飞书 App Secret（隐藏输入）: ')
                 credential = {'type': 'httpCustomAuth', 'data': {'json': json.dumps(
                     {'body': {'app_id': app_id, 'app_secret': app_secret}})}}
-                value = provision(api, args.root, args.project,
-                    probe_workflow(args.base, args.table), {'httpCustomAuth': credential})
-                value['next'] = '在 n8n 执行已导入的飞书连通检查；安装未激活付费生成。'
+                credentials = {'httpCustomAuth':credential}
+                if args.flow not in ('probe','schema'):
+                    provider = 'DeepSeek' if args.flow=='script' else 'MiniMax 中国区'
+                    key = secret(provider + ' API Key（隐藏输入）: ')
+                    if any(c.isspace() for c in key) or key.lower().startswith('bearer '):
+                        raise Fault('RAW_PROVIDER_KEY_REQUIRED')
+                    credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+key}}
+                template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
+                            schema_workflow(args.base,args.table) if args.flow=='schema' else
+                            production_workflow(args.base,args.table,args.flow))
+                value = provision(api, args.root, args.project + '-' + args.flow,template,credentials)
+                value['next'] = '在 n8n 查看并逐条运行测试；未激活定时执行。人工审核在飞书 Base。'
+                value['production_ready'] = False
         print(json.dumps(value, ensure_ascii=False))
         return 0
     except Fault as error:

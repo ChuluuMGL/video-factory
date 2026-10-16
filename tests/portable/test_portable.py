@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
 from portable_n8n import API, Fault, origin, provision, locked, install_local
-from n8n_workflows import probe_workflow, production_workflow
+from n8n_workflows import probe_workflow, production_workflow, schema_workflow
 
 class FakeAPI:
     url='https://n8n.example.invalid'
@@ -65,6 +65,11 @@ class Portable(unittest.TestCase):
             with self.assertRaisesRegex(Fault,'PORT_IN_USE'):
                 install_local(self.root,'node',sock.getsockname()[1])
         self.assertFalse((self.root/'local.json').exists())
+    def test_nonempty_install_directory_never_overwritten(self):
+        path=self.root/'package.json'; path.write_text('{"name":"existing-project"}')
+        with self.assertRaisesRegex(Fault,'DIRECTORY_NOT_EMPTY'):
+            install_local(self.root,'node',15679)
+        self.assertEqual(path.read_text(),'{"name":"existing-project"}')
     def test_paid_templates_never_retry_or_activate(self):
         for flow in ['script','video-submit','video-poll']:
             workflow=production_workflow('baseTest','tableTest',flow)
@@ -72,6 +77,13 @@ class Portable(unittest.TestCase):
             self.assertEqual(workflow['nodes'][0]['type'],'n8n-nodes-base.manualTrigger')
             for node in workflow['nodes']:
                 if node['type']=='n8n-nodes-base.httpRequest': self.assertFalse(node['retryOnFail'])
+    def test_all_generated_code_nodes_parse_in_node(self):
+        import subprocess
+        workflows=[probe_workflow('baseTest','tableTest'),schema_workflow('baseTest','tableTest')]
+        workflows += [production_workflow('baseTest','tableTest',flow) for flow in ['script','video-submit','video-poll']]
+        source=[node['parameters']['jsCode'] for workflow in workflows for node in workflow['nodes'] if node['type']=='n8n-nodes-base.code']
+        result=subprocess.run(['node','-e',"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{for(const code of JSON.parse(s))new Function('$json','$input','$','$execution',code);});"],input=json.dumps(source),text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

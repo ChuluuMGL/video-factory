@@ -13,10 +13,10 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, install_local, local_control, provision
-from n8n_workflows import probe_workflow, production_workflow
+from portable_n8n import API, environment, install_local, local_control, provision, verify_setup
+from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS
 
-state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0}
+state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':''}
 class Fixture(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def reply(self, body):
@@ -24,7 +24,12 @@ class Fixture(BaseHTTPRequestHandler):
         self.send_header('Content-Type','application/json'); self.send_header('Content-Length', str(len(raw)))
         self.end_headers(); self.wfile.write(raw)
     def do_GET(self):
-        if self.path.endswith('/recFixture'):
+        if '/fields?' in self.path:
+            self.reply({'code':0,'data':{'items':state['fields'],'has_more':False}})
+        elif '/v2/query/video_generation/' in self.path:
+            state['polls']+=1
+            self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
+        elif self.path.endswith('/recFixture'):
             self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution')}}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
@@ -33,11 +38,19 @@ class Fixture(BaseHTTPRequestHandler):
         if self.path.endswith('/tenant_access_token/internal'):
             assert body == {'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}, body.keys()
             state['token_calls']+=1; self.reply({'code':0,'tenant_access_token':'synthetic-token'})
+        elif self.path.endswith('/fields'):
+            state['fields'].append({**body,'field_id':'fld'+str(len(state['fields']))})
+            self.reply({'code':0,'data':{'field':state['fields'][-1]}})
+        elif self.path.endswith('/v2/video_generation'):
+            assert body['model']=='MiniMax-H3' and len(body['content'])==2
+            assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            state['video_calls']+=1
+            self.reply({'task_id':'123456789012345'})
         elif '/search?' in self.path:
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
-            if state['status']=='请求脚本':
-                items=[{'record_id':'recFixture','fields':{'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script']}}]
+            if state['status'] in [c['value'][0] for c in body['filter']['conditions']]:
+                items=[{'record_id':'recFixture','fields':{'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}]
             self.reply({'code':0,'data':{'items':items,'has_more':False}})
         elif self.path.endswith('/chat/completions'):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
@@ -51,6 +64,7 @@ class Fixture(BaseHTTPRequestHandler):
         if '状态' in fields: state['status']=fields['状态']
         if '脚本' in fields: state['script']=fields['脚本']
         if '执行编号' in fields: state['execution']=fields['执行编号']
+        if '视频任务ID' in fields: state['job']=fields['视频任务ID']
         self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}})
 
 fixture=ThreadingHTTPServer(('0.0.0.0',0),Fixture)
@@ -117,6 +131,12 @@ try:
     phase='probe execution'
     execute(saved['workflow'])
     assert state['token_calls']==1
+    phase='schema prepare and repeat'
+    schema=provision(api,root/'bindings','schema',schema_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),credentials)
+    execute(schema['workflow'])
+    assert len(state['fields'])==len(FIELDS),state['fields']
+    execute(schema['workflow'])
+    assert len(state['fields'])==len(FIELDS)
     credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer synthetic-model-key'}}
     workflow=production_workflow('baseFixture','tableFixture','script',feishu_origin=fixture_origin,script_origin=fixture_origin)
     saved=provision(api,root/'bindings','script',workflow,credentials)
@@ -126,10 +146,31 @@ try:
     phase='sequential replay'
     execute(saved['workflow'])
     assert state['model_calls']==1,state
+    phase='video submit and poll'
+    submit=provision(api,root/'bindings','video-submit',production_workflow('baseFixture','tableFixture','video-submit',feishu_origin=fixture_origin,video_origin=fixture_origin),credentials)
+    poll=provision(api,root/'bindings','video-poll',production_workflow('baseFixture','tableFixture','video-poll',feishu_origin=fixture_origin,video_origin=fixture_origin),credentials)
+    state['status']='脚本通过'
+    execute(submit['workflow'])
+    assert state['video_calls']==0, 'SCRIPT_REVIEW_IS_NOT_BILLING_AUTHORIZATION'
+    state['status']='视频生成已确认'
+    execute(submit['workflow'])
+    assert state['video_calls']==1 and state['status']=='视频生成中'
+    execute(submit['workflow'])
+    assert state['video_calls']==1
+    execute(poll['workflow'])
+    assert state['polls']==1 and state['status']=='视频待审核'
+    execute(poll['workflow'])
+    assert state['video_calls']==1 and state['polls']==1
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==2 and all(not w['active'] for w in all_workflows)
+    assert len(all_workflows)==5 and all(not w['active'] for w in all_workflows)
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text()
+    phase='temporary authenticated setup hook'
+    report=verify_setup(api,root/'bindings','temporary-probe',probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    assert report['result']['base_read']=='verified',report
+    assert not api.request('GET','/api/v1/workflows/'+report['workflow'])['active']
+    report=verify_setup(api,root/'bindings','temporary-schema',schema_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    assert not api.request('GET','/api/v1/workflows/'+report['workflow'])['active']
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')
@@ -139,10 +180,12 @@ try:
             break
         except Exception: time.sleep(1)
     else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
-    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
+    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
 except Exception as error:
     if phase=='install' and hasattr(error,'diagnostics'):
         print(error.diagnostics.decode(errors='replace')[-4000:],flush=True)
+    if phase=='start' and (root/'n8n-local.log').exists():
+        print((root/'n8n-local.log').read_text(errors='replace')[-5000:],flush=True)
     print(json.dumps({'phase':phase,'error_type':type(error).__name__,'message':str(error)[:300]}),flush=True)
     raise
 finally:
