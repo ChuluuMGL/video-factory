@@ -126,5 +126,7 @@ class RunnerTests(unittest.TestCase):
               patch.object(production_setup, 'choice', side_effect=[True, True])):
             sessions.return_value.read.return_value=session
             with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_AUTH_REJECTED$'):
-                production_setup.welcome(args,read=lambda _:'fixture_owner',hidden=lambda _:'synthetic-secret',write=lambda _:None)
+                production_setup.welcome(args,read=lambda prompt:'deepseek' if prompt.startswith('供应商') else
+                                         ('' if prompt.startswith('模型 ID') else 'fixture_owner'),
+                                         hidden=lambda _:'synthetic-secret',write=lambda _:None)
             self.assertEqual([c.args[1]['action'] for c in calls.call_args_list],['open','script_check','close'])

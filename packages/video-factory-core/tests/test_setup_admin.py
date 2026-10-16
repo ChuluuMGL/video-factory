@@ -42,6 +42,19 @@ class SetupAdminTests(unittest.TestCase):
         with self.store.connect() as db:
             self.assertEqual(db.execute('SELECT count(*) FROM vault').fetchone()[0],0)
 
+    def test_named_script_provider_is_scoped_to_project_and_fixed_endpoint(self):
+        payload={'action':'script','token':self.admin,'session':self.session,'secret':'synthetic-gemini-key',
+                 'billing_owner':'fixture_owner','provider':'gemini','model':'gemini-3.8-flash'}
+        result=self.helper.dispatch(payload)
+        self.assertEqual((result['provider'],result['model']),('gemini','gemini-3.8-flash'))
+        with self.store.connect() as db:
+            saved=meta(db,'script:profile:new_brand')
+            self.assertEqual((saved['provider'],saved['model']),('gemini','gemini-3.8-flash'))
+            self.assertNotIn('synthetic-gemini-key',str(saved))
+        payload['model']='https://private.invalid'
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_MODEL_INVALID'):
+            self.helper.dispatch(payload)
+
     def test_login_is_bounded_and_close_revokes_only_its_own_session(self):
         opened=self.helper.open(self.session,'synthetic-admin-password')
         self.assertLessEqual(opened['expires_at'],time.time()+900)
