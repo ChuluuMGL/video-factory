@@ -137,6 +137,12 @@ try:
         saved=provision_disabled(api,bindings,project,workflow,credentials)
         hooks[saved['workflow']]=path
         return saved
+    # Prove connection does not take over unrelated existing workflows.
+    unrelated=api.request('POST','/api/v1/workflows',{
+        'name':'Existing unrelated user workflow','nodes':[
+            {'id':'existing-manual','name':'Existing manual trigger','type':'n8n-nodes-base.manualTrigger','typeVersion':1,'position':[0,0],'parameters':{}}],
+        'connections':{},'settings':{'executionOrder':'v1'}})
+    unrelated_before=api.request('GET','/api/v1/workflows/'+unrelated['id'])
     phase='public api import'
     workflow=probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin)
     saved=provision(api,root/'bindings','probe',workflow,credentials)
@@ -244,9 +250,10 @@ try:
         claims=list(pool.map(claim,range(6)))
     assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==6 and all(not w['active'] for w in all_workflows)
+    assert len(all_workflows)==7 and all(not w['active'] for w in all_workflows)
+    assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
-        assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text()
+        assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text() and 'synthetic-model-key' not in receipt.read_text()
     phase='temporary authenticated setup hook'
     report=verify_setup(api,root/'bindings','temporary-probe',probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     assert report['result']['base_read']=='verified',report

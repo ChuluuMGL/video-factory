@@ -49,7 +49,7 @@ python3 portable_n8n.py --root /YOUR/PRIVATE/vf-n8n start
 
 ## 已有 n8n：本机、服务器或 Cloud
 
-直接接入，无需运行上面的 `install`。远端实例用 HTTPS；本机允许 `http://127.0.0.1:5678`。已有服务器也可以用可信 SSH 隧道连本机端口。Cloud 需要套餐开放公共 API；无 API 时可导出 JSON，由用户在编辑器导入并手动绑定凭据。
+直接接入，无需运行上面的 `install`。远端实例用 HTTPS；本机允许 `http://127.0.0.1:5678`。已有服务器也可以用可信 SSH 隧道连本机端口。当前新增实例固定测试 n8n 2.40.7；已有实例还需检查节点与公共 API 能力，执行锁使用 Data Tables API 及相应权限。缺少能力时停止并说明，不会自动升级或覆盖原实例。Cloud 需要套餐开放公共 API；无 API 时可导出 JSON，由用户在编辑器导入并手动绑定凭据。
 
 ```sh
 python3 portable_n8n.py check --url https://YOUR_N8N_HOST

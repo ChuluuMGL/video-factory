@@ -200,6 +200,14 @@ def ensure_ledger(api, root, project, base, table):
         if saved['origin']!=api.url: raise Fault('LEDGER_ORIGIN_CHANGED')
         if saved.get('pending'): raise Fault('LEDGER_MUTATION_UNCERTAIN_RECONCILE_FIRST')
         if not saved.get('table'):
+            # Capability/read scope is checked before recording a create intent.
+            try:
+                inventory=api.request('GET','/api/v1/data-tables?limit=1')
+            except Fault as error:
+                if str(error) in ('N8N_API_HTTP_404','N8N_API_PERMISSION_REQUIRED'):
+                    raise Fault('N8N_DATA_TABLE_API_AND_SCOPES_REQUIRED_EXISTING_INSTANCE_UNCHANGED') from None
+                raise
+            if not isinstance(inventory.get('data'),list): raise Fault('N8N_DATA_TABLE_API_SHAPE_INVALID')
             saved['pending']='table'; private_write(path,saved)
             result=api.request('POST','/api/v1/data-tables',{
                 'name':'Video Factory '+project+' execution',
