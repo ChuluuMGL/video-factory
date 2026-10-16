@@ -133,6 +133,11 @@ class Portable(unittest.TestCase):
         with self.assertRaisesRegex(Fault,'SCOPE_CHANGED'):
             project_credentials(self.api,self.root,'sample','cliOther',['feishu'],ask)
         self.assertEqual(len(prompts),3)
+    def test_new_reference_is_never_silently_ignored_on_resume(self):
+        self.connect()
+        with self.assertRaisesRegex(Fault,'CREDENTIAL_REFERENCE_CHANGED'):
+            provision(self.api,self.root,'sample',self.workflow,{'httpCustomAuth':{'existing':{'id':'other','name':'other'}}})
+        self.assertEqual(len(self.api.posts),2)
     def test_unknown_project_credential_creation_never_reprompts_or_duplicates(self):
         from portable_n8n import project_credentials
         self.api.fail=True

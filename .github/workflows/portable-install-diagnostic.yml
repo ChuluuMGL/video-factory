@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        strategy: [hoisted, shallow]
+        strategy: [pnpm]
     env:
       VF_INSTALL_STRATEGY: ${{ matrix.strategy }}
     steps:

@@ -153,6 +153,8 @@ def provision(api, root, project, workflow, credentials):
         api.preflight()
         for kind, spec in credentials.items():
             if kind in state['credentials']:
+                if 'existing' in spec and state['credentials'][kind] != spec['existing']:
+                    raise Fault('CREDENTIAL_REFERENCE_CHANGED_EXPLICIT_MIGRATION_REQUIRED')
                 continue
             if 'existing' in spec:
                 ref=spec['existing']
@@ -654,16 +656,10 @@ def main(argv=None):
                     raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
                 app_id = input('飞书 App ID: ').strip()
                 identifier(app_id)
-                app_secret = secret('飞书 App Secret（隐藏输入）: ')
-                credential = {'type': 'httpCustomAuth', 'data': {'json': json.dumps(
-                    {'body': {'app_id': app_id, 'app_secret': app_secret}})}}
-                credentials = {'httpCustomAuth':credential}
-                if args.flow not in ('probe','schema','recover'):
-                    provider = 'DeepSeek' if args.flow=='script' else 'MiniMax 中国区'
-                    key = secret(provider + ' API Key（隐藏输入）: ')
-                    if any(c.isspace() for c in key) or key.lower().startswith('bearer '):
-                        raise Fault('RAW_PROVIDER_KEY_REQUIRED')
-                    credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+key}}
+                role='script' if args.flow=='script' else 'video' if args.flow in ('video-submit','video-poll') else None
+                pool=project_credentials(api,args.root,args.project,app_id,['feishu']+([role] if role else []))
+                credentials={'httpCustomAuth':pool['feishu']}
+                if role: credentials['httpHeaderAuth']=pool[role]
                 template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                             schema_workflow(args.base,args.table) if args.flow=='schema' else
                             recovery_workflow(args.base,args.table,ensure_ledger(api,args.root,args.project,args.base,args.table)) if args.flow=='recover' else

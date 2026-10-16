@@ -17,7 +17,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## 便携接入开发候选
 
-本分支增加实际执行脚本 `scripts/portable_n8n.py` 和通用工作流模块 `scripts/n8n_workflows.py`。按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md) 区分本机安装与已有实例接入；不要将候选的合成测试说成稳定发行或全业务验收。已有实例直接 `check/connect`，不强制新装 Ubuntu。收费工作流仍为人工逐条验收候选，禁止擅自激活定时付费生产。
+本分支增加实际执行脚本 `scripts/portable_n8n.py` 和通用工作流模块 `scripts/n8n_workflows.py`。便携路线优先运行 `welcome` 连续向导：先连接或安装 n8n，再复用项目凭据完成 Base 检查、字段准备及脚本/视频/恢复流程导入。续接沿用原目录、地址和项目标识；不要让用户逐个工作流重新输入同一把 Key。凭据轮换在 n8n Credentials 显式处理。按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md) 区分本机安装与已有实例接入；不要将候选的合成测试说成稳定发行或全业务验收。已有实例直接 `check/connect`，不强制新装 Ubuntu。收费工作流仍为人工逐条验收候选，禁止擅自激活定时付费生产。
 
 ## 安装、配置与接入
 
