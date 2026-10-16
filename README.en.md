@@ -32,13 +32,15 @@ See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/
 
 ## Choose what you want to run
 
+The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
+
 | Goal | How to start | Relation to Video Factory |
 |---|---|---|
 | Use n8n in a browser | Sign up for [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md); no local n8n or Docker installation is needed | Standalone n8n, **not** a Video Factory installation |
 | Try n8n locally on Windows/Mac | Install Node.js as required by the [official n8n npm guide](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md), run `npx n8n`, then open `http://localhost:5678`. The upstream guide warns that npm installs are deprecated from n8n 3.0 | Standalone trial; it **does not** install this product |
 | Install the full Video Factory stack | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
 
-The current package cannot directly adopt credentials or workflows from an existing n8n Cloud or local instance. The Ubuntu requirement below applies to the **full Video Factory stack**, not to n8n itself. See the [platform and provider matrix](docs/product/PLATFORMS_AND_MODELS.md).
+The current package **cannot yet integrate** with an existing n8n Cloud or local instance. This is a product gap, not a reason to discard an existing installation. The Ubuntu requirement applies to the **current pinned package's full automated deployment**, not to n8n itself. See the [existing-n8n integration plan](docs/product/EXISTING_N8N_INTEGRATION.md). Read-only inventory is not a completed installation.
 
 ## Model availability
 
@@ -61,14 +63,16 @@ Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) 
 3. Give it the prompt below. The Skill guides acquisition and verification of the pinned release, followed by interactive setup.
 
 ```text
-Use the complete Skill in skills/video-factory-setup/ to install
-Video Factory on my own server and configure the first test project.
-Pin the latest public alpha Release tag and hashes. Check the server and package first,
+Use the complete Skill in skills/video-factory-setup/. First ask where my n8n
+runs, whether my Feishu app and Base exist, and where product services should run.
+Preserve existing resources and tell me which route this release can complete.
+When supported, configure my first test project. Pin the latest public alpha
+Release tag and hashes. Check the environment and package first,
 then guide me through Setup. Hide passwords and API keys in a private
 terminal on my server; do not collect them in chat.
 ```
 
-Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
+For the current pinned package's **full automated deployment**, prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
 An agent on Windows or macOS connects to that Ubuntu server over SSH. The current release does not deploy its full stack natively on Windows/macOS; this does not prevent standalone use of n8n Cloud or local n8n.
 

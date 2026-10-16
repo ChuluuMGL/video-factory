@@ -20,6 +20,7 @@ with zipfile.ZipFile(root / 'video-factory-setup.zip') as bundle:
     assert 'video-factory-setup/SKILL.md' in names
     for required in ('operations.md', 'start.md', 'handoff.md'):
         assert f'video-factory-setup/references/{required}' in names
+    assert 'video-factory-setup/scripts/choose_install_path.py' in names
     for name in names:
         assert '..' not in Path(name).parts
         relative = name.removeprefix('video-factory-setup/')
@@ -63,6 +64,8 @@ try:
                 assert page.locator('#agent-prompt').evaluate('(el) => el.scrollTop === 0')
                 text = page.locator('#agent-prompt').input_value()
                 assert 'Skill 阅读地址' in text and '密码与密钥' in text
+                if mode == 'install':
+                    assert '已有 n8n' in text and '飞书应用与 Base' in text
                 assert 'TRUSTED_' not in text and '<我们的' not in text
                 page.locator('#copy-prompt').click()
                 assert page.evaluate('navigator.clipboard.readText()') == text

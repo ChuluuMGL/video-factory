@@ -42,7 +42,7 @@
     </section>
 
     <section id="start" class="section install">
-      <div class="section-heading"><p class="eyebrow">安装指南</p><h2>把安装交给助手。</h2><p>下载完整 Skill，交给能连接服务器的 AI 助手；安装在终端逐步问答。</p></div>
+      <div class="section-heading"><p class="eyebrow">安装指南</p><h2>把安装交给助手。</h2><p>下载完整 Skill，先告诉助手你已有的 n8n 和飞书环境，再逐步选择安装方式。</p></div>
 
       <div class="install-panel">
         <div class="install-toolbar"><div class="scenarios" role="group" aria-label="选择要做的事"><button type="button" data-mode="install" aria-pressed="true">第一次安装</button><button type="button" data-mode="project" aria-pressed="false">新增项目</button><button type="button" data-mode="resume" aria-pressed="false">继续上次安装</button><button type="button" data-mode="repair" aria-pressed="false">排查问题</button></div><a class="button secondary" href="video-factory-setup.zip" download id="download-skill">下载完整 Skill <span aria-hidden="true">↓</span></a></div>
@@ -52,15 +52,15 @@
       </div>
       <aside class="preparation"><div class="prep-heading"><h3>安装前准备</h3><p>密码与密钥在私有终端填写。</p></div><ol>
         <li><span class="prep-number">01</span><strong>AI 助手</strong><span>能读取 Skill，并按授权连接服务器。</span></li>
-        <li><span class="prep-number">02</span><strong>Linux 服务器</strong><span>准备连接方式，环境由助手检查和安装。</span></li>
+        <li><span class="prep-number">02</span><strong>现有 n8n 或运行环境</strong><span>本机、服务器、Cloud 都先识别；不必先购服务器。</span></li>
         <li><span class="prep-number">03</span><strong>项目资料</strong><span>商品、参考图、飞书应用与审核人员。</span></li>
         <li><span class="prep-number">04</span><strong>模型账户</strong><span>准备 API Key；生成任务单独确认。</span></li>
-      </ol><details><summary>给实施同事的服务器要求</summary><p class="small">Windows/Mac 可运行安装 Agent，Agent 经 SSH 操作客户 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）。单独使用 n8n 可选云服务、本机 Node.js 试用或 Docker；本产品整套自动部署目前只支持上述 Ubuntu 主机，不能直接接管既有 n8n。<a href="customer-guide.md">查看完整安装说明</a>。</p></details></aside>
+      </ol><details><summary>目前哪些路线可完成？</summary><p class="small">Skill 会先识别本机 Node.js/Docker、服务器或 n8n Cloud。当前固定包的完整自动部署仍需 Ubuntu 24.04 x86_64 主机（至少 4 GiB 内存），并自带 n8n；接入已有独立 n8n 尚未交付。选择后助手会明确告知可执行步骤与缺口，不会覆盖原实例。<a href="customer-guide.md">查看完整安装说明</a>。</p></details></aside>
     </section>
     <section id="help" class="section help-layout">
       <div class="section-heading"><h2>使用与维护</h2></div>
       <div class="faq">
-        <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">检查服务器 → 配置首个项目并部署服务与 n8n → 设置管理员 → 连接飞书。Setup 到此结束；模型、真实任务和人工审核随后逐项验收。</p></details>
+        <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">识别已有 n8n 与飞书 → 选择可用路线 → 配置首个项目与服务 → 连接飞书。现版完整自动部署在 Ubuntu 主机进行；已有独立 n8n 路线仍待接入。模型、真实任务和人工审核随后逐项验收。</p></details>
         <details><summary>安装后，团队怎样使用？</summary><p>商品资料和创作要求放在飞书任务表；管理员通过 CLI 读取指定记录，确认后发起一次脚本生成。员工在原表查看脚本和成片、填写意见并审核。不同员工的权限隔离仍待真实验收。</p></details>
         <details><summary>新增项目或帮助另一个客户，需要重装吗？</summary><p>Skill 可以复用。同一客户新增项目时复用已有服务，另设项目资料与权限；不同客户分别部署。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></details>
         <details><summary>中断、报错或升级，怎样处理？</summary><p>选择“继续上次安装”或“排查问题”，把安装记录交给助手。续接保留已完成配置；密码和密钥在私有输入处填写。升级前先备份，更新 Skill 不会自动升级服务器。</p></details>
