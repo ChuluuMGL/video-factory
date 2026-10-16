@@ -20,6 +20,7 @@ from n8n_workflows import probe_workflow, production_workflow, schema_workflow, 
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
 class Fixture(BaseHTTPRequestHandler):
+    protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
     def reply(self, body):
         raw=json.dumps(body).encode(); self.send_response(200)
@@ -72,7 +73,10 @@ class Fixture(BaseHTTPRequestHandler):
         if '视频任务ID' in fields: state['job']=fields['视频任务ID']
         self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}})
 
-fixture=ThreadingHTTPServer(('0.0.0.0',0),Fixture)
+class FixtureServer(ThreadingHTTPServer):
+    request_queue_size=128
+
+fixture=FixtureServer(('0.0.0.0',0),Fixture)
 threading.Thread(target=fixture.serve_forever,daemon=True).start()
 mode=sys.argv[1] if len(sys.argv)>1 else 'node'
 root=Path(tempfile.mkdtemp(prefix='vf-n8n-ci-'))
