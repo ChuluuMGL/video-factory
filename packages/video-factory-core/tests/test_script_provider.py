@@ -78,7 +78,13 @@ class ScriptProviderTests(unittest.TestCase):
                 request=opener.return_value.open.call_args.args[0]
                 self.assertEqual(request.full_url,f'https://{host}{prefix}/chat/completions')
                 self.assertEqual(request.get_method(),'POST')
-                self.assertEqual(json.loads(request.data)['model'],model)
+                body=json.loads(request.data)
+                self.assertEqual(body['model'],model)
+                if name.startswith('minimax'):
+                    self.assertTrue(body['reasoning_split'])
+                    self.assertIn('max_completion_tokens',body)
+                    self.assertNotIn('max_tokens',body)
+                if name=='doubao-cn':self.assertEqual(body['thinking'],{'type':'disabled'})
                 self.assertEqual(result['provider'],name)
                 self.assertEqual(opener.return_value.open.call_count,1)
                 self.assertNotIn('synthetic-key',str(result))
