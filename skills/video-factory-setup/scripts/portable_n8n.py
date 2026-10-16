@@ -417,10 +417,18 @@ def verify_setup(api, root, project, template, credentials):
         request = Request(api.url+'/webhook/'+hook_path, method='POST',data=b'{}',
                           headers={'X-VF-Setup':token,'Content-Type':'application/json'})
         try:
-            with build_opener(NoRedirect).open(request,timeout=180) as response:
-                raw=response.read(65537)
-                if len(raw)>65536: raise Fault('SETUP_CHECK_RESPONSE_TOO_LARGE')
-                value=json.loads(raw)
+            # Publishing registers webhooks asynchronously. Only a definite
+            # 404 may be retried, and this helper rejects all model workflows.
+            for attempt in range(10):
+                try:
+                    with build_opener(NoRedirect).open(request,timeout=180) as response:
+                        raw=response.read(65537)
+                        if len(raw)>65536: raise Fault('SETUP_CHECK_RESPONSE_TOO_LARGE')
+                        value=json.loads(raw)
+                    break
+                except HTTPError as error:
+                    if error.code!=404 or attempt==9: raise
+                    time.sleep(2)
         except (OSError,ValueError):
             raise Fault('SETUP_CHECK_INCOMPLETE_READ_N8N_EXECUTION') from None
         entries = value if isinstance(value,list) else [value]

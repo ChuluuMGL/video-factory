@@ -151,7 +151,9 @@ try:
                     if error.code==404 and attempt<4:
                         time.sleep(2); continue
                     print('Synthetic webhook diagnostic: '+error.read(1600).decode(errors='replace'),flush=True)
-                    if not expect_failure: raise AssertionError('SYNTHETIC_WEBHOOK_HTTP_'+str(error.code)) from None
+                    if error.code==404: raise AssertionError('SYNTHETIC_WEBHOOK_NOT_REGISTERED') from None
+                    # An empty successful workflow may return HTTP 500 with
+                    # 'No item to return'. Assert the execution receipt below.
                     break
             for _ in range(30):
                 entries=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
