@@ -6,7 +6,13 @@ permissions:
 jobs:
   diagnose:
     runs-on: windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 17
+    strategy:
+      fail-fast: false
+      matrix:
+        strategy: [hoisted, shallow]
+    env:
+      VF_INSTALL_STRATEGY: ${{ matrix.strategy }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
