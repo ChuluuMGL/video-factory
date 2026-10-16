@@ -143,10 +143,16 @@ try:
             api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
             req=Request(api_origin+'/webhook/'+hooks[workflow_id],method='POST',data=b'{}',
                         headers={'Authorization':'Bearer synthetic-model-key','Content-Type':'application/json'})
-            try:
-                with opener.open(req,timeout=180) as response: response.read(65536)
-            except HTTPError as error:
-                if not expect_failure: raise AssertionError('SYNTHETIC_WEBHOOK_HTTP_'+str(error.code)) from None
+            for attempt in range(5):
+                try:
+                    with opener.open(req,timeout=180) as response: response.read(65536)
+                    break
+                except HTTPError as error:
+                    if error.code==404 and attempt<4:
+                        time.sleep(2); continue
+                    print('Synthetic webhook diagnostic: '+error.read(1600).decode(errors='replace'),flush=True)
+                    if not expect_failure: raise AssertionError('SYNTHETIC_WEBHOOK_HTTP_'+str(error.code)) from None
+                    break
             for _ in range(30):
                 entries=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
                 if entries and entries[0]['id']!=previous and entries[0]['status'] in ('success','error','crashed'):
@@ -241,6 +247,8 @@ try:
     else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
 except Exception as error:
+    if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
+        print((error.output or b'').decode(errors='replace')[-5000:],flush=True)
     if phase=='install' and hasattr(error,'diagnostics'):
         print(error.diagnostics.decode(errors='replace')[-4000:],flush=True)
     if phase=='start' and (root/'n8n-local.log').exists():
