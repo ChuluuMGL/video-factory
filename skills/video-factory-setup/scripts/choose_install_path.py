@@ -61,7 +61,7 @@ def assess(answers, observed=None):
     elif n8n in ("local-node", "local-docker", "self-hosted", "cloud"):
         route = "reuse_existing_n8n_integration_pending"
         next_steps = ["保留现有 n8n 工作流和凭据；先只读核对实例、API 权限和飞书应用/Base。",
-                      "核对 Video Factory 账本、模型执行器与现有 n8n 的安全连接方式。当前固定包尚不能完成此路线，不要导入或激活工作流。"]
+                      "轻量工作流 JSON + 飞书接入、以及可选可靠执行组件均尚待交付；当前固定包不能完成此路线，不要导入旧样板或激活工作流。"]
         supported = False
     elif n8n == "none" and runtime in ("local-desktop", "other-server"):
         route = "choose_n8n_install_method_integration_pending"
