@@ -42,7 +42,7 @@ class Fixture(BaseHTTPRequestHandler):
         elif self.path.endswith('/chat/completions'):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['model_calls']+=1
-            self.reply({'choices':[{'message':{'content':'Synthetic reviewable script'}}]})
+            self.reply({'choices':[{'message':{'content':'Synthetic reviewable script'},'finish_reason':'stop'}]})
         else: raise AssertionError('unknown fixture route')
     def do_PUT(self):
         assert self.headers['Authorization']=='Bearer synthetic-token'
@@ -111,7 +111,7 @@ try:
         if result.returncode:
             # Synthetic fixture logs only; print node error, never API credentials.
             lines=result.stdout.decode(errors='replace').splitlines()
-            errors=[line for line in lines if 'Error' in line or 'errorMessage' in line]
+            errors=[line for line in lines if ('Error' in line or 'errorMessage' in line or 'lastNodeExecuted' in line or '"name"' in line) and '"stack"' not in line]
             print('Execution diagnostic: '+str(errors[-3:])[:1200],flush=True)
             raise AssertionError('N8N_EXECUTION_FAILED')
     phase='probe execution'
@@ -130,6 +130,15 @@ try:
     assert len(all_workflows)==2 and all(not w['active'] for w in all_workflows)
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text()
+    phase='stop and restart'
+    local_control(root,'stop')
+    local_control(root,'start')
+    for _ in range(30):
+        try:
+            assert api.request('GET','/api/v1/workflows/'+saved['workflow'])['id']==saved['workflow']
+            break
+        except Exception: time.sleep(1)
+    else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
 except Exception as error:
     if phase=='install' and hasattr(error,'diagnostics'):
@@ -142,8 +151,5 @@ finally:
         try: local_control(root,'stop')
         except Exception: pass
     else:
-        saved=json.loads((root/'local.json').read_text()) if (root/'local.json').exists() else {}
-        if saved.get('pid'):
-            import signal
-            try: os.kill(saved['pid'],signal.SIGTERM)
-            except OSError: pass
+        try: local_control(root,'stop')
+        except Exception: pass

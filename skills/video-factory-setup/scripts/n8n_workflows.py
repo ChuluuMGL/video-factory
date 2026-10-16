@@ -14,7 +14,7 @@ def code(name, source):
 
 
 def http(name, url, method='GET', body=None, credential=None, feishu=False):
-    parameters = {'url': url, 'method': method, 'options': {'timeout': 60000}}
+    parameters = {'url': url, 'method': method, 'options': {'timeout': 60000, 'redirect': {'redirect': {'followRedirects': False}}}}
     if body is not None:
         parameters.update(sendBody=True, specifyBody='json', jsonBody=body)
     if feishu:
@@ -59,7 +59,7 @@ def probe_workflow(base, table, *, feishu_origin='https://open.feishu.cn'):
 
 
 FIELDS = {'状态': 3, '商品资料': 1, '脚本': 1, '审核意见': 1, '脚本历史': 1,
-          '执行编号': 1, '视频任务ID': 1, '视频链接': 15}
+          '执行编号': 1, '视频任务ID': 1, '视频链接': 15, '参考图链接': 1}
 STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过', '脚本退回',
             '视频生成已确认', '视频提交中', '视频生成中', '视频待审核', '视频通过', '视频退回']
 
@@ -74,20 +74,23 @@ def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu
     search = {'filter': {'conjunction': 'or', 'conditions': [
         {'field_name': '状态', 'operator': 'is', 'value': [s]} for s in status]}}
     nodes += [http('Find requested task', url + '/search?page_size=1', 'POST', json.dumps(search, ensure_ascii=False), feishu=True),
-        code('Select task', """if ($json.code !== 0) throw new Error('FEISHU_SEARCH_FAILED');
+        code('Select task', r"""if ($json.code !== 0) throw new Error('FEISHU_SEARCH_FAILED');
 const row = ($json.data.items || [])[0]; if (!row) return [];
 const text = v => Array.isArray(v) ? v.map(x => x.text || '').join('') : String(v || '');
 return [{json:{id:row.record_id, fields:row.fields, product:text(row.fields['商品资料']),
 script:text(row.fields['脚本']), feedback:text(row.fields['审核意见']), history:text(row.fields['脚本历史']),
-job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
+references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean), job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
     target = "={{ " + json.dumps(url + '/') + " + $('Select task').first().json.id }}"
     def write(name, fields):
         return http(name, target, 'PUT', fields, feishu=True)
     if flow != 'video-poll':
         required = 'product' if flow == 'script' else 'script'
+        if flow == 'video-submit':
+            nodes.append(code('Validate references', "if ($json.references.length<1 || $json.references.length>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_HTTPS_URLS_REQUIRED'); return $input.all();"))
         nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED'); return $input.all();"))
         state = '脚本生成中' if flow == 'script' else '视频提交中'
-        nodes += [write('Reserve task', '={{ {fields:{"状态":' + json.dumps(state) + ',"执行编号":$("Select task").first().json.execution}} }}'),
+        nodes += [code('Build reservation', 'return [{json:{fields:{"状态":' + json.dumps(state) + ',"执行编号":$("Select task").first().json.execution}}}];'),
+                  write('Reserve task', '={{ $json }}'),
                   code('Check reservation', "if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_FAILED'); return [{json:{ok:true}}];"),
                   http('Read reservation', target, feishu=True),
                   code('Verify reservation', """if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_READ_FAILED');
@@ -96,24 +99,29 @@ const id = Array.isArray(raw) ? raw.map(x=>x.text||'').join('') : raw;
 if (id !== $('Select task').first().json.execution) throw new Error('TASK_CLAIM_CHANGED');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
-        nodes += [http('Generate script', script_origin + '/chat/completions', 'POST', """={{ {model:'deepseek-chat',stream:false,max_tokens:2000,messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]} }}""", 'httpHeaderAuth'),
-                  code('Validate script', """const script = $json.choices?.[0]?.message?.content;
-if (typeof script !== 'string' || !script.trim() || script.length>18000) throw new Error('SCRIPT_RESPONSE_REQUIRES_RECONCILIATION');
+        nodes += [code('Build script request', """return [{json:{model:'deepseek-flash',stream:false,max_tokens:2048,thinking:{type:'disabled'},messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
+                  http('Generate script', script_origin + '/chat/completions', 'POST', '={{ $json }}', 'httpHeaderAuth'),
+                  code('Validate script', r"""const script = $json.choices?.[0]?.message?.content;
+if ($json.choices?.[0]?.finish_reason !== 'stop' || typeof script !== 'string' || !script.trim() || script.length>6500) throw new Error('SCRIPT_RESPONSE_REQUIRES_RECONCILIATION');
 const row=$('Select task').first().json;
 const history=(row.history+'\n'+JSON.stringify({execution:row.execution,script:row.script,feedback:row.feedback})).trim();
 if (history.length>18000) throw new Error('HISTORY_FULL_RECONCILE_BEFORE_RETRY');
 return [{json:{fields:{'脚本':script,'脚本历史':history,'状态':'脚本待审核'}}}];"""),
                   write('Write script for human review', '={{ $json }}')]
     elif flow == 'video-submit':
-        nodes += [http('Submit video once', video_origin + '/v1/video_generation', 'POST', """={{ {model:'MiniMax-Hailuo-2.3',prompt:$('Select task').first().json.script,duration:6,resolution:'768P'} }}""", 'httpHeaderAuth'),
-                  code('Validate video receipt', "if ($json.base_resp?.status_code !== 0 || !$json.task_id) throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION'); return [{json:{fields:{'视频任务ID':String($json.task_id),'状态':'视频生成中'}}}];"),
+        nodes += [code('Build video request', """return [{json:{model:'MiniMax-H3',content:[{type:'text',text:$('Select task').first().json.script},...$('Select task').first().json.references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:6,resolution:'768P',ratio:'9:16'}}];"""),
+                  http('Submit video once', video_origin + '/v2/video_generation', 'POST', '={{ $json }}', 'httpHeaderAuth'),
+                  code('Validate video receipt', "if (!/^[0-9]{10,24}$/.test($json.task_id || '')) throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION'); return [{json:{fields:{'视频任务ID':String($json.task_id),'状态':'视频生成中'}}}];"),
                   write('Save video job receipt', '={{ $json }}')]
     else:
-        nodes += [code('Require job receipt', "if (!/^[A-Za-z0-9_-]+$/.test($json.job)) throw new Error('VIDEO_JOB_REQUIRED_NO_RESUBMIT'); return $input.all();"),
-                  http('Poll existing video', '={{ ' + json.dumps(video_origin + '/v1/query/video_generation?task_id=') + " + $('Select task').first().json.job }}", credential='httpHeaderAuth'),
-                  code('Check video completion', "if ($json.base_resp?.status_code !== 0) throw new Error('VIDEO_QUERY_FAILED'); if ($json.status !== 'Success') return []; if (!$json.file_id) throw new Error('VIDEO_FILE_ID_MISSING'); return [{json:{file_id:String($json.file_id)}}];"),
-                  http('Read video download', '={{ ' + json.dumps(video_origin + '/v1/files/retrieve?file_id=') + ' + $json.file_id }}', credential='httpHeaderAuth'),
-                  code('Validate video URL', "if ($json.base_resp?.status_code !== 0 || !/^https:\/\//.test($json.file?.download_url || '')) throw new Error('VIDEO_DOWNLOAD_UNAVAILABLE'); return [{json:{fields:{'视频链接':{link:$json.file.download_url,text:'查看视频'},'状态':'视频待审核'}}}];"),
+        nodes += [code('Require job receipt', "if (!/^[0-9]{10,24}$/.test($json.job)) throw new Error('VIDEO_JOB_REQUIRED_NO_RESUBMIT'); return $input.all();"),
+                  http('Poll existing video', '={{ ' + json.dumps(video_origin + '/v2/query/video_generation/') + " + $('Select task').first().json.job }}", credential='httpHeaderAuth'),
+                  code('Check video completion', """const task=$json.task;
+if (!task || String(task.id)!==$('Select task').first().json.job || task.model!=='MiniMax-H3') throw new Error('VIDEO_QUERY_UNVERIFIED');
+if (['failed','cancelled'].includes(task.status)) throw new Error('VIDEO_FAILED_REQUIRES_HUMAN_REVIEW');
+if (['queued','running'].includes(task.status)) return [];
+if (task.status!=='succeeded' || !String(task.content?.url || '').startsWith('https://')) throw new Error('VIDEO_DOWNLOAD_UNAVAILABLE');
+return [{json:{fields:{'视频链接':{link:task.content.url,text:'查看视频'},'状态':'视频待审核'}}}];"""),
                   write('Write video for human review', '={{ $json }}')]
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
     return compile_nodes(nodes)

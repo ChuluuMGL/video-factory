@@ -13,10 +13,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import time
+import venv
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -247,9 +249,18 @@ def install_local(root, mode, port=5678):
             npm_cli = next((p for p in candidates if p.is_file()), None)
             if npm_cli is None:
                 raise Fault('NPM_ENTRY_NOT_FOUND')
+            # n8n's native dependencies may fall back to node-gyp. Keep its
+            # Python/distutils compatibility tooling private, not in system Python.
+            toolenv = root / 'build-tools'
+            venv.EnvBuilder(with_pip=True).create(toolenv)
+            python = toolenv / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+            run_checked([str(python), '-m', 'pip', 'install', 'setuptools==80.9.0'], root)
+            build_env = os.environ.copy()
+            build_env['npm_config_python'] = str(python)
+            build_env['npm_config_jobs'] = '2'
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
                                                   'dependencies': {'n8n': N8N_VERSION}})
-            run_checked([node, str(npm_cli), 'install', '--no-audit', '--no-fund'], root)
+            run_checked([node, str(npm_cli), 'install', '--no-audit', '--no-fund'], root, env=build_env)
         else:
             docker = shutil.which('docker')
             if not docker:
@@ -271,6 +282,18 @@ def install_local(root, mode, port=5678):
         return saved
 
 
+def process_identity(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        raise Fault('PROCESS_ID_INVALID')
+    if os.name == 'nt':
+        command = ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+                   f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if($p){{$p.CreationDate.ToUniversalTime().Ticks}}"]
+    else:
+        command = ['ps', '-p', str(pid), '-o', 'lstart=']
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=20)
+    return result.stdout.decode(errors='replace').strip() if result.returncode == 0 else ''
+
+
 def local_control(root, action):
     with locked(root) as root:
         saved = json.loads((root / 'local.json').read_text())
@@ -279,7 +302,7 @@ def local_control(root, action):
             run_checked(command + (['up', '-d'] if action == 'start' else ['stop']), root)
         elif action == 'start':
             if health(saved['origin']):
-                if saved.get('pid'):
+                if saved.get('pid') and saved.get('process_identity') == process_identity(saved['pid']):
                     return {'status': 'reachable', 'origin': saved['origin']}
                 raise Fault('PORT_IN_USE_NOT_STARTED_BY_THIS_INSTALLER')
             executable = root / 'node_modules/n8n/bin/n8n'
@@ -291,11 +314,31 @@ def local_control(root, action):
                     cwd=root, env=environment(root, saved['port']), stdin=subprocess.DEVNULL,
                     stdout=sink, stderr=sink, **flags)
             saved['pid'] = process.pid
+            saved['process_identity'] = process_identity(process.pid)
+            if not saved['process_identity']:
+                raise Fault('START_PROCESS_NOT_RUNNING')
             private_write(root / 'local.json', saved)
         else:
-            # PID reuse makes blind kill unsafe. Stop in the owning terminal or
-            # via the OS after matching the full executable and user folder.
-            raise Fault('NATIVE_STOP_REQUIRES_VERIFIED_PROCESS_USE_OS_PROCESS_MANAGER')
+            pid = saved.get('pid')
+            if not pid:
+                return {'status': 'stopped', 'data_preserved': True}
+            current = process_identity(pid)
+            if current and current != saved.get('process_identity'):
+                raise Fault('PID_REUSED_REFUSING_TO_STOP_UNRELATED_PROCESS')
+            if current:
+                if os.name == 'nt':
+                    run_checked(['taskkill.exe', '/PID', str(pid), '/T', '/F'], root)
+                else:
+                    if os.getpgid(pid) != pid:
+                        raise Fault('PROCESS_GROUP_CHANGED_REFUSING_TO_STOP')
+                    os.killpg(pid, signal.SIGTERM)
+                for _ in range(30):
+                    if not health(saved['origin']): break
+                    time.sleep(1)
+                else: raise Fault('STOP_TIMEOUT_DATA_PRESERVED')
+            saved.pop('pid', None)
+            saved.pop('process_identity', None)
+            private_write(root / 'local.json', saved)
         if action == 'start':
             for _ in range(120):
                 if health(saved['origin']):
