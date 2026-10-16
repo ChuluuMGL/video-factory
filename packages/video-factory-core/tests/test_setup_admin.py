@@ -44,12 +44,12 @@ class SetupAdminTests(unittest.TestCase):
 
     def test_named_script_provider_is_scoped_to_project_and_fixed_endpoint(self):
         payload={'action':'script','token':self.admin,'session':self.session,'secret':'synthetic-gemini-key',
-                 'billing_owner':'fixture_owner','provider':'gemini','model':'gemini-2.5-flash'}
+                 'billing_owner':'fixture_owner','provider':'gemini','model':'gemini-3.8-flash'}
         result=self.helper.dispatch(payload)
-        self.assertEqual((result['provider'],result['model']),('gemini','gemini-2.5-flash'))
+        self.assertEqual((result['provider'],result['model']),('gemini','gemini-3.8-flash'))
         with self.store.connect() as db:
             saved=meta(db,'script:profile:new_brand')
-            self.assertEqual((saved['provider'],saved['model']),('gemini','gemini-2.5-flash'))
+            self.assertEqual((saved['provider'],saved['model']),('gemini','gemini-3.8-flash'))
             self.assertNotIn('synthetic-gemini-key',str(saved))
         payload['model']='https://private.invalid'
         with self.assertRaisesRegex(RuntimeFault,'SCRIPT_MODEL_INVALID'):

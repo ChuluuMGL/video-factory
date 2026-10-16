@@ -12,7 +12,7 @@ MODEL='deepseek-flash'
 PROVIDERS={
     'deepseek':(HOST,'','deepseek-flash'),
     'openai':('api.openai.com','/v1','gpt-4.1-mini'),
-    'gemini':('generativelanguage.googleapis.com','/v1beta/openai','gemini-2.5-flash'),
+    'gemini':('generativelanguage.googleapis.com','/v1beta/openai','gemini-3.8-flash'),
     'minimax-cn':('api.minimaxi.com','/v1','MiniMax-M2.7'),
     'minimax-global':('api.minimax.io','/v1','MiniMax-M2.7'),
     'qwen-cn':('dashscope.aliyuncs.com','/compatible-mode/v1','qwen-plus'),
