@@ -534,15 +534,24 @@ def main(argv=None):
     export.add_argument('--table', required=True)
     export.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], required=True)
     export.add_argument('--out', type=Path, required=True)
+    export.add_argument('--experimental-manual',action='store_true')
+    export.add_argument('--ledger-table',help='手动创建的 n8n 执行锁数据表 ID')
+    export.add_argument('--ledger-row',type=int,help='该数据表中项目执行锁行 ID')
     args = parser.parse_args(argv)
     try:
         if args.command == 'welcome':
             value = welcome(args.root)
         elif args.command == 'export':
-            from n8n_workflows import probe_workflow, schema_workflow, production_workflow
+            from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
+            if args.flow not in ('probe','schema') and not args.experimental_manual:
+                raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
+            if args.flow in ('script','video-submit') and (not args.ledger_table or not args.ledger_row or args.ledger_row<1):
+                raise Fault('EXPORT_REQUIRES_EXISTING_N8N_LEDGER_TABLE_AND_ROW')
             template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                         schema_workflow(args.base,args.table) if args.flow=='schema' else
                         production_workflow(args.base,args.table,args.flow))
+            if args.flow in ('script','video-submit'):
+                template=guard_workflow(template,{'table':identifier(args.ledger_table),'row':args.ledger_row})
             if args.out.exists(): raise Fault('EXPORT_EXISTS_CHOOSE_NEW_PATH')
             private_write(args.out,template)
             value={'exported':str(args.out),'credentials_included':False,'active':False,'production_ready':False}

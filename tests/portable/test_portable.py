@@ -100,6 +100,17 @@ class Portable(unittest.TestCase):
             run_checked([sys.executable,'-c',"import time; print('SYNTHETIC_PRIVATE_OUTPUT',flush=True); time.sleep(30)"],self.root,timeout=1)
         self.assertIn(b'SYNTHETIC_PRIVATE_OUTPUT',result.exception.diagnostics)
         self.assertNotIn('SYNTHETIC_PRIVATE_OUTPUT',str(result.exception))
+    def test_paid_export_cannot_bypass_durable_ledger(self):
+        import contextlib,io
+        from portable_n8n import main
+        output=self.root/'export.json'
+        args=['export','--base','baseTest','--table','tableTest','--flow','script','--out',str(output)]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(args),2)
+            self.assertEqual(main(args+['--experimental-manual']),2)
+            self.assertFalse(output.exists())
+            self.assertEqual(main(args+['--experimental-manual','--ledger-table','ledgerTest','--ledger-row','1']),0)
+        self.assertIn('Claim project execution',[n['name'] for n in json.loads(output.read_text())['nodes']])
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

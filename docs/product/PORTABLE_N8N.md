@@ -91,3 +91,5 @@ python3 portable_n8n.py export --base YOUR_BASE_TOKEN --table YOUR_TABLE_ID \
 ```
 
 导出只包含工作流和凭据引用，不包含密钥。手动导入后，在 n8n Credentials 创建 **Custom Auth**（`httpCustomAuth`），JSON 使用 `body.app_id` 和 `body.app_secret`；在飞书 token 节点绑定。模型节点使用 **Header Auth**，名称 `Authorization`，值 `Bearer ` 加对应模型原始 Key。不要在工作流 Code 节点或导出的 JSON 里粘贴秘密。
+
+脚本和视频提交的手动导出也必须使用 `--experimental-manual`，并提供 `--ledger-table` 与 `--ledger-row`。先在 n8n 手动创建执行数据表，添加 `status`、`owner`、`payload`、`result` 四个文本列，创建一行并把 `status` 设为 `idle`；同一项目的提交工作流必须引用同一行。不要直接删掉锁节点来绕过配置。缺少这两项时导出会停止，不会产生无执行保护的收费工作流。Cloud 无公共 API 的完整业务路线仍需用户自行验证，不能将这份说明视为实测结论。
