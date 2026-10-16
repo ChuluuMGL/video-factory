@@ -231,6 +231,10 @@ def run_checked(command, cwd, env=None):
 
 def environment(root, port):
     env = os.environ.copy()
+    receipt=root/'local.json'
+    if receipt.exists():
+        saved=json.loads(receipt.read_text())
+        if saved.get('node_executable'): env['PATH']=str(Path(saved['node_executable']).parent)+os.pathsep+env.get('PATH','')
     env.update({'N8N_USER_FOLDER': str(root / 'data'), 'N8N_LISTEN_ADDRESS': '127.0.0.1',
                 'N8N_PORT': str(port), 'N8N_SECURE_COOKIE': 'false',
                 'N8N_DIAGNOSTICS_ENABLED': 'false', 'N8N_VERSION_NOTIFICATIONS_ENABLED': 'false',
@@ -247,7 +251,7 @@ def health(url):
         return False
 
 
-def install_local(root, mode, port=5678):
+def install_local(root, mode, port=5678, managed_node=False):
     if mode not in ('node', 'docker') or not 1024 <= port <= 65535:
         raise Fault('INSTALL_MODE_OR_PORT_INVALID')
     with locked(root) as root:
@@ -274,22 +278,19 @@ def install_local(root, mode, port=5678):
                 raise Fault('PORT_IN_USE_REUSE_EXISTING_N8N_OR_SELECT_ANOTHER_PORT') from None
         (root / 'data').mkdir(mode=0o700, exist_ok=True)
         if mode == 'node':
-            node = shutil.which('node')
-            npm = shutil.which('npm')
-            if not node or not npm:
-                raise Fault('INSTALL_NODE_24_LTS_THEN_RESUME')
-            version = subprocess.check_output([node, '--version'], text=True).strip()
-            parts = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', version)
-            if not parts or int(parts[1]) != 24:
-                raise Fault('NODE_24_LTS_REQUIRED_FOR_PINNED_N8N')
-            # npm's JS entry works on Windows without cmd.exe or shell=True.
-            npm_path = Path(npm).resolve()
-            candidates = [npm_path.parent / 'node_modules/npm/bin/npm-cli.js',
-                          npm_path.parent.parent / 'lib/node_modules/npm/bin/npm-cli.js',
-                          npm_path if npm_path.suffix == '.js' else npm_path.parent / 'npm-cli.js']
-            npm_cli = next((p for p in candidates if p.is_file()), None)
+            node = None if managed_node else shutil.which('node')
+            version = subprocess.check_output([node, '--version'], text=True).strip() if node else ''
+            if not re.fullmatch(r'v24\.\d+\.\d+',version):
+                from node_runtime import prepare
+                node=prepare(root/'tools')
+            node_path=Path(node).resolve()
+            candidates=[node_path.parent/'node_modules/npm/bin/npm-cli.js',
+                        node_path.parent.parent/'lib/node_modules/npm/bin/npm-cli.js']
+            npm_cli=next((p for p in candidates if p.is_file()),None)
             if npm_cli is None:
-                raise Fault('NPM_ENTRY_NOT_FOUND')
+                from node_runtime import prepare
+                node=prepare(root/'tools'); node_path=Path(node)
+                npm_cli=(node_path.parent/'node_modules/npm/bin/npm-cli.js' if os.name=='nt' else node_path.parent.parent/'lib/node_modules/npm/bin/npm-cli.js')
             # n8n's native dependencies may fall back to node-gyp. Keep its
             # Python/distutils compatibility tooling private, not in system Python.
             toolenv = root / 'build-tools'
@@ -297,6 +298,7 @@ def install_local(root, mode, port=5678):
             python = toolenv / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
             run_checked([str(python), '-m', 'pip', 'install', 'setuptools==80.9.0'], root)
             build_env = os.environ.copy()
+            build_env['PATH']=str(Path(node).parent)+os.pathsep+build_env.get('PATH','')
             build_env['npm_config_python'] = str(python)
             build_env['npm_config_jobs'] = '2'
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
@@ -319,6 +321,7 @@ def install_local(root, mode, port=5678):
                          '-f', 'compose.json', 'pull'], root)
         saved = {'schema': 1, 'mode': mode, 'version': N8N_VERSION, 'port': port,
                  'origin': f'http://127.0.0.1:{port}', 'installed': True, 'project': 'vf-' + digest(str(root))[:12]}
+        if mode=='node': saved['node_executable']=str(Path(node).resolve())
         private_write(receipt_path, saved)
         return saved
 
@@ -354,7 +357,7 @@ def local_control(root, action):
             if log_path.is_symlink(): raise Fault('SYMLINK_REJECTED')
             log_fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
             with os.fdopen(log_fd, 'w') as sink:
-                process = subprocess.Popen([shutil.which('node') or 'node', str(executable), 'start'],
+                process = subprocess.Popen([saved['node_executable'], str(executable), 'start'],
                     cwd=root, env=environment(root, saved['port']), stdin=subprocess.DEVNULL,
                     stdout=sink, stderr=sink, **flags)
             saved['pid'] = process.pid
@@ -470,6 +473,7 @@ def main(argv=None):
     install = commands.add_parser('install')
     install.add_argument('--mode', choices=['node', 'docker'], required=True)
     install.add_argument('--port', type=int, default=5678)
+    install.add_argument('--managed-node', action='store_true', help='使用安装目录内校验过的 Node.js，不修改系统版本')
     for name in ('start', 'stop'):
         commands.add_parser(name)
     check = commands.add_parser('check')
@@ -499,7 +503,7 @@ def main(argv=None):
             private_write(args.out,template)
             value={'exported':str(args.out),'credentials_included':False,'active':False,'production_ready':False}
         elif args.command == 'install':
-            value = install_local(args.root, args.mode, args.port)
+            value = install_local(args.root, args.mode, args.port,args.managed_node)
         elif args.command in ('start', 'stop'):
             value = local_control(args.root, args.command)
         else:

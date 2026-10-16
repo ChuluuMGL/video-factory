@@ -9,11 +9,13 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
+from urllib.error import HTTPError
 from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, install_local, local_control, provision, verify_setup, ensure_ledger
+from portable_n8n import API, environment, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False}
@@ -77,7 +79,7 @@ process=None
 phase='install'
 try:
     print('Installing isolated '+mode+' n8n',flush=True)
-    install_local(root,mode,15678)
+    install_local(root,mode,15678,managed_node=mode=='node')
     assert install_local(root,mode,15678)['installed']
     if mode=='docker':
         compose=json.loads((root/'compose.json').read_text())
@@ -109,30 +111,57 @@ try:
     if mode=='docker':
         fixture_origin=f'http://host.docker.internal:{fixture.server_port}'
     credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}})}}}
+    # Execute against the actual server, where n8n exposes DataTable proxies.
+    # CLI `n8n execute` lacks that module. These hooks exist only in the synthetic
+    # CI fixture; the product does not expose a paid-model webhook.
+    hooks={}
+    def provision(api, bindings, project, workflow, credentials):
+        workflow=json.loads(json.dumps(workflow))
+        path='ci-'+project
+        hook={'id':'ci-hook','name':'CI synthetic trigger','type':'n8n-nodes-base.webhook',
+              'typeVersion':2,'webhookId':str(uuid.uuid5(uuid.NAMESPACE_URL,path)),
+              'position':[0,200],'parameters':{'httpMethod':'POST','path':path,
+              'responseMode':'lastNode','authentication':'headerAuth','options':{}},
+              'credentials':{'httpHeaderAuth':{'id':'UNBOUND','name':'UNBOUND'}}}
+        start=workflow['nodes'][0]['name']
+        workflow['nodes'].append(hook)
+        workflow['connections'][hook['name']]=workflow['connections'][start]
+        credentials={**credentials,'httpHeaderAuth':{'type':'httpHeaderAuth',
+                     'data':{'name':'Authorization','value':'Bearer synthetic-model-key'}}}
+        saved=provision_disabled(api,bindings,project,workflow,credentials)
+        hooks[saved['workflow']]=path
+        return saved
     phase='public api import'
     workflow=probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin)
     saved=provision(api,root/'bindings','probe',workflow,credentials)
     assert provision(api,root/'bindings','probe',workflow,credentials)==saved
     def execute(workflow_id, expect_failure=False):
-        if mode=='docker':
-            saved_local=json.loads((root/'local.json').read_text())
-            command=['docker','compose','-p',saved_local['project'],'-f','compose.json','exec','-T','-e','N8N_RUNNERS_BROKER_PORT=15679','n8n','n8n','execute','--id',workflow_id,'--rawOutput']
-        else:
-            import shutil
-            command=[shutil.which('node'),str(root/'node_modules/n8n/bin/n8n'),'execute','--id',workflow_id,'--rawOutput']
-        env=environment(root,15678)
-        env['N8N_RUNNERS_BROKER_PORT']='15679'
-        result=subprocess.run(command,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
-        (root/'synthetic-execution.log').write_bytes(result.stdout)
-        if expect_failure:
-            assert result.returncode != 0, 'EXPECTED_WRITEBACK_FAILURE'
-            return
-        if result.returncode:
-            # Synthetic fixture logs only; print node error, never API credentials.
-            lines=result.stdout.decode(errors='replace').splitlines()
-            errors=[line for line in lines if ('Error' in line or 'errorMessage' in line or 'lastNodeExecuted' in line or '"name"' in line) and '"stack"' not in line]
-            print('Execution diagnostic: '+str(errors[-3:])[:1200],flush=True)
-            raise AssertionError('N8N_EXECUTION_FAILED')
+        before=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
+        previous=before[0]['id'] if before else None
+        try:
+            api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
+            req=Request(api_origin+'/webhook/'+hooks[workflow_id],method='POST',data=b'{}',
+                        headers={'Authorization':'Bearer synthetic-model-key','Content-Type':'application/json'})
+            try:
+                with opener.open(req,timeout=180) as response: response.read(65536)
+            except HTTPError as error:
+                if not expect_failure: raise AssertionError('SYNTHETIC_WEBHOOK_HTTP_'+str(error.code)) from None
+            for _ in range(30):
+                entries=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
+                if entries and entries[0]['id']!=previous and entries[0]['status'] in ('success','error','crashed'):
+                    break
+                time.sleep(1)
+            else: raise AssertionError('EXECUTION_RECEIPT_NOT_FOUND')
+            expected='error' if expect_failure else 'success'
+            if entries[0]['status']!=expected:
+                detail=api.request('GET','/api/v1/executions/'+entries[0]['id']+'?includeData=true')
+                result=detail.get('data',{}).get('resultData',{})
+                error=result.get('error',{})
+                print('Synthetic execution diagnostic: '+json.dumps({'node':result.get('lastNodeExecuted'),'message':error.get('message')}),flush=True)
+                raise AssertionError('EXECUTION_STATUS_'+entries[0]['status']+'_EXPECTED_'+expected)
+        finally:
+            api.request('POST','/api/v1/workflows/'+workflow_id+'/deactivate',{})
+            assert not api.request('GET','/api/v1/workflows/'+workflow_id)['active']
     phase='probe execution'
     execute(saved['workflow'])
     assert state['token_calls']==1
