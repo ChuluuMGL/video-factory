@@ -88,15 +88,22 @@ class ResultClient(FeishuClient):
         if not isinstance(value.get('data'), dict): raise RuntimeFault('FEISHU_WRITE_RESPONSE_INVALID')
         return value['data']
 
-    def create_field(self, base, table, name, kind, ticket):
+    def create_field(self, base, table, name, kind, ticket, options=None):
         import uuid
         from .feishu_native_sync import STATUS_OPTIONS
         resource(base); resource(table, 'tbl')
         if str(uuid.UUID(ticket)) != ticket or uuid.UUID(ticket).version != 4 or kind not in (1, 3, 17):
             raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
-        if kind == 3 and name != '状态': raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
+        production_selects = {
+            '生产操作': ('申请脚本计划', '申请视频计划'),
+            '费用确认': ('未确认', '确认此计划的一次生成', '确认此计划的一次视频生成'),
+        }
+        expected = (STATUS_OPTIONS if name == '状态' else production_selects.get(name)) if kind == 3 else None
+        if kind == 3 and (expected is None or (options is not None and tuple(options) != expected)):
+            raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
+        if options is not None and kind != 3: raise RuntimeFault('FEISHU_FIELD_REQUEST_INVALID')
         body = {'field_name': name, 'type': kind}
-        if kind == 3: body['property'] = {'options': [{'name': option} for option in STATUS_OPTIONS]}
+        if kind == 3: body['property'] = {'options': [{'name': option} for option in expected]}
         data = self.post(f'/bitable/v1/apps/{base}/tables/{table}/fields?'+urlencode({'client_token': ticket}),
                          body)
         field = data.get('field', {})

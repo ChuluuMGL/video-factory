@@ -3,6 +3,7 @@
 No schedule, automatic paid retry, fallback provider or production activation.
 The durable task intent is committed BEFORE any model submission.
 """
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -15,10 +16,79 @@ def job_key(project,task,revision):
     return 'worker:'+fingerprint([project,task,revision])
 
 
+def check_video_production_gate(db, value, plan):
+    gate = value.get('production_gate')
+    if not gate:
+        return
+    from .feishu_bridge import meta
+    from .feishu_production_entry import config_key
+    from .feishu_native_review import source_key
+    saved = meta(db, gate['video_plan_key'])
+    policy = meta(db, config_key(plan['project']))
+    profile = meta(db, 'video:profile:' + plan['project'])
+    native = meta(db, 'native:config:' + plan['project'])
+    binding = meta(db, 'feishu:binding:' + plan['project'])
+    setup = meta(db, 'setup:project:' + plan['project'])
+    source = meta(db, source_key(plan['project'], plan['task']))
+    project_row = db.execute('SELECT digest FROM projects WHERE id=?', (plan['project'],)).fetchone()
+    deployment_row = db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()
+    if (not saved or saved.get('state') != 'confirmed'
+            or fingerprint(saved.get('snapshot')) != gate['snapshot_sha256']
+            or saved.get('approver') != gate['approver'].split(':')[-1]
+            or saved.get('expires_at') != gate['expires_at']
+            or saved.get('summary') != gate['summary']
+            or not policy or not policy.get('enabled') or not policy.get('cost_enabled')
+            or fingerprint(policy) != gate['policy_sha256']
+            or gate['approver'].split(':')[-1] not in policy.get('cost_approvers', [])
+            or gate['expires_at'] <= time.time()
+            or not profile or fingerprint(profile) != saved['snapshot']['profile_sha256']
+            or not native or not native.get('enabled')
+            or fingerprint(native) != saved['snapshot']['native_sha256']
+            or fingerprint(binding) != saved['snapshot']['binding_sha256']
+            or fingerprint(setup) != saved['snapshot']['setup_sha256']
+            or not project_row or project_row[0] != saved['snapshot']['project_digest']
+            or not deployment_row or deployment_row[0] != saved['snapshot']['deployment']
+            or source != {'record_id': gate['record_id']}
+            or plan['task'] != saved['snapshot']['task']
+            or plan['revision'] != saved['snapshot']['revision']
+            or saved['snapshot']['worker_plan_sha256'] != value['plan_sha256']):
+        raise RuntimeFault('PRODUCTION_VIDEO_APPROVAL_CHANGED')
+
+
+def check_video_production_remote(store, master_key, value, plan, client_factory=None):
+    gate = value.get('production_gate')
+    if not gate:
+        return
+    from .feishu_bridge import meta, plain_text, select_text
+    from .feishu_native_sync import NativeSync
+    with store.connect() as db:
+        check_video_production_gate(db, value, plan)
+        native = meta(db, 'native:config:' + plan['project'])
+        policy = meta(db, 'production:config:' + plan['project'])
+        binding = meta(db, 'feishu:binding:' + plan['project'])
+        snapshot = meta(db, gate['video_plan_key'])['snapshot']
+    client = client_factory(native['context']) if client_factory else NativeSync(store, master_key).client(native['context'])
+    remote = client.record(binding['base_token'], binding['table_id'], gate['record_id'])['fields']
+    names, production_names = native['names'], policy['names']
+    if (plain_text(remote.get(names['task'])) != plan['task']
+            or plain_text(remote.get(names['sku_id'])) != snapshot['sku_id']
+            or plain_text(remote.get(names['source_revision'])) != snapshot['source_revision']
+            or plain_text(remote.get(names['review_revision'])) != str(plan['revision'])
+            or select_text(remote.get(names['status'])) != '脚本通过'
+            or plain_text(remote.get(names['script_digest'])) != snapshot['script_sha256']
+            or hashlib.sha256(plain_text(remote.get(names['script'])).encode()).hexdigest() != snapshot['script_sha256']
+            or select_text(remote.get(production_names['operation'])) != '申请视频计划'
+            or select_text(remote.get(production_names['cost'])) != '确认此计划的一次视频生成'
+            or remote.get(production_names['plan']) != gate['summary']):
+        raise RuntimeFault('PRODUCTION_VIDEO_REMOTE_CHANGED')
+
+
 class Worker:
-    def __init__(self, store, *, provider_factory=H3Provider, media_collector=collect, media_preflight=toolchain):
+    def __init__(self, store, *, provider_factory=H3Provider, media_collector=collect,
+                 media_preflight=toolchain, source_client_factory=None):
         self.store=store;self.provider_factory=provider_factory
         self.media_collector=media_collector;self.media_preflight=media_preflight
+        self.source_client_factory=source_client_factory
 
     def prepare(self,token,project,task,revision,assets_root,specification,credential_ref,billing_owner,region):
         identifier(billing_owner)
@@ -159,6 +229,7 @@ class Worker:
             raise RuntimeFault('PROVIDER_KEY_FORMAT_INVALID_USE_RAW_KEY')
         provider=self.provider_factory(plan['region'])
         if state=='ready':
+            check_video_production_remote(self.store,master_key,value,plan,self.source_client_factory)
             private_directory(media_root)
             self.media_preflight()
             body=request_body(json.loads(row['input'])['script'],Path(plan['assets_root']),plan['specification'])
@@ -169,6 +240,7 @@ class Worker:
                 if current['state']!='ready':raise RuntimeFault('TASK_NOT_READY_NO_RESUBMIT')
                 if latest['plan_sha256']!=value['plan_sha256'] or latest['expires_at']<time.time():
                     raise RuntimeFault('WORKER_APPROVAL_EXPIRED_OR_CHANGED')
+                check_video_production_gate(db,latest,plan)
                 check=db.execute('SELECT revision FROM vault WHERE alias=?',(plan['credential_ref'][7:],)).fetchone()
                 if not check or check[0]!=plan['credential_revision']:raise RuntimeFault('WORKER_CREDENTIAL_CHANGED')
                 db.execute("UPDATE tasks SET state='submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
