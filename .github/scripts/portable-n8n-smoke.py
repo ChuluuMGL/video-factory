@@ -13,10 +13,10 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, install_local, local_control, provision, verify_setup
-from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS
+from portable_n8n import API, environment, install_local, local_control, provision, verify_setup, ensure_ledger
+from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
-state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':''}
+state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False}
 class Fixture(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def reply(self, body):
@@ -30,7 +30,7 @@ class Fixture(BaseHTTPRequestHandler):
             state['polls']+=1
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution')}}}})
+            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':''}}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -61,6 +61,8 @@ class Fixture(BaseHTTPRequestHandler):
         assert self.headers['Authorization']=='Bearer synthetic-token'
         fields=json.loads(self.rfile.read(int(self.headers['Content-Length'])))['fields']
         state['writes']+=1
+        if state['fail_writeback'] and '脚本' in fields:
+            self.reply({'code':999,'msg':'synthetic writeback failure'}); return
         if '状态' in fields: state['status']=fields['状态']
         if '脚本' in fields: state['script']=fields['脚本']
         if '执行编号' in fields: state['execution']=fields['执行编号']
@@ -111,7 +113,7 @@ try:
     workflow=probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin)
     saved=provision(api,root/'bindings','probe',workflow,credentials)
     assert provision(api,root/'bindings','probe',workflow,credentials)==saved
-    def execute(workflow_id):
+    def execute(workflow_id, expect_failure=False):
         if mode=='docker':
             saved_local=json.loads((root/'local.json').read_text())
             command=['docker','compose','-p',saved_local['project'],'-f','compose.json','exec','-T','-e','N8N_RUNNERS_BROKER_PORT=15679','n8n','n8n','execute','--id',workflow_id,'--rawOutput']
@@ -122,6 +124,9 @@ try:
         env['N8N_RUNNERS_BROKER_PORT']='15679'
         result=subprocess.run(command,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
         (root/'synthetic-execution.log').write_bytes(result.stdout)
+        if expect_failure:
+            assert result.returncode != 0, 'EXPECTED_WRITEBACK_FAILURE'
+            return
         if result.returncode:
             # Synthetic fixture logs only; print node error, never API credentials.
             lines=result.stdout.decode(errors='replace').splitlines()
@@ -138,7 +143,9 @@ try:
     execute(schema['workflow'])
     assert len(state['fields'])==len(FIELDS)
     credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer synthetic-model-key'}}
+    ledger=ensure_ledger(api,root/'bindings','fixture','baseFixture','tableFixture')
     workflow=production_workflow('baseFixture','tableFixture','script',feishu_origin=fixture_origin,script_origin=fixture_origin)
+    workflow=guard_workflow(workflow,ledger)
     saved=provision(api,root/'bindings','script',workflow,credentials)
     phase='script execution'
     execute(saved['workflow'])
@@ -147,7 +154,7 @@ try:
     execute(saved['workflow'])
     assert state['model_calls']==1,state
     phase='video submit and poll'
-    submit=provision(api,root/'bindings','video-submit',production_workflow('baseFixture','tableFixture','video-submit',feishu_origin=fixture_origin,video_origin=fixture_origin),credentials)
+    submit=provision(api,root/'bindings','video-submit',guard_workflow(production_workflow('baseFixture','tableFixture','video-submit',feishu_origin=fixture_origin,video_origin=fixture_origin),ledger),credentials)
     poll=provision(api,root/'bindings','video-poll',production_workflow('baseFixture','tableFixture','video-poll',feishu_origin=fixture_origin,video_origin=fixture_origin),credentials)
     state['status']='脚本通过'
     execute(submit['workflow'])
@@ -161,8 +168,30 @@ try:
     assert state['polls']==1 and state['status']=='视频待审核'
     execute(poll['workflow'])
     assert state['video_calls']==1 and state['polls']==1
+    phase='writeback outage and no-charge recovery'
+    recovery=provision(api,root/'bindings','recover',recovery_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    state['status']='请求脚本'; state['fail_writeback']=True
+    execute(saved['workflow'],expect_failure=True)
+    assert state['model_calls']==2 and state['status']=='脚本生成中'
+    rows=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data']
+    assert rows[0]['status']=='result_ready' and 'Synthetic reviewable script' in rows[0]['result']
+    state['status']='请求脚本'
+    execute(saved['workflow'])
+    assert state['model_calls']==2, 'LOCKED_RESULT_MUST_NOT_RESUBMIT'
+    state['status']='脚本生成中'; state['fail_writeback']=False
+    execute(recovery['workflow'])
+    assert state['model_calls']==2 and state['status']=='脚本待审核'
+    phase='atomic concurrent claims'
+    from concurrent.futures import ThreadPoolExecutor
+    def claim(index):
+        return api.request('PATCH','/api/v1/data-tables/'+ledger['table']+'/rows/update',{
+            'filter':{'type':'and','filters':[{'columnName':'id','condition':'eq','value':ledger['row']},{'columnName':'status','condition':'eq','value':'idle'}]},
+            'data':{'status':'busy','owner':'contender-'+str(index)},'returnData':True})
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        claims=list(pool.map(claim,range(6)))
+    assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==5 and all(not w['active'] for w in all_workflows)
+    assert len(all_workflows)==6 and all(not w['active'] for w in all_workflows)
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text()
     phase='temporary authenticated setup hook'
@@ -180,7 +209,7 @@ try:
             break
         except Exception: time.sleep(1)
     else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
-    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
+    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
 except Exception as error:
     if phase=='install' and hasattr(error,'diagnostics'):
         print(error.diagnostics.decode(errors='replace')[-4000:],flush=True)

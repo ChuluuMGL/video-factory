@@ -5,6 +5,7 @@ They do not claim distributed exactly-once guarantees; scheduled activation is
 not delivered until overlapping execution/approval-identity gates are verified.
 """
 import json
+from uuid import NAMESPACE_URL, uuid5
 from portable_n8n import identifier
 
 
@@ -176,9 +177,81 @@ def setup_hook(workflow, path):
     workflow=json.loads(json.dumps(workflow))
     start=workflow['nodes'][0]['name']
     hook={'id':'vf-setup-hook','name':'Temporary setup check','type':'n8n-nodes-base.webhook',
-          'typeVersion':2,'position':[0,200],'parameters':{'httpMethod':'POST','path':path,
+          'typeVersion':2,'webhookId':str(uuid5(NAMESPACE_URL,'video-factory:'+path)),
+          'position':[0,200],'parameters':{'httpMethod':'POST','path':path,
           'responseMode':'lastNode','authentication':'headerAuth','options':{}},
           'credentials':{'httpHeaderAuth':{'id':'UNBOUND','name':'UNBOUND'}}}
     workflow['nodes'].append(hook)
     workflow['connections'][hook['name']]=workflow['connections'][start]
     return workflow
+
+
+def ledger_update(name, ledger, status, values, owner=False):
+    conditions=[{'keyName':'id','condition':'eq','keyValue':ledger['row']},
+                {'keyName':'status','condition':'eq','keyValue':status}]
+    if owner:
+        conditions.append({'keyName':'owner','condition':'eq','keyValue':"={{ $('Select task').first().json.execution }}"})
+    return {'name':name,'type':'n8n-nodes-base.dataTable','typeVersion':1.1,
+            'parameters':{'resource':'row','operation':'update',
+                          'dataTableId':{'__rl':True,'mode':'id','value':ledger['table']},
+                          'matchType':'allConditions','filters':{'conditions':conditions},
+                          'columns':{'mappingMode':'defineBelow','value':values},'options':{}}}
+
+
+def guard_workflow(workflow, ledger):
+    """Serialize a project's model operations in n8n's own transactional store.
+
+    A failure leaves the row busy/result_ready; no lease expiry guesses whether
+    a paid POST reached its provider. Result fields are saved before Base write.
+    """
+    identifier(ledger['table'])
+    if type(ledger['row']) is not int or ledger['row']<1: raise ValueError('LEDGER_ROW_REQUIRED')
+    nodes=json.loads(json.dumps(workflow['nodes']))
+    claim=ledger_update('Claim project execution',ledger,'idle',{
+        'status':'busy','owner':"={{ $('Select task').first().json.execution }}",
+        'payload':"={{ JSON.stringify($('Select task').first().json) }}",'result':''})
+    verify=code('Verify exclusive owner',"if ($json.owner !== $('Select task').first().json.execution) throw new Error('EXECUTION_NOT_OWNED'); return [{json:$('Select task').first().json}];")
+    anchor=next(i for i,n in enumerate(nodes) if n['name'] in ('Validate request','Require job receipt'))
+    nodes[anchor+1:anchor+1]=[claim,verify]
+    # Polls that are still running must release their claim too; they do not
+    # make paid requests and return no items before writeback. Leave polling
+    # unguarded for now; only mutation/submission flows need exclusivity.
+    names=[n['name'] for n in nodes]
+    write_name='Write script for human review' if 'Write script for human review' in names else 'Save video job receipt'
+    before=next(i for i,n in enumerate(nodes) if n['name']==write_name)
+    save=ledger_update('Persist model result',ledger,'busy',{'status':'result_ready','result':'={{ JSON.stringify($json) }}'},owner=True)
+    restore=code('Restore saved result',"if ($json.owner !== $('Select task').first().json.execution) throw new Error('RESULT_NOT_OWNED'); return [{json:JSON.parse($json.result)}];")
+    nodes[before:before]=[save,restore]
+    nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
+              code('Execution receipt',"return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false,result_saved:true}}];")]
+    return compile_nodes(nodes)
+
+
+def recovery_workflow(base, table, ledger, *, feishu_origin='https://open.feishu.cn'):
+    """Replay a saved result to its original Base row; contains no model node."""
+    url,nodes=start(base,table,feishu_origin)
+    nodes += [
+        {'name':'Read saved result','type':'n8n-nodes-base.dataTable','typeVersion':1.1,
+         'parameters':{'resource':'row','operation':'get','dataTableId':{'__rl':True,'mode':'id','value':ledger['table']},
+         'matchType':'allConditions','filters':{'conditions':[{'keyName':'id','condition':'eq','keyValue':ledger['row']},
+                                                            {'keyName':'status','condition':'eq','keyValue':'result_ready'}]},
+         'returnAll':False,'limit':1}},
+        code('Select task',"""const task=JSON.parse($json.payload), result=JSON.parse($json.result);
+if (!task.id || !/^[A-Za-z0-9_-]+$/.test(task.id) || task.execution!==$json.owner || !result.fields ||
+    !['脚本待审核','视频生成中'].includes(result.fields['状态'])) throw new Error('SAVED_RESULT_INVALID');
+return [{json:{...task,result}}];"""),
+        http('Read original task', '={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",feishu=True),
+        code('Verify unchanged task',"""if ($json.code!==0) throw new Error('ORIGINAL_TASK_UNREADABLE');
+const fields=$json.data.record.fields, saved=$('Select task').first().json;
+const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
+if(text(fields['执行编号'])!==saved.execution) throw new Error('TASK_CHANGED_NO_WRITEBACK');
+const expected=saved.result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
+if(fields['状态']!==expected && fields['状态']!==saved.result.fields['状态']) throw new Error('REVIEW_STATE_CHANGED_NO_WRITEBACK');
+if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
+if(text(fields['脚本'])!==saved.script && text(fields['脚本'])!==saved.result.fields['脚本']) throw new Error('SCRIPT_CHANGED_NO_WRITEBACK');
+return [{json:saved.result}];"""),
+        http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),
+        code('Verify recovery writeback',"if ($json.code!==0) throw new Error('WRITEBACK_STILL_UNAVAILABLE_NO_MODEL_RETRY'); return $input.all();"),
+        ledger_update('Release recovered execution',ledger,'result_ready',{'status':'idle'},owner=True),
+        code('Recovery receipt',"return [{json:{writeback:'verified',provider_requests:0,recovered:true}}];")]
+    return compile_nodes(nodes)

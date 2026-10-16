@@ -190,6 +190,35 @@ def provision(api, root, project, workflow, credentials):
         return {k: state[k] for k in ('project', 'workflow', 'verified_disabled')}
 
 
+def ensure_ledger(api, root, project, base, table):
+    """Provision one project mutex/result row in n8n's existing database."""
+    identifier(project)
+    with locked(root) as root:
+        path=root/('ledger-'+project+'.json')
+        saved=json.loads(path.read_text()) if path.exists() else {'origin':api.url,'project':project,'base':base,'task_table':table}
+        if saved.get('base')!=base or saved.get('task_table')!=table: raise Fault('LEDGER_BASE_SCOPE_CHANGED')
+        if saved['origin']!=api.url: raise Fault('LEDGER_ORIGIN_CHANGED')
+        if saved.get('pending'): raise Fault('LEDGER_MUTATION_UNCERTAIN_RECONCILE_FIRST')
+        if not saved.get('table'):
+            saved['pending']='table'; private_write(path,saved)
+            result=api.request('POST','/api/v1/data-tables',{
+                'name':'Video Factory '+project+' execution',
+                'columns':[{'name':name,'type':'string'} for name in ('status','owner','payload','result')]})
+            saved['table']=identifier(result.get('id'))
+            saved.pop('pending'); private_write(path,saved)
+        if not saved.get('row'):
+            saved['pending']='row'; private_write(path,saved)
+            result=api.request('POST','/api/v1/data-tables/'+saved['table']+'/rows',{
+                'data':[{'status':'idle','owner':'','payload':'','result':''}],'returnType':'all'})
+            if not isinstance(result,list) or len(result)!=1 or type(result[0].get('id')) is not int:
+                raise Fault('LEDGER_ROW_RECEIPT_INVALID')
+            saved['row']=result[0]['id']; saved.pop('pending'); private_write(path,saved)
+        rows=api.request('GET','/api/v1/data-tables/'+saved['table']+'/rows?limit=100')['data']
+        if len(rows)!=1 or rows[0].get('id')!=saved['row']:
+            raise Fault('LEDGER_CHANGED_REQUIRES_REVIEW')
+        return {'table':saved['table'],'row':saved['row']}
+
+
 def run_checked(command, cwd, env=None):
     # Never print subprocess output: npm/n8n may include environment/config data.
     result = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
@@ -450,7 +479,7 @@ def main(argv=None):
     bind.add_argument('--project', required=True)
     bind.add_argument('--base', required=True)
     bind.add_argument('--table', required=True)
-    bind.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], default='probe')
+    bind.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll','recover'], default='probe')
     bind.add_argument('--experimental-manual', action='store_true', help='允许导入人工逐条测试工作流；不表示支持并发/自动生产')
     export = commands.add_parser('export')
     export.add_argument('--base', required=True)
@@ -478,8 +507,8 @@ def main(argv=None):
             if args.command == 'check':
                 value = api.preflight()
             else:
-                from n8n_workflows import probe_workflow, schema_workflow, production_workflow
-                if args.flow not in ('probe','schema') and not args.experimental_manual:
+                from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow, recovery_workflow
+                if args.flow not in ('probe','schema','recover') and not args.experimental_manual:
                     raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
                 app_id = input('飞书 App ID: ').strip()
                 identifier(app_id)
@@ -487,7 +516,7 @@ def main(argv=None):
                 credential = {'type': 'httpCustomAuth', 'data': {'json': json.dumps(
                     {'body': {'app_id': app_id, 'app_secret': app_secret}})}}
                 credentials = {'httpCustomAuth':credential}
-                if args.flow not in ('probe','schema'):
+                if args.flow not in ('probe','schema','recover'):
                     provider = 'DeepSeek' if args.flow=='script' else 'MiniMax 中国区'
                     key = secret(provider + ' API Key（隐藏输入）: ')
                     if any(c.isspace() for c in key) or key.lower().startswith('bearer '):
@@ -495,7 +524,10 @@ def main(argv=None):
                     credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer '+key}}
                 template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                             schema_workflow(args.base,args.table) if args.flow=='schema' else
+                            recovery_workflow(args.base,args.table,ensure_ledger(api,args.root,args.project,args.base,args.table)) if args.flow=='recover' else
                             production_workflow(args.base,args.table,args.flow))
+                if args.flow in ('script','video-submit'):
+                    template=guard_workflow(template,ensure_ledger(api,args.root,args.project,args.base,args.table))
                 value = provision(api, args.root, args.project + '-' + args.flow,template,credentials)
                 value['next'] = '在 n8n 查看并逐条运行测试；未激活定时执行。人工审核在飞书 Base。'
                 value['production_ready'] = False

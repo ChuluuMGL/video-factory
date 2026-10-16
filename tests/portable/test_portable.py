@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
 from portable_n8n import API, Fault, origin, provision, locked, install_local
-from n8n_workflows import probe_workflow, production_workflow, schema_workflow
+from n8n_workflows import probe_workflow, production_workflow, schema_workflow, guard_workflow, recovery_workflow, setup_hook
 
 class FakeAPI:
     url='https://n8n.example.invalid'
@@ -81,6 +81,7 @@ class Portable(unittest.TestCase):
         import subprocess
         workflows=[probe_workflow('baseTest','tableTest'),schema_workflow('baseTest','tableTest')]
         workflows += [production_workflow('baseTest','tableTest',flow) for flow in ['script','video-submit','video-poll']]
+        workflows += [guard_workflow(production_workflow('baseTest','tableTest','script'),{'table':'ledgerTest','row':1}),recovery_workflow('baseTest','tableTest',{'table':'ledgerTest','row':1})]
         source=[node['parameters']['jsCode'] for workflow in workflows for node in workflow['nodes'] if node['type']=='n8n-nodes-base.code']
         result=subprocess.run(['node','-e',"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{for(const code of JSON.parse(s))new Function('$json','$input','$','$execution',code);});"],input=json.dumps(source),text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)

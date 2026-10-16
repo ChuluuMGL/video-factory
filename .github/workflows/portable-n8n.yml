@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: portable-n8n-${{ github.ref }}
+  group: portable-n8n-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 jobs:
   native:
