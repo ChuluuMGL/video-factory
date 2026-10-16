@@ -353,6 +353,11 @@ def install_local(root, mode, port=5678, managed_node=False):
             build_env['PATH']=str(Path(node).parent)+os.pathsep+build_env.get('PATH','')
             build_env['npm_config_python'] = str(python)
             build_env['npm_config_jobs'] = '2'
+            # Keep cache and dependency writes on the selected installation volume.
+            # Hosted Windows system-temp/cache volumes can be much slower than
+            # the target disk; do not inherit a cache on another volume.
+            build_env={key:value for key,value in build_env.items() if key.lower()!='npm_config_cache'}
+            build_env['npm_config_cache']=str(root/'npm-cache')
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
                                                   'dependencies': {'n8n': N8N_VERSION}})
             run_checked([node, str(npm_cli), 'install', '--global=false', '--prefix', str(root), '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env)
