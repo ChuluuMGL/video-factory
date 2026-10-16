@@ -32,13 +32,15 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 ## 先看安装目标
 
+把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
+
 | 你要做什么 | 怎么开始 | 与 Video Factory 的关系 |
 |---|---|---|
 | 只想在浏览器里使用 n8n | 注册 [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md)，本机无需安装 n8n 或 Docker | 这是独立的 n8n，**不是** Video Factory 安装 |
 | 只想在 Windows/Mac 本机试用 n8n | 按 [n8n 官方 Node.js 要求](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)安装 Node.js，运行 `npx n8n`，再打开 `http://localhost:5678`；官方已提示 npm 安装方式从 n8n 3.0 起弃用 | 适合单独试用 n8n，**不会**安装本产品 |
 | 安装完整 Video Factory | 在自己的 Ubuntu 24.04 x86_64 服务器运行下方 Setup；Windows/Mac 上的 Agent 可通过 SSH 操作服务器 | 安装产品服务、PostgreSQL、自带 n8n；按需部署私网执行器 |
 
-已有 n8n Cloud 或本机 n8n 的工作流和凭据，当前安装包**不能直接接管**。因此下面的 Ubuntu 要求只针对完整 Video Factory，不是说 n8n 本身只能装在 Ubuntu。详细差异见[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)。
+已有 n8n Cloud 或本机 n8n 的工作流和凭据，当前安装包**还不能直接接入**。这是待补的产品能力，不是要求客户放弃已有环境。下面的 Ubuntu 要求仅针对**当前固定包的完整自动部署**。复用已有 n8n 的[接入路线与验收条件](docs/product/EXISTING_N8N_INTEGRATION.md)已列明；当前只读环境识别不代表完整安装通过。
 
 ## 模型支持到哪一步
 
@@ -62,12 +64,13 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 ```text
 请使用本仓库 skills/video-factory-setup/ 中的完整 Skill，
-带我在自己的服务器上首次安装 Video Factory，并配置第一个测试项目。
-使用 GitHub 最新公开测试发行的固定标签与摘要；先检查服务器和发行包，再逐步引导 Setup。
+先问我已有 n8n、飞书应用/Base 和希望运行产品服务的位置，保留现有配置，
+再告诉我当前版本可完成哪条路线；可安装时配置第一个测试项目。
+使用 GitHub 最新公开测试发行的固定标签与摘要；先检查环境和发行包，再逐步引导 Setup。
 密码和 API Key 默认在客户服务器的私密终端隐藏输入，不放在聊天中。
 ```
 
-准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
+**若选择当前固定包的完整自动部署**，准备 Ubuntu 24.04 x86_64 主机（至少 4 GiB 内存）、访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
 
 在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。当前发行包不能原生部署整套服务到 Windows/Mac；这不影响单独使用 n8n Cloud 或本机 n8n。
 

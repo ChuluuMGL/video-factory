@@ -10,7 +10,7 @@
     return;
   }
   const intents = {
-    install: '请使用 Video Factory Setup Skill，带我在自己的服务器上完成第一次安装，并配置第一个测试项目。',
+    install: '请使用 Video Factory Setup Skill，先问我已有 n8n 的方式、飞书应用与 Base 的情况，再选择安装路线。保留已有服务；当前版本支持时再配置第一个测试项目。',
     project: '请使用 Video Factory Setup Skill，在同一客户的现有服务中新增项目。先检查已安装的服务与版本，复用服务，保留已有项目。',
     resume: '请使用 Video Factory Setup Skill，继续上次未完成的安装。先查阅上次安装记录，确认服务器和已完成步骤；不重复创建尚未确认结果的资源。',
     repair: '请使用 Video Factory Setup Skill，先只读检查我指定的项目。根据当前版本、任务和报错查找原因。不要删除数据或直接重装。'
@@ -20,7 +20,7 @@
     mode = value;
     document.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
     const source = new URL('skill/SKILL.md', window.location.href).href;
-    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n链接不可访问时，读取附件 video-factory-setup.zip，保留全部文件。\n安装包版本：${config.version}；来源：${config.release_url}\n\n按 Skill 在私有终端逐步确认服务器与项目，隐藏输入密码与密钥，不把它们发进聊天。本人完成飞书授权后，回到终端确认 Base 计划。Setup 成功后交接服务状态和 Base 链接；真实任务另行验收。新增项目复用同客户的服务。`;
+    prompt.value = `${intents[mode]}\n\nSkill 阅读地址：${source}\n链接不可访问时，读取附件 video-factory-setup.zip，保留全部文件。\n安装包版本：${config.version}；来源：${config.release_url}\n\n先说明当前版本能完成哪条路线，不要覆盖已有 n8n。安装可继续时，在私有终端隐藏输入密码与密钥，不把它们发进聊天。本人完成飞书授权后确认 Base 计划。Setup 成功后交接服务状态和 Base 链接；真实任务另行验收。`;
     prompt.setSelectionRange(0, 0);
     prompt.scrollTop = 0;
     document.querySelector('#copy-prompt span').textContent = '复制';

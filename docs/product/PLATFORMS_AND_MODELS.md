@@ -1,5 +1,7 @@
 # 安装平台与模型接口
 
+首次进入由 Skill 先问已有 n8n、飞书应用/Base 与执行服务位置。复用已有 n8n 是产品目标；当前固定包尚未交付完整接入，见[接入路线与验收条件](EXISTING_N8N_INTEGRATION.md)。下面的 Ubuntu 条件只属于现版完整自动部署。
+
 先区分**操作电脑**和**运行服务器**。安装人员可以在 Windows、macOS 或 Linux 上使用 Agent，通过 SSH 管理客户服务器；这不会把服务安装到操作电脑。当前固定发行包只在客户自己的 **Ubuntu 24.04 x86_64** 主机上提供自动准备与完整栈部署。安装预检要求至少 4 GiB 内存、4 GiB **剩余**磁盘、Python 3.12、root、systemd、本地 Docker Engine 与 Compose 2.24+；4 GiB 剩余磁盘只是预检门槛，不是视频生产的容量建议。实际磁盘还要计入镜像、数据库、素材、成片和备份留存，按项目量规划并在上线前实测。安装器会核对本机 Unix Docker socket；不能指向远程 Docker daemon。
 
 | 位置 | n8n 本身 | 当前 Video Factory 固定发行包 | 推荐做法 |

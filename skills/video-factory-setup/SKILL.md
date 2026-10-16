@@ -5,13 +5,13 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 # Video Factory 安装与维护
 
-这是客户自托管产品的操作 Skill，配合固定版本发行包中的 `vfctl`。每客户独立服务器、账户、数据库和密钥；一个客户内可建多个项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
+这是 Video Factory 的安装与维护 Skill。首次进入先识别用户已有的 n8n、飞书和运行环境，再选择路径；不能预设每位用户都需要新购 Ubuntu 服务器。已安装客户可复用同一套服务新增项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
 
 ## 开始前
 
-0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口；安装结束按 [交接模板](references/handoff.md) 报告。不要把内部 CLI 指令清单当作用户交付。
+0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：现有 n8n 在哪里、飞书应用/Base 是否已有、产品执行服务打算放在哪里。这个脚本只识别环境，不安装软件、不读取密钥、不扫描远端。已有 n8n 时先保留原实例与凭据，不创建第二套 n8n。安装结束按 [交接模板](references/handoff.md) 报告。
 1. 读取 [操作流程](references/operations.md)，定位用户请求属于安装、续接、新项目、检查还是恢复。沿用当前会话已授权的对象和动作；缺少确切主机、目录或客户/项目时先做独立的只读检查，不猜测目标。
-2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。操作人员可在 Windows/Mac 使用 Agent，但安装命令要在目标客户 Ubuntu 24.04 x86_64 主机执行；远程连接必须已有可信 SSH 主机指纹，禁止关闭指纹检查。安装 CLI 当前要求 Python 3.12 + venv、root；运行服务另需本地 Docker/Compose。n8n Cloud、本机 Node.js 试用和独立 Docker n8n 都不等于产品已安装，也不支持直接接管。
+2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。按识别结果告知当前可执行的路线和缺口。**当前固定发行包的完整自动部署**在 Ubuntu 24.04 x86_64 主机执行，要求 Python 3.12 + venv、root 和本地 Docker/Compose；远程连接须核对可信 SSH 主机指纹。已有本机 Node.js/Docker n8n、其他服务器 n8n 或 n8n Cloud 时，可先只读检查 API 和飞书环境；现版尚不能把完整业务流程接到它们，不能冒称安装完成，也不要覆盖已有 n8n。产品设计目标是复用这些实例，相关接入须按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 完成并验收。
 3. 固定版本、来源提交、发行包 SHA256 和清单 SHA256。先验证归档，再解压或执行包内代码。校验值必须来自可信交付记录；包内自报哈希不是发布者身份验证。
 4. 只用该包安装的 CLI 绝对路径。不要把 `isolated/vf` 或旧四项目 canary 当作客户安装器。不创建中央客户数据库，不自动启动旧 ECS、不另租服务器。
 
