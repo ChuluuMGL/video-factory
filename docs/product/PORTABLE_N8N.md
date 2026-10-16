@@ -14,7 +14,7 @@
 
 ## 没有 n8n：本机 Node.js
 
-使用 Node.js 22、Python 3.11 或以上。原生模块回退编译时，Mac 需要 Xcode Command Line Tools，Windows 需要 Visual Studio C++ Build Tools，Linux 需要 C/C++ 编译工具。安装器会在专用目录准备 Python 构建依赖，不修改系统 Python，不全局安装 npm 包。
+使用 Node.js 24、Python 3.11 或以上。原生模块回退编译时，Mac 需要 Xcode Command Line Tools，Windows 需要 Visual Studio C++ Build Tools，Linux 需要 C/C++ 编译工具。安装器会在专用目录准备 Python 构建依赖，不修改系统 Python，不全局安装 npm 包。
 
 首次可以直接运行 `python3 portable_n8n.py welcome`，按问答复用已有实例或新装 n8n。一次输入 n8n 与飞书凭据后，它通过短时、带独立凭据的检查入口执行零模型连通检查和字段准备，随后停用检查入口。下面的分步命令供 Agent 续接和排障使用。
 

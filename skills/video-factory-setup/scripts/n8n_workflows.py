@@ -160,7 +160,7 @@ return changes.length ? changes : [{json:{noop:true}}];""".replace('REQUIRED_FIE
                   'combinator':'and'},'options':{}}},
               http('Apply missing fields','={{ '+json.dumps(fields_url)+' + $json.suffix }}',
                    '={{ $json.method }}','={{ $json.body }}',feishu=True),
-              code('Schema receipt',"if (!$json.noop && $json.code !== 0) throw new Error('SCHEMA_CHANGE_INCOMPLETE_REREAD_FIELDS'); return [{json:{schema_change:'accepted',provider_requests:0}}];")]
+              code('Schema receipt',"if ($input.all().some(item=>!item.json.noop && item.json.code !== 0)) throw new Error('SCHEMA_CHANGE_INCOMPLETE_REREAD_FIELDS'); return [{json:{schema_change:'accepted',provider_requests:0}}];")]
     workflow=compile_nodes(nodes)
     workflow['connections']['Fields already ready']={'main':[
         [{'node':'Schema receipt','type':'main','index':0}],

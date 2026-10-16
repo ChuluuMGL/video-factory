@@ -248,10 +248,11 @@ def install_local(root, mode, port=5678):
             node = shutil.which('node')
             npm = shutil.which('npm')
             if not node or not npm:
-                raise Fault('INSTALL_NODE_22_LTS_THEN_RESUME')
+                raise Fault('INSTALL_NODE_24_LTS_THEN_RESUME')
             version = subprocess.check_output([node, '--version'], text=True).strip()
-            if not re.match(r'v22\.', version):
-                raise Fault('NODE_22_REQUIRED_FOR_PINNED_N8N')
+            parts = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', version)
+            if not parts or int(parts[1]) != 24:
+                raise Fault('NODE_24_LTS_REQUIRED_FOR_PINNED_N8N')
             # npm's JS entry works on Windows without cmd.exe or shell=True.
             npm_path = Path(npm).resolve()
             candidates = [npm_path.parent / 'node_modules/npm/bin/npm-cli.js',
@@ -390,7 +391,8 @@ def verify_setup(api, root, project, template, credentials):
                 value=json.loads(raw)
         except (OSError,ValueError):
             raise Fault('SETUP_CHECK_INCOMPLETE_READ_N8N_EXECUTION') from None
-        if not isinstance(value,(dict,list)):
+        entries = value if isinstance(value,list) else [value]
+        if not entries or any(not isinstance(item,dict) or not (item.get('base_read')=='verified' or item.get('schema_change')=='accepted') for item in entries):
             raise Fault('SETUP_CHECK_RECEIPT_INVALID')
         return {'workflow':workflow_id,'result':value,'provider_requests':0}
     finally:
