@@ -143,7 +143,7 @@ def provision(api, root, project, workflow, credentials):
     with locked(root) as root:
         path = root / ('binding-' + project + '.json')
         config_hash = digest(workflow)
-        state = json.loads(path.read_text()) if path.exists() else {
+        state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
             'schema': 1, 'origin': api.url, 'project': project,
             'template_sha256': config_hash, 'credentials': {}, 'workflow': None}
         if state['origin'] != api.url or state['template_sha256'] != config_hash:
@@ -196,7 +196,7 @@ def ensure_ledger(api, root, project, base, table):
     identifier(project)
     with locked(root) as root:
         path=root/('ledger-'+project+'.json')
-        saved=json.loads(path.read_text()) if path.exists() else {'origin':api.url,'project':project,'base':base,'task_table':table}
+        saved=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'origin':api.url,'project':project,'base':base,'task_table':table}
         if saved.get('base')!=base or saved.get('task_table')!=table: raise Fault('LEDGER_BASE_SCOPE_CHANGED')
         if saved['origin']!=api.url: raise Fault('LEDGER_ORIGIN_CHANGED')
         if saved.get('pending'): raise Fault('LEDGER_MUTATION_UNCERTAIN_RECONCILE_FIRST')
@@ -269,7 +269,7 @@ def environment(root, port):
     env = os.environ.copy()
     receipt=root/'local.json'
     if receipt.exists():
-        saved=json.loads(receipt.read_text())
+        saved=json.loads(receipt.read_text(encoding='utf-8'))
         if saved.get('node_executable'): env['PATH']=str(Path(saved['node_executable']).parent)+os.pathsep+env.get('PATH','')
     env.update({'N8N_USER_FOLDER': str(root / 'data'), 'N8N_LISTEN_ADDRESS': '127.0.0.1',
                 'N8N_PORT': str(port), 'N8N_SECURE_COOKIE': 'false',
@@ -293,14 +293,14 @@ def install_local(root, mode, port=5678, managed_node=False):
     with locked(root) as root:
         receipt_path = root / 'local.json'
         if receipt_path.exists():
-            saved = json.loads(receipt_path.read_text())
+            saved = json.loads(receipt_path.read_text(encoding='utf-8'))
             if saved['mode'] != mode or saved['port'] != port:
                 raise Fault('LOCAL_INSTALL_EXISTS_REUSE_OR_CHOOSE_EMPTY_DIRECTORY')
             return saved
         plan = {'mode': mode, 'version': N8N_VERSION, 'port': port}
         plan_path = root / 'install-plan.json'
         if plan_path.exists():
-            if json.loads(plan_path.read_text()) != plan:
+            if json.loads(plan_path.read_text(encoding='utf-8')) != plan:
                 raise Fault('INSTALL_PLAN_CHANGED_USE_ORIGINAL_PARAMETERS')
         elif any(p.name != '.provision.lock' for p in root.iterdir()):
             raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
@@ -376,7 +376,7 @@ def process_identity(pid):
 
 def local_control(root, action):
     with locked(root) as root:
-        saved = json.loads((root / 'local.json').read_text())
+        saved = json.loads((root / 'local.json').read_text(encoding='utf-8'))
         if saved['mode'] == 'docker':
             command = [shutil.which('docker') or 'docker', 'compose', '-p', saved['project'], '-f', 'compose.json']
             run_checked(command + (['up', '-d'] if action == 'start' else ['stop']), root)

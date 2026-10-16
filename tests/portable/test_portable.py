@@ -31,7 +31,7 @@ class Portable(unittest.TestCase):
     def connect(self): return provision(self.api,self.root,'sample',self.workflow,self.credentials)
     def test_import_resume_does_not_duplicate_or_store_secrets(self):
         first=self.connect(); self.assertEqual(first,self.connect()); self.assertEqual(len(self.api.posts),2)
-        self.assertNotIn('SECRET_SENT_ONLY_TO_N8N',(self.root/'binding-sample.json').read_text())
+        self.assertNotIn('SECRET_SENT_ONLY_TO_N8N',(self.root/'binding-sample.json').read_text(encoding='utf-8'))
         self.assertEqual(self.api.posts[1][1]['nodes'][1]['credentials']['httpCustomAuth']['id'],'1')
     def test_uncertain_mutation_blocks_replay(self):
         self.api.fail=True
@@ -69,7 +69,7 @@ class Portable(unittest.TestCase):
         path=self.root/'package.json'; path.write_text('{"name":"existing-project"}')
         with self.assertRaisesRegex(Fault,'DIRECTORY_NOT_EMPTY'):
             install_local(self.root,'node',15679)
-        self.assertEqual(path.read_text(),'{"name":"existing-project"}')
+        self.assertEqual(path.read_text(encoding='utf-8'),'{"name":"existing-project"}')
     def test_paid_templates_never_retry_or_activate(self):
         for flow in ['script','video-submit','video-poll']:
             workflow=production_workflow('baseTest','tableTest',flow)
@@ -110,7 +110,7 @@ class Portable(unittest.TestCase):
             self.assertEqual(main(args+['--experimental-manual']),2)
             self.assertFalse(output.exists())
             self.assertEqual(main(args+['--experimental-manual','--ledger-table','ledgerTest','--ledger-row','1']),0)
-        self.assertIn('Claim project execution',[n['name'] for n in json.loads(output.read_text())['nodes']])
+        self.assertIn('Claim project execution',[n['name'] for n in json.loads(output.read_text(encoding='utf-8'))['nodes']])
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

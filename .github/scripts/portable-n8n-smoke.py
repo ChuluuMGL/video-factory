@@ -87,7 +87,7 @@ try:
     install_local(root,mode,15678,managed_node=mode=='node')
     assert install_local(root,mode,15678)['installed']
     if mode=='docker':
-        compose=json.loads((root/'compose.json').read_text())
+        compose=json.loads((root/'compose.json').read_text(encoding='utf-8'))
         compose['services']['n8n']['extra_hosts']=['host.docker.internal:host-gateway']
         (root/'compose.json').write_text(json.dumps(compose))
     phase='start'
@@ -253,7 +253,7 @@ try:
     assert len(all_workflows)==7 and all(not w['active'] for w in all_workflows)
     assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
-        assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text() and 'synthetic-model-key' not in receipt.read_text()
+        assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and key not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
     phase='temporary authenticated setup hook'
     report=verify_setup(api,root/'bindings','temporary-probe',probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     assert report['result']['base_read']=='verified',report
