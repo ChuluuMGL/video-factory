@@ -94,6 +94,12 @@ class Portable(unittest.TestCase):
         for flow in ['script','video-submit','video-poll']:
             with self.assertRaisesRegex(ValueError,'MUST_NOT_CALL_MODELS'):
                 setup_hook(production_workflow('baseTest','tableTest',flow),'test-hook')
+    def test_dependency_timeout_has_private_diagnostics(self):
+        from portable_n8n import run_checked
+        with self.assertRaisesRegex(Fault,'TIMEOUT') as result:
+            run_checked([sys.executable,'-c',"import time; print('SYNTHETIC_PRIVATE_OUTPUT',flush=True); time.sleep(30)"],self.root,timeout=1)
+        self.assertIn(b'SYNTHETIC_PRIVATE_OUTPUT',result.exception.diagnostics)
+        self.assertNotIn('SYNTHETIC_PRIVATE_OUTPUT',str(result.exception))
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

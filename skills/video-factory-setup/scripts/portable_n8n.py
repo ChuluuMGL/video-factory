@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import time
+import tempfile
 import venv
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
@@ -227,14 +228,41 @@ def ensure_ledger(api, root, project, base, table):
         return {'table':saved['table'],'row':saved['row']}
 
 
-def run_checked(command, cwd, env=None):
-    # Never print subprocess output: npm/n8n may include environment/config data.
-    result = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, timeout=1200)
-    if result.returncode:
-        error = Fault('DEPENDENCY_COMMAND_FAILED_' + Path(command[0]).stem.upper())
-        error.diagnostics = result.stdout
-        raise error
+def run_checked(command, cwd, env=None, timeout=1200):
+    # Raw dependency output stays private. Progress contains only elapsed time.
+    # On timeout/interruption, stop the process tree before releasing the setup
+    # lock, so a resumed installer cannot race an abandoned native build.
+    options={'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP} if os.name=='nt' else {'start_new_session':True}
+    with tempfile.TemporaryFile() as output:
+        process=subprocess.Popen(command,cwd=cwd,env=env,stdout=output,stderr=subprocess.STDOUT,**options)
+        started=time.monotonic()
+        def stop_build():
+            if process.poll() is None:
+                if os.name=='nt':
+                    subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+                else:
+                    os.killpg(process.pid,signal.SIGKILL)
+                process.wait(timeout=30)
+        try:
+            while process.poll() is None:
+                remaining=timeout-(time.monotonic()-started)
+                if remaining<=0:
+                    stop_build()
+                    output.seek(0)
+                    error=Fault('DEPENDENCY_INSTALL_TIMEOUT_PARTIAL_FILES_PRESERVED_RESUME_SAME_DIRECTORY')
+                    error.diagnostics=output.read()[-12000:]
+                    raise error
+                try: process.wait(timeout=min(30,remaining))
+                except subprocess.TimeoutExpired:
+                    print('依赖安装仍在运行（'+str(int(time.monotonic()-started))+' 秒）…',file=sys.stderr,flush=True)
+        except BaseException:
+            stop_build()
+            raise
+        if process.returncode:
+            output.seek(0)
+            error=Fault('DEPENDENCY_COMMAND_FAILED_'+Path(command[0]).stem.upper())
+            error.diagnostics=output.read()[-12000:]
+            raise error
 
 
 def environment(root, port):
@@ -311,7 +339,7 @@ def install_local(root, mode, port=5678, managed_node=False):
             build_env['npm_config_jobs'] = '2'
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
                                                   'dependencies': {'n8n': N8N_VERSION}})
-            run_checked([node, str(npm_cli), 'install', '--no-audit', '--no-fund'], root, env=build_env)
+            run_checked([node, str(npm_cli), 'install', '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env)
         else:
             docker = shutil.which('docker')
             if not docker:
