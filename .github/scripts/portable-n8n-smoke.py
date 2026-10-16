@@ -63,6 +63,10 @@ try:
     print('Installing isolated '+mode+' n8n',flush=True)
     install_local(root,mode,15678)
     assert install_local(root,mode,15678)['installed']
+    if mode=='docker':
+        compose=json.loads((root/'compose.json').read_text())
+        compose['services']['n8n']['extra_hosts']=['host.docker.internal:host-gateway']
+        (root/'compose.json').write_text(json.dumps(compose))
     phase='start'
     print('Starting real n8n',flush=True)
     local_control(root,'start')
@@ -74,6 +78,11 @@ try:
         req=Request(api_origin+path, data=json.dumps(body).encode() if body is not None else None,
                     headers={'Content-Type':'application/json'})
         with opener.open(req,timeout=60) as response:return json.load(response)['data']
+    for _ in range(60):
+        try:
+            request('/rest/settings')
+            break
+        except (ValueError, OSError): time.sleep(1)
     phase='fixture owner'
     request('/rest/owner/setup',{'email':'fixture@example.invalid','firstName':'CI','lastName':'Fixture','password':'Synthetic-Only-Pass123!'})
     scopes=request('/rest/api-keys/scopes')
@@ -82,11 +91,6 @@ try:
     api=API(api_origin,key)
     fixture_origin=f'http://127.0.0.1:{fixture.server_port}'
     if mode=='docker':
-        # Linux Docker host-gateway is configured in this CI fixture only.
-        compose=json.loads((root/'compose.json').read_text())
-        compose['services']['n8n']['extra_hosts']=['host.docker.internal:host-gateway']
-        (root/'compose.json').write_text(json.dumps(compose))
-        local_control(root,'start')
         fixture_origin=f'http://host.docker.internal:{fixture.server_port}'
     credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}})}}}
     phase='public api import'
@@ -96,7 +100,7 @@ try:
     def execute(workflow_id):
         if mode=='docker':
             saved_local=json.loads((root/'local.json').read_text())
-            command=['docker','compose','-p',saved_local['project'],'-f','compose.json','exec','-T','n8n','n8n','execute','--id',workflow_id,'--rawOutput']
+            command=['docker','compose','-p',saved_local['project'],'-f','compose.json','exec','-T','-e','N8N_RUNNERS_BROKER_PORT=15679','n8n','n8n','execute','--id',workflow_id,'--rawOutput']
         else:
             import shutil
             command=[shutil.which('node'),str(root/'node_modules/n8n/bin/n8n'),'execute','--id',workflow_id,'--rawOutput']
@@ -128,6 +132,8 @@ try:
         assert 'synthetic-feishu-secret' not in receipt.read_text() and key not in receipt.read_text()
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
 except Exception as error:
+    if phase=='install' and hasattr(error,'diagnostics'):
+        print(error.diagnostics.decode(errors='replace')[-4000:],flush=True)
     print(json.dumps({'phase':phase,'error_type':type(error).__name__,'message':str(error)[:300]}),flush=True)
     raise
 finally:

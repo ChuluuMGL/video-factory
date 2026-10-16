@@ -191,7 +191,9 @@ def run_checked(command, cwd, env=None):
     result = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, timeout=1200)
     if result.returncode:
-        raise Fault('DEPENDENCY_COMMAND_FAILED_' + Path(command[0]).stem.upper())
+        error = Fault('DEPENDENCY_COMMAND_FAILED_' + Path(command[0]).stem.upper())
+        error.diagnostics = result.stdout
+        raise error
 
 
 def environment(root, port):
