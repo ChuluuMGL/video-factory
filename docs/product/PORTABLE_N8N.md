@@ -93,3 +93,9 @@ python3 portable_n8n.py export --base YOUR_BASE_TOKEN --table YOUR_TABLE_ID \
 导出只包含工作流和凭据引用，不包含密钥。手动导入后，在 n8n Credentials 创建 **Custom Auth**（`httpCustomAuth`），JSON 使用 `body.app_id` 和 `body.app_secret`；在飞书 token 节点绑定。模型节点使用 **Header Auth**，名称 `Authorization`，值 `Bearer ` 加对应模型原始 Key。不要在工作流 Code 节点或导出的 JSON 里粘贴秘密。
 
 脚本和视频提交的手动导出也必须使用 `--experimental-manual`，并提供 `--ledger-table` 与 `--ledger-row`。先在 n8n 手动创建执行数据表，添加 `status`、`owner`、`payload`、`result` 四个文本列，创建一行并把 `status` 设为 `idle`；同一项目的提交工作流必须引用同一行。不要直接删掉锁节点来绕过配置。缺少这两项时导出会停止，不会产生无执行保护的收费工作流。Cloud 无公共 API 的完整业务路线仍需用户自行验证，不能将这份说明视为实测结论。
+
+## 当前验收记录
+
+2026-10-16 的[云端矩阵运行](https://github.com/ChuluuMGL/video-factory/actions/runs/38919697473)中，Mac ARM64、Linux x64 原生安装与 Linux Docker 的真实 n8n 合成业务检查已通过，覆盖字段补齐、脚本/视频状态、重复执行保护、并发抢占、恢复写回、人工修改保护、已有工作流保留和重启。模型与飞书接口使用合成数据，真实模型调用为零。
+
+Windows x64 的完整新装仍未通过；此前 npm 安装超过 20 分钟。短诊断确认在依赖下载/展开阶段仍有活动，尚不能据此宣称根因已修复。Cloud SaaS 实例测试按维护者决定跳过。自动生产的负责人身份与费用确认、便携路线的真实飞书/模型验收仍是发布前待办。

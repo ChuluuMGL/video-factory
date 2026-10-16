@@ -32,6 +32,8 @@ See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/
 
 ## Choose what you want to run
 
+Real local installation and existing n8n integration are under validation in [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49). See the [candidate guide](docs/product/PORTABLE_N8N.md); this is not a stable release.
+
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
 | Goal | How to start | Relation to Video Factory |
@@ -116,5 +118,3 @@ Maintained by [Chuluu](https://github.com/ChuluuMGL). Product website: [YUEYU TE
 Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. Original code and documentation use the [MIT license](LICENSE). Dependencies, images and case media retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Issues and pull requests are welcome; see [contributing](CONTRIBUTING.md).
 
 Public packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.
-
-Real local installation and existing n8n integration are under validation in [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49). See the [candidate guide](docs/product/PORTABLE_N8N.md); this is not a stable release.

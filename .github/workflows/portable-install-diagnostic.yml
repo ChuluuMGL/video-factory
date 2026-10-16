@@ -1,9 +1,6 @@
 name: Portable Windows install diagnostic
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/portable-install-diagnostic.yml'
 permissions:
   contents: read
 jobs:
