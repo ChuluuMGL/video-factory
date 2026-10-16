@@ -87,7 +87,7 @@ references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean), job
     if flow != 'video-poll':
         required = 'product' if flow == 'script' else 'script'
         if flow == 'video-submit':
-            nodes.append(code('Validate references', "if ($json.references.length<1 || $json.references.length>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_HTTPS_URLS_REQUIRED'); return $input.all();"))
+            nodes.append(code('Validate references', "if ($json.script.length>7000) throw new Error('H3_SCRIPT_TOO_LONG'); if ($json.references.length<1 || $json.references.length>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_HTTPS_URLS_REQUIRED'); return $input.all();"))
         nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED');" +
                           "if (($json.history+'\\n'+JSON.stringify({execution:$json.execution,script:$json.script,feedback:$json.feedback})).trim().length>18000) throw new Error('HISTORY_FULL_BEFORE_PROVIDER'); return $input.all();"))
         state = '脚本生成中' if flow == 'script' else '视频提交中'
@@ -95,11 +95,11 @@ references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean), job
                   write('Reserve task', '={{ $json }}'),
                   code('Check reservation', "if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_FAILED'); return [{json:{ok:true}}];"),
                   http('Read reservation', target, feishu=True),
-                  code('Verify reservation', """if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_READ_FAILED');
+                  code('Verify reservation', r"""if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_READ_FAILED');
 const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
-if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
+if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references)) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
         nodes += [code('Build script request', """return [{json:{model:'deepseek-flash',stream:false,max_tokens:2048,thinking:{type:'disabled'},messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
@@ -125,6 +125,13 @@ if (['failed','cancelled'].includes(task.status)) throw new Error('VIDEO_FAILED_
 if (['queued','running'].includes(task.status)) return [];
 if (task.status!=='succeeded' || !String(task.content?.url || '').startsWith('https://')) throw new Error('VIDEO_DOWNLOAD_UNAVAILABLE');
 return [{json:{fields:{'视频链接':{link:task.content.url,text:'查看视频'},'状态':'视频待审核'}}}];"""),
+                  http('Read task before video writeback',target,feishu=True),
+                  code('Verify video task unchanged',r"""if($json.code!==0) throw new Error('VIDEO_TASK_READBACK_FAILED');
+const task=$('Select task').first().json, fields=$json.data.record.fields;
+const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
+if(fields['状态']!=='视频生成中' || text(fields['视频任务ID'])!==task.job || text(fields['脚本'])!==task.script)
+    throw new Error('VIDEO_TASK_CHANGED_NO_OVERWRITE');
+return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
     return compile_nodes(nodes)
@@ -225,13 +232,14 @@ def guard_workflow(workflow, ledger):
     restore=code('Restore saved result',"if ($json.owner !== $('Select task').first().json.execution) throw new Error('RESULT_NOT_OWNED'); return [{json:JSON.parse($json.result)}];")
     readback=next(n for n in nodes if n['name']=='Read reservation')
     fresh=http('Read task before result writeback',readback['parameters']['url'],feishu=True)
-    unchanged=code('Verify task before result writeback',"""if ($json.code!==0) throw new Error('TASK_READBACK_FAILED_RESULT_SAVED');
+    unchanged=code('Verify task before result writeback',r"""if ($json.code!==0) throw new Error('TASK_READBACK_FAILED_RESULT_SAVED');
 const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 const result=$('Restore saved result').first().json;
 const expected=result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
 if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected ||
-   text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback)
+   text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback ||
+   JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references))
     throw new Error('TASK_CHANGED_RESULT_SAVED_NO_OVERWRITE');
 return [{json:result}];""")
     nodes[before:before]=[save,restore,fresh,unchanged]
@@ -254,13 +262,13 @@ if (!task.id || !/^[A-Za-z0-9_-]+$/.test(task.id) || task.execution!==$json.owne
     !['脚本待审核','视频生成中'].includes(result.fields['状态'])) throw new Error('SAVED_RESULT_INVALID');
 return [{json:{...task,result}}];"""),
         http('Read original task', '={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",feishu=True),
-        code('Verify unchanged task',"""if ($json.code!==0) throw new Error('ORIGINAL_TASK_UNREADABLE');
+        code('Verify unchanged task',r"""if ($json.code!==0) throw new Error('ORIGINAL_TASK_UNREADABLE');
 const fields=$json.data.record.fields, saved=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if(text(fields['执行编号'])!==saved.execution) throw new Error('TASK_CHANGED_NO_WRITEBACK');
 const expected=saved.result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
 if(fields['状态']!==expected && fields['状态']!==saved.result.fields['状态']) throw new Error('REVIEW_STATE_CHANGED_NO_WRITEBACK');
-if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
+if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(saved.references)) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
 if(text(fields['脚本'])!==saved.script && text(fields['脚本'])!==saved.result.fields['脚本']) throw new Error('SCRIPT_CHANGED_NO_WRITEBACK');
 return [{json:saved.result}];"""),
         http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),

@@ -31,9 +31,10 @@ class Fixture(BaseHTTPRequestHandler):
             self.reply({'code':0,'data':{'items':state['fields'],'has_more':False}})
         elif '/v2/query/video_generation/' in self.path:
             state['polls']+=1
+            if state.get('edit_during_poll'): state['status']='视频退回'
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':state['feedback']}}}})
+            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':state['feedback'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -217,6 +218,11 @@ try:
     assert state['polls']==1 and state['status']=='视频待审核'
     execute(poll['workflow'])
     assert state['video_calls']==1 and state['polls']==1
+    phase='preserve human review during video query'
+    state['status']='视频生成中'; state['edit_during_poll']=True
+    execute(poll['workflow'],expect_failure=True)
+    assert state['status']=='视频退回' and state['video_calls']==1
+    state['edit_during_poll']=False
     phase='writeback outage and no-charge recovery'
     recovery=provision(api,root/'bindings','recover',recovery_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     state['status']='请求脚本'; state['fail_writeback']=True
@@ -281,6 +287,26 @@ try:
     assert state['model_calls']==3 and state['video_calls']==1, 'SETUP_MUST_NOT_CALL_MODELS'
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
+    phase='guided setup and interrupted-session continuation'
+    from unittest.mock import patch
+    import portable_n8n as portable
+    def guided_secret(prompt):
+        guided_prompts.append(prompt)
+        return key if 'n8n API Key' in prompt else fixture_secret(prompt)
+    def guided_bundle(*args,**kwargs):
+        return configure_flows(*args,**kwargs,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
+    guided_prompts=[]
+    with patch('portable_n8n.secret',side_effect=guided_secret), patch('portable_n8n.configure_flows',side_effect=guided_bundle), patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)), patch('n8n_workflows.schema_workflow',side_effect=lambda b,t:schema_workflow(b,t,feishu_origin=fixture_origin)):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','y']):
+            first=portable.welcome(root/'guided-setup')
+        assert len(guided_prompts)==4,guided_prompts
+        guided_prompts.clear()
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y']):
+            resumed=portable.welcome(root/'guided-setup')
+        assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
+        assert first['flows']==resumed['flows']
+        assert not resumed['production_ready']
+    assert state['model_calls']==3 and state['video_calls']==1,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')

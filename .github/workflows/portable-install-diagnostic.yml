@@ -6,13 +6,21 @@ permissions:
 jobs:
   diagnose:
     runs-on: windows-2022
-    timeout-minutes: 17
+    timeout-minutes: 46
     strategy:
       fail-fast: false
       matrix:
-        strategy: [pnpm]
+        include:
+          - strategy: pnpm
+            location: runner_temp
+            limit: 720
+          - strategy: pnpm
+            location: system_temp
+            limit: 2400
     env:
       VF_INSTALL_STRATEGY: ${{ matrix.strategy }}
+      VF_INSTALL_LOCATION: ${{ matrix.location }}
+      VF_INSTALL_LIMIT: ${{ matrix.limit }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

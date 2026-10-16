@@ -7,7 +7,8 @@ import threading
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
 import portable_n8n as portable
-root=Path(tempfile.mkdtemp(prefix='vf-install-diagnostic-'))
+root=Path(tempfile.mkdtemp(prefix='vf-install-diagnostic-',dir=os.environ.get('RUNNER_TEMP') if os.environ.get('VF_INSTALL_LOCATION')=='runner_temp' else None))
+limit=int(os.environ.get('VF_INSTALL_LIMIT','720'))
 original=portable.run_checked
 strategy=os.environ.get('VF_INSTALL_STRATEGY','hoisted')
 if strategy not in ('hoisted','shallow','pnpm'): raise ValueError('unexpected diagnostic strategy')
@@ -23,7 +24,7 @@ def bounded(command,cwd,env=None,**kwargs):
             ignored=['@biomejs/biome','@jitsi/robotjs','@parcel/watcher','@sentry-internal/node-cpu-profiler','@sentry-internal/node-native-stacktrace','@sentry/cli','@sentry/node-cpu-profiler','@sentry/node-native-stacktrace','@swc/core','agent-browser','bufferutil','core-js','cpu-features','electron','electron-winstaller','es5-ext','esbuild','eslint-plugin-n8n-nodes-base','lefthook','libpq','msgpackr-extract','oracledb','protobufjs','puppeteer','sleep','ssh2','tree-sitter','tree-sitter-bash','unrs-resolver','utf-8-validate','v-code-diff','vue-demi']
             portable.private_write(root/'pnpm-workspace.yaml',{'allowBuilds':{**dict.fromkeys(allowed,True),**dict.fromkeys(ignored,False)},'strictDepBuilds':True})
             exe=pm/'node_modules/pnpm'/('pnpm.exe' if os.name=='nt' else 'pnpm')
-            return original([str(exe),'install','--store-dir',str(root/'tools/pnpm-store'),'--no-frozen-lockfile','--reporter=append-only'],root,env=env,timeout=720)
+            return original([str(exe),'install','--store-dir',str(root/'tools/pnpm-store'),'--no-frozen-lockfile','--reporter=append-only'],root,env=env,timeout=limit)
 
         command=[*command,'--loglevel=verbose','--timing','--install-strategy='+strategy]
         stopped=threading.Event()
@@ -35,7 +36,7 @@ def bounded(command,cwd,env=None,**kwargs):
                         stream.seek(max(0,os.fstat(stream.fileno()).st_size-2500))
                         print(stream.read().decode(errors='replace').splitlines()[-3:],flush=True)
         thread=threading.Thread(target=progress,daemon=True); thread.start()
-        try:return original(command,cwd,env=env,timeout=720)
+        try:return original(command,cwd,env=env,timeout=limit)
         finally:stopped.set();thread.join(5)
     return original(command,cwd,env=env,**kwargs)
 portable.run_checked=bounded
