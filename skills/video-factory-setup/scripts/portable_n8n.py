@@ -266,7 +266,13 @@ def run_checked(command, cwd, env=None, timeout=1200):
 
 
 def environment(root, port):
-    env = os.environ.copy()
+    # A fresh owned instance must never inherit another n8n database/queue or
+    # encryption configuration from the operator's shell. Existing instances
+    # are reached via API and do not use this process environment.
+    prefixes=('N8N_','DB_','QUEUE_','EXECUTIONS_','CREDENTIALS_')
+    excluded={'NODE_OPTIONS','NODE_PATH','WEBHOOK_URL','DATABASE_URL'}
+    env = {key:value for key,value in os.environ.items()
+           if not key.startswith(prefixes) and key not in excluded}
     receipt=root/'local.json'
     if receipt.exists():
         saved=json.loads(receipt.read_text(encoding='utf-8'))

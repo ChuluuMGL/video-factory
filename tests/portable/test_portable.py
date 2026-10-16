@@ -111,6 +111,14 @@ class Portable(unittest.TestCase):
             self.assertFalse(output.exists())
             self.assertEqual(main(args+['--experimental-manual','--ledger-table','ledgerTest','--ledger-row','1']),0)
         self.assertIn('Claim project execution',[n['name'] for n in json.loads(output.read_text(encoding='utf-8'))['nodes']])
+    def test_new_instance_never_inherits_an_existing_database(self):
+        from portable_n8n import environment
+        with patch.dict('os.environ',{'DB_TYPE':'postgresdb','DB_POSTGRESDB_HOST':'existing.internal','N8N_ENCRYPTION_KEY':'EXISTING_KEY','QUEUE_BULL_REDIS_HOST':'existing.internal','NODE_OPTIONS':'--require=other-project.js'}):
+            env=environment(self.root,15679)
+        for key in ['DB_TYPE','DB_POSTGRESDB_HOST','N8N_ENCRYPTION_KEY','QUEUE_BULL_REDIS_HOST','NODE_OPTIONS']:
+            self.assertNotIn(key,env)
+        self.assertEqual(env['N8N_PORT'],'15679')
+        self.assertEqual(env['N8N_USER_FOLDER'],str(self.root/'data'))
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 
