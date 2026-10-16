@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+for stream in (sys.stdout,sys.stderr):
+    if hasattr(stream,'reconfigure'): stream.reconfigure(encoding='utf-8')
 import tempfile
 import threading
 import time
