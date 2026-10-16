@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
 from portable_n8n import API, environment, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
-state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False}
+state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
 class Fixture(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def reply(self, body):
@@ -32,7 +32,7 @@ class Fixture(BaseHTTPRequestHandler):
             state['polls']+=1
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':''}}}})
+            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':state['feedback']}}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -57,6 +57,7 @@ class Fixture(BaseHTTPRequestHandler):
         elif self.path.endswith('/chat/completions'):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['model_calls']+=1
+            if state['edit_during_model']: state['feedback']='New reviewer feedback'
             self.reply({'choices':[{'message':{'content':'Synthetic reviewable script'},'finish_reason':'stop'}]})
         else: raise AssertionError('unknown fixture route')
     def do_PUT(self):
@@ -219,6 +220,16 @@ try:
     state['status']='脚本生成中'; state['fail_writeback']=False
     execute(recovery['workflow'])
     assert state['model_calls']==2 and state['status']=='脚本待审核'
+    phase='preserve concurrent human edit'
+    state['status']='请求脚本'; state['edit_during_model']=True
+    execute(saved['workflow'],expect_failure=True)
+    assert state['model_calls']==3 and state['status']=='脚本生成中' and state['feedback']=='New reviewer feedback'
+    execute(recovery['workflow'],expect_failure=True)
+    assert state['model_calls']==3 and state['feedback']=='New reviewer feedback'
+    # Synthetic fixture explicitly restores its original input to exercise recovery.
+    state['feedback']=''; state['edit_during_model']=False
+    execute(recovery['workflow'])
+    assert state['status']=='脚本待审核' and state['model_calls']==3
     phase='atomic concurrent claims'
     from concurrent.futures import ThreadPoolExecutor
     def claim(index):

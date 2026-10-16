@@ -88,16 +88,18 @@ references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean), job
         required = 'product' if flow == 'script' else 'script'
         if flow == 'video-submit':
             nodes.append(code('Validate references', "if ($json.references.length<1 || $json.references.length>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_HTTPS_URLS_REQUIRED'); return $input.all();"))
-        nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED'); return $input.all();"))
+        nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED');" +
+                          "if (($json.history+'\\n'+JSON.stringify({execution:$json.execution,script:$json.script,feedback:$json.feedback})).trim().length>18000) throw new Error('HISTORY_FULL_BEFORE_PROVIDER'); return $input.all();"))
         state = '脚本生成中' if flow == 'script' else '视频提交中'
         nodes += [code('Build reservation', 'return [{json:{fields:{"状态":' + json.dumps(state) + ',"执行编号":$("Select task").first().json.execution}}}];'),
                   write('Reserve task', '={{ $json }}'),
                   code('Check reservation', "if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_FAILED'); return [{json:{ok:true}}];"),
                   http('Read reservation', target, feishu=True),
                   code('Verify reservation', """if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_READ_FAILED');
-const raw = $json.data.record.fields['执行编号'];
-const id = Array.isArray(raw) ? raw.map(x=>x.text||'').join('') : raw;
-if (id !== $('Select task').first().json.execution) throw new Error('TASK_CLAIM_CHANGED');
+const fields=$json.data.record.fields, task=$('Select task').first().json;
+const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
+if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
+if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
         nodes += [code('Build script request', """return [{json:{model:'deepseek-flash',stream:false,max_tokens:2048,thinking:{type:'disabled'},messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
@@ -221,7 +223,18 @@ def guard_workflow(workflow, ledger):
     before=next(i for i,n in enumerate(nodes) if n['name']==write_name)
     save=ledger_update('Persist model result',ledger,'busy',{'status':'result_ready','result':'={{ JSON.stringify($json) }}'},owner=True)
     restore=code('Restore saved result',"if ($json.owner !== $('Select task').first().json.execution) throw new Error('RESULT_NOT_OWNED'); return [{json:JSON.parse($json.result)}];")
-    nodes[before:before]=[save,restore]
+    readback=next(n for n in nodes if n['name']=='Read reservation')
+    fresh=http('Read task before result writeback',readback['parameters']['url'],feishu=True)
+    unchanged=code('Verify task before result writeback',"""if ($json.code!==0) throw new Error('TASK_READBACK_FAILED_RESULT_SAVED');
+const fields=$json.data.record.fields, task=$('Select task').first().json;
+const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
+const result=$('Restore saved result').first().json;
+const expected=result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
+if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected ||
+   text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback)
+    throw new Error('TASK_CHANGED_RESULT_SAVED_NO_OVERWRITE');
+return [{json:result}];""")
+    nodes[before:before]=[save,restore,fresh,unchanged]
     nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
               code('Execution receipt',"return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false,result_saved:true}}];")]
     return compile_nodes(nodes)
