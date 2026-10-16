@@ -49,6 +49,8 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
 
+在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。n8n 本身可在 Windows/macOS 的 Docker Desktop 上运行，但当前 Video Factory 发行包不能原生部署整套服务；已有独立 n8n 也不能直接接管。先读[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)，避免卡在 Docker 或误把原项目模型当作本产品已接入。
+
 固定发行包可匿名下载。不要把开发分支或临时 Actions 附件当作正式安装包。
 
 ## 已有安装，继续使用
@@ -74,7 +76,7 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 ## 文档与仓库范围
 
-- 安装人员：[客户指南](docs/product/CUSTOMER_GUIDE.md)、[完整 Skill](skills/video-factory-setup/SKILL.md)、[验收指南](docs/product/INDEPENDENT_ACCEPTANCE.md)。
+- 安装人员：[客户指南](docs/product/CUSTOMER_GUIDE.md)、[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)、[完整 Skill](skills/video-factory-setup/SKILL.md)、[验收指南](docs/product/INDEPENDENT_ACCEPTANCE.md)。
 - 维护人员：[排障与问题反馈](docs/product/TROUBLESHOOTING.md)、[产品定义](docs/product/PRD.md)、[状态](docs/product/STATUS.md)、[迁移范围](docs/product/MIGRATION.md)、[公开发布检查](docs/product/PUBLICATION_REVIEW.md)。
 - 安全与数据：[安全报告](SECURITY.md)、[数据说明](PRIVACY.md)。
 

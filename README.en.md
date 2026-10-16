@@ -50,6 +50,8 @@ terminal on my server; do not collect them in chat.
 
 Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
+An agent on Windows or macOS connects to that Ubuntu server over SSH. n8n itself can run with Docker Desktop on those systems, but the current Video Factory release does not deploy its full stack natively there or adopt an existing standalone n8n. See the [platform and provider matrix](docs/product/PLATFORMS_AND_MODELS.md) before installation.
+
 Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 
 The operational guides and installer interactions are currently primarily in Chinese. This English README does not imply that the full product is localized.
