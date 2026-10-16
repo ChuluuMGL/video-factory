@@ -30,7 +30,27 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) · [当前状态](docs/product/STATUS.md)。
 
-## 开始安装
+## 先看安装目标
+
+| 你要做什么 | 怎么开始 | 与 Video Factory 的关系 |
+|---|---|---|
+| 只想在浏览器里使用 n8n | 注册 [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md)，本机无需安装 n8n 或 Docker | 这是独立的 n8n，**不是** Video Factory 安装 |
+| 只想在 Windows/Mac 本机试用 n8n | 按 [n8n 官方 Node.js 要求](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)安装 Node.js，运行 `npx n8n`，再打开 `http://localhost:5678`；官方已提示 npm 安装方式从 n8n 3.0 起弃用 | 适合单独试用 n8n，**不会**安装本产品 |
+| 安装完整 Video Factory | 在自己的 Ubuntu 24.04 x86_64 服务器运行下方 Setup；Windows/Mac 上的 Agent 可通过 SSH 操作服务器 | 安装产品服务、PostgreSQL、自带 n8n；按需部署私网执行器 |
+
+已有 n8n Cloud 或本机 n8n 的工作流和凭据，当前安装包**不能直接接管**。因此下面的 Ubuntu 要求只针对完整 Video Factory，不是说 n8n 本身只能装在 Ubuntu。详细差异见[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)。
+
+## 模型支持到哪一步
+
+| 用途 | 固定发行包可选 | 开发候选或待接入 |
+|---|---|---|
+| 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的脚本适配在[开发候选 PR #38](https://github.com/ChuluuMGL/video-factory/pull/38)，尚未完成各自真实账户验收 |
+| 视频 | MiniMax H3 | 可灵、Seedance 和万相视频的接口适配在[开发候选 PR #42](https://github.com/ChuluuMGL/video-factory/pull/42)，尚未接入正式 Setup 或完成真实生成验收 |
+| 图片 | 暂无独立图片生成路线 | Seedream（即梦图片）列在[待办 Issue #45](https://github.com/ChuluuMGL/video-factory/issues/45)；它不是 Seedance 视频接口 |
+
+旧项目用过某个模型、合成测试通过，都不等于它已在本产品的固定发行包中可选。不同接口仍需用各自账户完成调用、结果回写和人工审核验收；安装本身不触发付费生成。
+
+## 安装完整 Video Factory
 
 推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作服务器的 Agent。
 
@@ -49,7 +69,7 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
 
-在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。单独使用 n8n 可选浏览器中的 n8n Cloud、本机 Node.js 试用或 Docker 自托管；当前 Video Factory 发行包不能原生部署整套服务到 Windows/Mac，也不能直接接管已有独立 n8n。先读[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)，区分 n8n 的使用方式和本产品安装支持范围。
+在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。当前发行包不能原生部署整套服务到 Windows/Mac；这不影响单独使用 n8n Cloud 或本机 n8n。
 
 固定发行包可匿名下载。不要把开发分支或临时 Actions 附件当作正式安装包。
 

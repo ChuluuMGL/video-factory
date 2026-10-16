@@ -30,7 +30,27 @@ A development candidate completed one real-account flow in an isolated Base: scr
 
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
-## Get started
+## Choose what you want to run
+
+| Goal | How to start | Relation to Video Factory |
+|---|---|---|
+| Use n8n in a browser | Sign up for [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md); no local n8n or Docker installation is needed | Standalone n8n, **not** a Video Factory installation |
+| Try n8n locally on Windows/Mac | Install Node.js as required by the [official n8n npm guide](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md), run `npx n8n`, then open `http://localhost:5678`. The upstream guide warns that npm installs are deprecated from n8n 3.0 | Standalone trial; it **does not** install this product |
+| Install the full Video Factory stack | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
+
+The current package cannot directly adopt credentials or workflows from an existing n8n Cloud or local instance. The Ubuntu requirement below applies to the **full Video Factory stack**, not to n8n itself. See the [platform and provider matrix](docs/product/PLATFORMS_AND_MODELS.md).
+
+## Model availability
+
+| Purpose | Selectable in the pinned release | Development candidate or planned |
+|---|---|---|
+| Scripts | DeepSeek Flash | GPT, Gemini, MiniMax text, Qwen, and Doubao script routes are in [draft PR #38](https://github.com/ChuluuMGL/video-factory/pull/38); each still needs live-account acceptance |
+| Video | MiniMax H3 | Kling, Seedance, and Wan video API adapters are in [draft PR #42](https://github.com/ChuluuMGL/video-factory/pull/42); they are not wired into released Setup or verified with live generations |
+| Images | No separate image-generation route | Seedream image generation is tracked in [issue #45](https://github.com/ChuluuMGL/video-factory/issues/45); it is distinct from Seedance video |
+
+Use in an earlier project or passing synthetic tests does not make a provider selectable in the pinned release. Each new route still needs its own account, output writeback, and human-review acceptance. Installation does not itself trigger paid generation.
+
+## Install the full Video Factory stack
 
 Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) to download the complete Skill and give it to an agent that can read files and operate your server.
 
@@ -50,7 +70,7 @@ terminal on my server; do not collect them in chat.
 
 Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
-An agent on Windows or macOS connects to that Ubuntu server over SSH. Standalone n8n can be used through n8n Cloud in a browser, tried locally with Node.js, or self-hosted with Docker. The current Video Factory release does not deploy its full stack natively on Windows/macOS or adopt an existing standalone n8n. See the [platform and provider matrix](docs/product/PLATFORMS_AND_MODELS.md) before installation.
+An agent on Windows or macOS connects to that Ubuntu server over SSH. The current release does not deploy its full stack natively on Windows/macOS; this does not prevent standalone use of n8n Cloud or local n8n.
 
 Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 
