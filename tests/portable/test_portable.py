@@ -156,7 +156,7 @@ class Portable(unittest.TestCase):
             npm.parent.mkdir(parents=True); npm.touch()
             calls=[]
             def run(command,cwd,**kwargs):
-                if str(npm) in command:
+                if len(command)>1 and Path(command[1]).name=='npm-cli.js':
                     calls.append(kwargs)
                     if len(calls)==1:
                         private_write(self.root/'data/preserved.json',{'keep':True})
@@ -171,7 +171,7 @@ class Portable(unittest.TestCase):
                 self.assertTrue(install_local(self.root,'node',port,dependency_timeout=2400)['installed'])
             self.assertEqual([c['timeout'] for c in calls],[1200,2400])
             self.assertEqual(json.loads((self.root/'data/preserved.json').read_text()),{'keep':True})
-            self.assertEqual(calls[1]['env']['npm_config_cache'],str(self.root/'npm-cache'))
+            self.assertEqual(calls[1]['env']['npm_config_cache'],str(self.root.resolve()/'npm-cache'))
     def test_invalid_install_deadline_never_mutates_target(self):
         for value in [0,59,7201,True]:
             with self.assertRaisesRegex(Fault,'TIMEOUT_MUST'):
