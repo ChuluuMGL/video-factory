@@ -83,7 +83,7 @@ fixture=FixtureServer(('0.0.0.0',0),Fixture)
 threading.Thread(target=fixture.serve_forever,daemon=True).start()
 mode=sys.argv[1] if len(sys.argv)>1 else 'node'
 # Use the runner-provided scratch volume, not Windows' OS temp volume.
-root=Path(tempfile.mkdtemp(prefix='vf-n8n-ci-',dir=os.environ.get('RUNNER_TEMP')))
+root=Path(tempfile.mkdtemp(prefix='vf 测试 n8n-',dir=os.environ.get('RUNNER_TEMP')))
 process=None
 phase='install'
 try:

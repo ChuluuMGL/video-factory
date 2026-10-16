@@ -147,6 +147,36 @@ class Portable(unittest.TestCase):
         with self.assertRaisesRegex(Fault,'UNKNOWN'):
             project_credentials(self.api,self.root,'sample','cliFixture',['feishu'],lambda _: self.fail('must not ask again'))
         self.assertEqual(len(self.api.posts),1)
+    def test_partial_native_install_resumes_without_erasing_data(self):
+        import socket
+        from portable_n8n import private_write
+        with tempfile.TemporaryDirectory() as tools:
+            node=Path(tools)/'node'
+            npm=Path(tools)/'node_modules/npm/bin/npm-cli.js'
+            npm.parent.mkdir(parents=True); npm.touch()
+            calls=[]
+            def run(command,cwd,**kwargs):
+                if str(npm) in command:
+                    calls.append(kwargs)
+                    if len(calls)==1:
+                        private_write(self.root/'data/preserved.json',{'keep':True})
+                        raise Fault('DEPENDENCY_INSTALL_TIMEOUT_PARTIAL_FILES_PRESERVED_RESUME_SAME_DIRECTORY')
+            with socket.socket() as sock:
+                sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
+            with patch('portable_n8n.shutil.which',return_value=str(node)), patch('portable_n8n.subprocess.check_output',return_value='v24.22.0'), patch('portable_n8n.venv.EnvBuilder'), patch('portable_n8n.run_checked',side_effect=run):
+                with self.assertRaisesRegex(Fault,'TIMEOUT'):
+                    install_local(self.root,'node',port)
+                self.assertFalse((self.root/'local.json').exists())
+                self.assertFalse((self.root/'.provision.lock').exists())
+                self.assertTrue(install_local(self.root,'node',port,dependency_timeout=2400)['installed'])
+            self.assertEqual([c['timeout'] for c in calls],[1200,2400])
+            self.assertEqual(json.loads((self.root/'data/preserved.json').read_text()),{'keep':True})
+            self.assertEqual(calls[1]['env']['npm_config_cache'],str(self.root/'npm-cache'))
+    def test_invalid_install_deadline_never_mutates_target(self):
+        for value in [0,59,7201,True]:
+            with self.assertRaisesRegex(Fault,'TIMEOUT_MUST'):
+                install_local(self.root,'node',dependency_timeout=value)
+        self.assertEqual(list(self.root.iterdir()),[])
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 

@@ -303,7 +303,9 @@ def health(url):
         return False
 
 
-def install_local(root, mode, port=5678, managed_node=False):
+def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200):
+    if type(dependency_timeout) is not int or not 60 <= dependency_timeout <= 7200:
+        raise Fault('DEPENDENCY_TIMEOUT_MUST_BE_60_TO_7200_SECONDS')
     if mode not in ('node', 'docker') or not 1024 <= port <= 65535:
         raise Fault('INSTALL_MODE_OR_PORT_INVALID')
     with locked(root) as root:
@@ -360,7 +362,7 @@ def install_local(root, mode, port=5678, managed_node=False):
             build_env['npm_config_cache']=str(root/'npm-cache')
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
                                                   'dependencies': {'n8n': N8N_VERSION}})
-            run_checked([node, str(npm_cli), 'install', '--global=false', '--prefix', str(root), '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env)
+            run_checked([node, str(npm_cli), 'install', '--global=false', '--prefix', str(root), '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env, timeout=dependency_timeout)
         else:
             docker = shutil.which('docker')
             if not docker:
@@ -551,7 +553,7 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
     return result
 
 
-def welcome(root):
+def welcome(root, dependency_timeout=1200):
     import platform
     from n8n_workflows import probe_workflow, schema_workflow
     print('Video Factory · 本机 / 已有 n8n 接入（开发候选）')
@@ -562,7 +564,7 @@ def welcome(root):
     if choice in ('2','3'):
         previous=root/'local.json'
         port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else int(input('本机端口 [5678]: ').strip() or '5678')
-        saved=install_local(root,'node' if choice=='2' else 'docker',port)
+        saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout)
         local_control(root,'start')
         url=saved['origin']
         print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')
@@ -604,6 +606,7 @@ def welcome(root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Video Factory 本机 n8n / 已有实例接入')
     parser.add_argument('--root', type=Path, default=Path.home() / '.video-factory/n8n')
+    parser.add_argument('--dependency-timeout', type=int, default=1200, help='原生 npm 安装时限（秒，60–7200）；超时保留目录，可原地续接')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('welcome')
     install = commands.add_parser('install')
@@ -632,7 +635,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == 'welcome':
-            value = welcome(args.root)
+            value = welcome(args.root,args.dependency_timeout)
         elif args.command == 'export':
             from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
             if args.flow not in ('probe','schema') and not args.experimental_manual:
@@ -648,7 +651,7 @@ def main(argv=None):
             private_write(args.out,template)
             value={'exported':str(args.out),'credentials_included':False,'active':False,'production_ready':False}
         elif args.command == 'install':
-            value = install_local(args.root, args.mode, args.port,args.managed_node)
+            value = install_local(args.root, args.mode, args.port,args.managed_node,args.dependency_timeout)
         elif args.command in ('start', 'stop'):
             value = local_control(args.root, args.command)
         else:
@@ -677,7 +680,10 @@ def main(argv=None):
         print(json.dumps(value, ensure_ascii=False))
         return 0
     except Fault as error:
-        print(json.dumps({'error': str(error)}, ensure_ascii=False))
+        result={'error': str(error)}
+        if str(error).startswith('DEPENDENCY_INSTALL_TIMEOUT'):
+            result['next']='安装已停止，原目录与下载缓存保留。检查磁盘和网络后，用同一目录、模式和端口重试；慢盘可在子命令前设置 --dependency-timeout 2400。不要删除数据或重复启动另一份安装。'
+        print(json.dumps(result, ensure_ascii=False))
         return 2
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         print(json.dumps({'error': 'SETUP_FAILED_NO_SECRETS_LOGGED'}))

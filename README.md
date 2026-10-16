@@ -32,7 +32,7 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 ## 先看安装目标
 
-本机和已有 n8n 的实际安装/接入正在 [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49) 验收，包含原生安装、Docker 和公共 API 导入。参见 [候选操作说明](docs/product/PORTABLE_N8N.md)；尚不是稳定发行。
+本机和已有 n8n 接入候选已通过 Windows、Mac、Linux、Docker 的真实 n8n 自动化测试（飞书/模型使用合成接口）。[PR #49](https://github.com/ChuluuMGL/video-factory/pull/49) 包含实际安装、连续配置、凭据复用和工作流执行；见[候选使用与验收记录](docs/product/PORTABLE_N8N.md)。真实业务验收尚未完成，当前仍非稳定发行。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
 
@@ -40,7 +40,8 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 |---|---|---|
 | 只想在浏览器里使用 n8n | 注册 [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md)，本机无需安装 n8n 或 Docker | 这是独立的 n8n，**不是** Video Factory 安装 |
 | 只想在 Windows/Mac 本机试用 n8n | 按 [n8n 官方 Node.js 要求](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)安装 Node.js，运行 `npx n8n`，再打开 `http://localhost:5678`；官方已提示 npm 安装方式从 n8n 3.0 起弃用 | 适合单独试用 n8n，**不会**安装本产品 |
-| 安装完整 Video Factory | 在自己的 Ubuntu 24.04 x86_64 服务器运行下方 Setup；Windows/Mac 上的 Agent 可通过 SSH 操作服务器 | 安装产品服务、PostgreSQL、自带 n8n；按需部署私网执行器 |
+| 验证本机安装或接入已有 n8n | 使用候选 Skill 的 `portable_n8n.py welcome`，选择已有实例、Node.js 或 Docker | 配置飞书和模型工作流；无需另租 Ubuntu。仍需完成真实业务验收 |
+| 安装当前固定发行包 | 在自己的 Ubuntu 24.04 x86_64 服务器运行下方 Setup；Windows/Mac 上的 Agent 可通过 SSH 操作服务器 | 安装产品服务、PostgreSQL、自带 n8n；按需部署私网执行器 |
 
 已有 n8n Cloud 或本机 n8n 的工作流和凭据，当前安装包**还不能直接接入**。这是待补的产品能力，不是要求客户放弃已有环境。下面的 Ubuntu 要求仅针对**当前固定包的完整自动部署**。复用已有 n8n 的[接入路线与验收条件](docs/product/EXISTING_N8N_INTEGRATION.md)已列明；当前只读环境识别不代表完整安装通过。
 

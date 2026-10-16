@@ -32,7 +32,7 @@ See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/
 
 ## Choose what you want to run
 
-Real local installation and existing n8n integration are under validation in [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49). See the [candidate guide](docs/product/PORTABLE_N8N.md); this is not a stable release.
+The local/existing-n8n candidate passes real n8n integration on Windows, macOS, Linux and Docker, using synthetic Feishu/model endpoints. [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49) implements installation, guided configuration, credential reuse and workflow execution. See the [candidate guide and evidence](docs/product/PORTABLE_N8N.md). Real business acceptance remains open; this is not a stable release.
 
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
@@ -40,7 +40,8 @@ The Setup Skill first asks where your n8n runs, whether a Feishu application and
 |---|---|---|
 | Use n8n in a browser | Sign up for [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md); no local n8n or Docker installation is needed | Standalone n8n, **not** a Video Factory installation |
 | Try n8n locally on Windows/Mac | Install Node.js as required by the [official n8n npm guide](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md), run `npx n8n`, then open `http://localhost:5678`. The upstream guide warns that npm installs are deprecated from n8n 3.0 | Standalone trial; it **does not** install this product |
-| Install the full Video Factory stack | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
+| Validate local installation or connect existing n8n | Run candidate Skill `portable_n8n.py welcome`; choose existing n8n, Node.js or Docker | Configures Feishu/model workflows without another Ubuntu server; real business acceptance remains open |
+| Install the current pinned release | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
 
 The current package **cannot yet integrate** with an existing n8n Cloud or local instance. This is a product gap, not a reason to discard an existing installation. The Ubuntu requirement applies to the **current pinned package's full automated deployment**, not to n8n itself. See the [existing-n8n integration plan](docs/product/EXISTING_N8N_INTEGRATION.md). Read-only inventory is not a completed installation.
 
