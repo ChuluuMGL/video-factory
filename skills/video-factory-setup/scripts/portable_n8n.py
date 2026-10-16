@@ -339,13 +339,13 @@ def install_local(root, mode, port=5678, managed_node=False):
             venv.EnvBuilder(with_pip=True).create(toolenv)
             python = toolenv / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
             run_checked([str(python), '-m', 'pip', 'install', 'setuptools==80.9.0'], root)
-            build_env = os.environ.copy()
+            build_env = {key:value for key,value in os.environ.items() if key not in ('NODE_OPTIONS','NODE_PATH')}
             build_env['PATH']=str(Path(node).parent)+os.pathsep+build_env.get('PATH','')
             build_env['npm_config_python'] = str(python)
             build_env['npm_config_jobs'] = '2'
             private_write(root / 'package.json', {'name': 'video-factory-local', 'private': True,
                                                   'dependencies': {'n8n': N8N_VERSION}})
-            run_checked([node, str(npm_cli), 'install', '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env)
+            run_checked([node, str(npm_cli), 'install', '--global=false', '--prefix', str(root), '--no-audit', '--no-fund', '--foreground-scripts'], root, env=build_env)
         else:
             docker = shutil.which('docker')
             if not docker:
