@@ -117,6 +117,7 @@ try:
     hooks={}
     def provision(api, bindings, project, workflow, credentials):
         workflow=json.loads(json.dumps(workflow))
+        workflow['settings'].update(saveDataSuccessExecution='all',saveDataErrorExecution='all')
         path='ci-'+project
         hook={'id':'ci-hook','name':'CI synthetic trigger','type':'n8n-nodes-base.webhook',
               'typeVersion':2,'webhookId':str(uuid.uuid5(uuid.NAMESPACE_URL,path)),

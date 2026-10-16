@@ -85,6 +85,15 @@ class Portable(unittest.TestCase):
         source=[node['parameters']['jsCode'] for workflow in workflows for node in workflow['nodes'] if node['type']=='n8n-nodes-base.code']
         result=subprocess.run(['node','-e',"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{for(const code of JSON.parse(s))new Function('$json','$input','$','$execution',code);});"],input=json.dumps(source),text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)
+    def test_private_node_archive_rejects_escape_paths(self):
+        from node_runtime import destination
+        for name in ['/etc/passwd','node/../../secret','other/bin/node','node/../secret','node/C:/secret','node/dir\\secret']:
+            with self.subTest(name=name),self.assertRaises(Fault): destination(self.root,name,'node')
+        self.assertEqual(destination(self.root,'node/bin/node','node'),self.root/'node/bin/node')
+    def test_setup_hook_rejects_paid_workflows(self):
+        for flow in ['script','video-submit','video-poll']:
+            with self.assertRaisesRegex(ValueError,'MUST_NOT_CALL_MODELS'):
+                setup_hook(production_workflow('baseTest','tableTest',flow),'test-hook')
     def test_invalid_identifiers_rejected(self):
         with self.assertRaises(Fault): probe_workflow('a/../../b','table')
 
