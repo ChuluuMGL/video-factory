@@ -2,7 +2,7 @@
 
 本页供管理员、实施人员和 Agent 排查自托管安装。先确认正在运行的 `vfctl` 版本、项目、步骤和**准确错误码**，再读对应章节；不要仅凭页面提示或 CI 通过判断任务已完成。客户服务器、飞书 Base、n8n 和模型服务分别回读。
 
-Windows/Mac 能运行 n8n Docker Desktop，但当前产品固定安装包必须在 Ubuntu 24.04 x86_64 上执行。若卡在 `UBUNTU_2404_X86_64_ROOT_REQUIRED`、`LINUX_X86_64_ROOT_ADMIN_REQUIRED` 或 `LOCAL_DOCKER_ENGINE_REQUIRED`，先读[平台矩阵](PLATFORMS_AND_MODELS.md)并核对 SSH 目标、Docker context 与本地 socket；不要绕过检查或覆盖电脑上已有 n8n。
+Windows/Mac 可单独使用 n8n Cloud、在 Node.js 中试用 n8n，或用 Docker 自托管 n8n；这些都不是当前产品的完整安装。固定安装包必须在 Ubuntu 24.04 x86_64 上执行。若卡在 `UBUNTU_2404_X86_64_ROOT_REQUIRED`、`LINUX_X86_64_ROOT_ADMIN_REQUIRED` 或 `LOCAL_DOCKER_ENGINE_REQUIRED`，先读[平台矩阵](PLATFORMS_AND_MODELS.md)并核对 SSH 目标、Docker context 与本地 socket；不要绕过检查或覆盖电脑上已有 n8n。
 
 | 现象或错误 | 先检查 | 安全续接 |
 |---|---|---|

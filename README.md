@@ -49,7 +49,7 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
 
-在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。n8n 本身可在 Windows/macOS 的 Docker Desktop 上运行，但当前 Video Factory 发行包不能原生部署整套服务；已有独立 n8n 也不能直接接管。先读[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)，避免卡在 Docker 或误把原项目模型当作本产品已接入。
+在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。单独使用 n8n 可选浏览器中的 n8n Cloud、本机 Node.js 试用或 Docker 自托管；当前 Video Factory 发行包不能原生部署整套服务到 Windows/Mac，也不能直接接管已有独立 n8n。先读[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)，区分 n8n 的使用方式和本产品安装支持范围。
 
 固定发行包可匿名下载。不要把开发分支或临时 Actions 附件当作正式安装包。
 
