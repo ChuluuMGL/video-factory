@@ -38,7 +38,30 @@ python3 portable_n8n.py --root /YOUR/PRIVATE/vf-n8n stop
 python3 portable_n8n.py --root /YOUR/PRIVATE/vf-n8n start
 ```
 
-停止不删除 n8n 数据。原生后台进程仅在进程身份与安装回执一致时终止；不会按端口随意杀进程。此启动方式是当前登录用户的本机进程，电脑休眠或关机会暂停任务；开机自动启动和长期运维应单独配置。
+停止不删除 n8n 数据。原生后台进程仅在进程身份与安装回执一致时终止；不会按端口随意杀进程。电脑休眠或关机会暂停任务；下面的后台管理可在系统或用户会话恢复后自动启动。
+
+### 后台运行与自启（开发候选）
+
+`welcome` 完成配置后会询问是否为本次新装的原生 n8n 设置自启；已有 n8n 不接管。选择菜单输错可重选，输入 `:quit` 可退出；项目完成后生成不含密钥的 `bindings/handoff-PROJECT.json`，记录地址、表、后台状态和待验收事项。原生安装和 API 配置仍使用同一目录续接。
+
+```sh
+python3 portable_service.py --root /YOUR/PRIVATE/vf-n8n --component n8n install
+python3 portable_service.py --root /YOUR/PRIVATE/vf-n8n --component n8n status
+python3 portable_service.py --root /YOUR/PRIVATE/vf-n8n --component n8n restart
+```
+
+| 环境 | 自启方式 | 边界 |
+|---|---|---|
+| Linux root | systemd 系统服务，开机启动 | 只管理该目录的原生 n8n |
+| Linux 普通用户 | systemd 用户服务 | 默认登录后启动；无登录运行需管理员配置 linger，安装器不自动扩权 |
+| Mac | 当前用户 LaunchAgent | 登录后启动，退出登录或休眠会暂停 |
+| Windows | 当前用户登录计划任务 | 不保存系统密码，不冒用 SYSTEM；退出登录或休眠会暂停 |
+| Docker | 已有 `unless-stopped` 策略 | Docker Desktop/Engine 也需自行设为启动；不重复注册原生服务 |
+| 已有 n8n / Cloud | 保持原部署方式 | 仅可为本产品的飞书接收器安装自启 |
+
+`stop` 暂停当前进程；`start` 恢复；`uninstall` 移除自启注册并停进程，保留 n8n 数据、凭据和项目记录。服务启动不等于飞书已授权或任务已生成；不会自动激活任何收费工作流。启动失败保留目录，运行 `status` 后排查，不要删数据重装。服务使用专用目录中的脚本副本；升级 Skill 后需先停用并卸载旧注册，再安装新版副本，项目数据保留。
+
+负责人事件服务的自启与 n8n 分开，见[负责人确认指南](PORTABLE_BILLING_APPROVAL.md)。原生系统服务的真实生命周期检查加入云端矩阵，当前新增代码尚待该轮结果，不把生成服务文件当作测试通过。
 
 ## 没有 n8n：Docker
 

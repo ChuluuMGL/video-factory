@@ -65,7 +65,17 @@ python portable_n8n.py --root /PRIVATE/bindings approval-promote \
 
 同一配置目录有进程锁，重复启动会被拒绝；该锁不能发现其他电脑或旧系统中的接收器。
 
-当前接收器以前台进程运行，重启后需再次运行 `serve`；尚未自动安装 Windows 服务、launchd 或 systemd。停止接收器会暂停新确认，不会丢弃已保存的事件或猜测收费结果。
+接收器可前台运行，也可安装后台自启。先停掉本项目的前台接收器，核对同一应用无其他长连接，再执行：
+
+```sh
+python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component events --exclusive-app install
+python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component events status
+python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component events restart
+```
+
+首次在私有目录创建 Python 环境并安装固定依赖，随后复用已加密保存的凭据。Linux root 服务随开机启动；Mac、Windows 默认随当前用户登录启动；普通 Linux 用户见[后台运行说明](PORTABLE_N8N.md#后台运行与自启开发候选)。`status` 证明 OS 进程运行，不替代真实 SDK 身份回执。接收器等待 n8n 健康检查后才接收事件；未知派发仍保留为待核对，不因重启重发。
+
+`stop` 暂停接收，`uninstall` 停止并取消自启，均保留凭据、事件队列和历史回执。同一应用旧接收器的暂停与恢复必须单独核对。服务启动不会激活 n8n 流程；已启用的流程仍按原确认规则执行。当前新增自启候选需通过对应平台真实生命周期测试后再交付。
 
 ## 失败与停用
 

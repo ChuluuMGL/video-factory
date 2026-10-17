@@ -19,7 +19,7 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
+from portable_n8n import API, environment, health, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
@@ -447,6 +447,35 @@ try:
             break
         except Exception: time.sleep(1)
     else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
+    if mode=='node':
+        phase='native startup service lifecycle'
+        from portable_service import install as install_service,control as service_control
+        print('Registering actual OS startup job for the isolated n8n',flush=True)
+        service=install_service(root,'n8n')
+        assert service['running']
+        assert install_service(root,'n8n')['reused']
+        service_control(root,'n8n','restart')
+        for _ in range(30):
+            try:
+                assert api.request('GET','/api/v1/workflows/'+saved['workflow'])['id']==saved['workflow']
+                break
+            except Exception:time.sleep(1)
+        else:raise AssertionError('SERVICE_RESTART_DID_NOT_PRESERVE_WORKFLOW')
+        service_control(root,'n8n','stop')
+        for _ in range(30):
+            if not health(api_origin):break
+            time.sleep(1)
+        else:raise AssertionError('SERVICE_STOP_LEFT_ORPHAN_N8N')
+        assert not service_control(root,'n8n','status')['running']
+        assert service_control(root,'n8n','start')['running']
+        service_control(root,'n8n','uninstall')
+        for _ in range(30):
+            if not health(api_origin):break
+            time.sleep(1)
+        else:raise AssertionError('SERVICE_UNINSTALL_LEFT_ORPHAN_N8N')
+        local_control(root,'start')
+        assert health(api_origin)
+        print('OS service install/reuse/restart/stop/uninstall and manual resume passed',flush=True)
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
@@ -463,5 +492,9 @@ finally:
         try: local_control(root,'stop')
         except Exception: pass
     else:
+        try:
+            from portable_service import control as service_control
+            if (root/'.vf-n8n-service/service.json').exists():service_control(root,'n8n','uninstall')
+        except Exception:pass
         try: local_control(root,'stop')
         except Exception: pass

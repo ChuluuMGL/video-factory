@@ -401,6 +401,10 @@ def process_identity(pid):
 
 
 def local_control(root, action):
+    service=Path(root)/'.vf-n8n-service/service.json'
+    if service.exists() and json.loads(service.read_text()).get('installed'):
+        from portable_service import control
+        return control(root,'n8n',action)
     with locked(root) as root:
         saved = json.loads((root / 'local.json').read_text(encoding='utf-8'))
         if saved['mode'] == 'docker':
@@ -570,14 +574,24 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
     return result
 
 
+def ask_choice(prompt, choices, default=None):
+    while True:
+        answer=input(prompt).strip()
+        if answer==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
+        answer=answer or default
+        if answer in choices:return answer
+        print('请选择 '+ '/'.join(choices)+'；输入 :quit 保存退出。')
+
+
 def welcome(root, dependency_timeout=1200):
     import platform
     from n8n_workflows import probe_workflow, schema_workflow
     print('Video Factory · 本机 / 已有 n8n 接入（开发候选）')
     print('检测到系统：'+platform.system()+'；Node.js：'+str(bool(shutil.which('node')))+'；Docker：'+str(bool(shutil.which('docker'))))
     print('1. 已有 n8n（本机或服务器）  2. 新装本机 Node.js n8n  3. 新装 Docker n8n  4. n8n Cloud')
-    choice=input('选择 1/2/3/4: ').strip()
-    if choice not in ('1','2','3','4'): raise Fault('INSTALL_CHOICE_REQUIRED')
+    root=Path(root)
+    print('输入 :quit 可退出；已完成的安装和项目配置会保留。')
+    choice=ask_choice('选择 1/2/3/4: ',('1','2','3','4'))
     if choice in ('2','3'):
         previous=root/'local.json'
         port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else int(input('本机端口 [5678]: ').strip() or '5678')
@@ -616,7 +630,16 @@ def welcome(root, dependency_timeout=1200):
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
         receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
-    receipt.update(project=project,production_ready=False,next='接入和关闭状态的流程已保存；人工审核在飞书。尚未开启自动生产，继续逐条验收。')
+    if choice=='2' and ask_choice('为这套新装 n8n 配置后台自启？桌面登录后启动，Linux root 开机启动。y/N: ',('y','n'),'n')=='y':
+        from portable_service import install
+        receipt['background']=install(root,'n8n')
+    elif choice=='3':
+        print('Docker 容器已设置 unless-stopped；请让 Docker Desktop/Engine 随系统启动。')
+    receipt.update(project=project,production_ready=False,next='接入和关闭状态的流程已保存；人工审核在飞书。下一步配置指定负责人并做零费用确认验收，不会自动开启收费。')
+    private_write(bindings/('handoff-'+project+'.json'),{'project':project,'origin':url,'base':base,'table':table,
+        'credentials_saved_in':'n8n','production_ready':False,'next':receipt['next'],
+        'background':receipt.get('background',{'managed':False,'reason':'existing_instance_or_not_selected'})})
+    print('交接记录已保存：'+str(bindings/('handoff-'+project+'.json')))
     return receipt
 
 
