@@ -501,6 +501,22 @@ def verify_setup(api, root, project, template, credentials):
                 raise Fault('TEMPORARY_SETUP_HOOK_STILL_ACTIVE_DISABLE_IN_N8N')
 
 
+def provider_secret(prompt, ask_secret):
+    """Normalize copied header decoration, never guess an embedded key repair."""
+    for attempt in range(3):
+        try:
+            key=ask_secret(prompt).strip()
+        except Fault as error:
+            if str(error)!='SECRET_EMPTY_OR_MULTILINE': raise
+            key=''
+        if key==':quit': raise Fault('CREDENTIAL_INPUT_CANCELLED_EXISTING_CONFIG_PRESERVED')
+        if key.lower().startswith('bearer '): key=key[7:].strip()
+        if key and all(33<=ord(c)<=126 for c in key): return key
+        if attempt<2:
+            print('Key 格式未通过：请重新粘贴单行原始 Key，内部不能含空格或控制字符；输入 :quit 保存已有配置并退出。',flush=True)
+    raise Fault('RAW_PROVIDER_KEY_REQUIRED_EXISTING_CONFIG_PRESERVED')
+
+
 def project_credentials(api, root, project, app, roles, ask_secret=None):
     """One n8n-encrypted credential per role; local checkpoints contain only IDs.
 
@@ -523,9 +539,7 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
                 kind='httpCustomAuth'
                 data={'json':json.dumps({'body':{'app_id':app,'app_secret':ask_secret('飞书 App Secret（隐藏输入）: ')}})}
             else:
-                key=ask_secret(('DeepSeek' if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入）: ')
-                if not key or any(c.isspace() for c in key) or key.lower().startswith('bearer '):
-                    raise Fault('RAW_PROVIDER_KEY_REQUIRED')
+                key=provider_secret(('DeepSeek' if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
                 kind='httpHeaderAuth'; data={'name':'Authorization','value':'Bearer '+key}
             name='Video Factory '+project+' '+role
             state['pending']={'role':role,'name':name}; private_write(path,state)

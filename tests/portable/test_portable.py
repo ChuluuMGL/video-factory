@@ -138,6 +138,38 @@ class Portable(unittest.TestCase):
         with self.assertRaisesRegex(Fault,'CREDENTIAL_REFERENCE_CHANGED'):
             provision(self.api,self.root,'sample',self.workflow,{'httpCustomAuth':{'existing':{'id':'other','name':'other'}}})
         self.assertEqual(len(self.api.posts),2)
+    def test_provider_copy_decoration_normalized_without_exposing_value(self):
+        from portable_n8n import project_credentials
+        import contextlib,io
+        output=io.StringIO()
+        with contextlib.redirect_stdout(output):
+            project_credentials(self.api,self.root,'sample','cliFixture',['script'],lambda _: '  Bearer SYNTHETIC_PRIVATE_KEY\r\n')
+        self.assertEqual(self.api.posts[0][1]['data']['value'],'Bearer SYNTHETIC_PRIVATE_KEY')
+        self.assertNotIn('SYNTHETIC_PRIVATE_KEY',output.getvalue())
+        self.assertNotIn('SYNTHETIC_PRIVATE_KEY',(self.root/'credentials-sample.json').read_text())
+    def test_invalid_provider_input_retries_without_resubmitting_feishu(self):
+        from portable_n8n import project_credentials
+        import contextlib,io
+        first=project_credentials(self.api,self.root,'sample','cliFixture',['feishu'],lambda _: 'SYNTHETIC_FEISHU')
+        values=iter(['bad key','bad\x1bkey','SYNTHETIC_MODEL'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            result=project_credentials(self.api,self.root,'sample','cliFixture',['feishu','script'],lambda _: next(values))
+        self.assertEqual(result['feishu'],first['feishu']); self.assertEqual(len(self.api.posts),2)
+        self.assertEqual(self.api.posts[-1][1]['data']['value'],'Bearer SYNTHETIC_MODEL')
+    def test_provider_retry_limit_and_cancel_preserve_existing_checkpoint(self):
+        from portable_n8n import project_credentials
+        import contextlib,io
+        project_credentials(self.api,self.root,'sample','cliFixture',['feishu'],lambda _: 'SYNTHETIC_FEISHU')
+        checkpoint=(self.root/'credentials-sample.json').read_bytes(); prompts=[]
+        def invalid(prompt): prompts.append(prompt); return 'bad key'
+        with contextlib.redirect_stdout(io.StringIO()),self.assertRaisesRegex(Fault,'RAW_PROVIDER_KEY_REQUIRED'):
+            project_credentials(self.api,self.root,'sample','cliFixture',['script'],invalid)
+        self.assertEqual(len(prompts),3); self.assertEqual(len(self.api.posts),1)
+        self.assertEqual((self.root/'credentials-sample.json').read_bytes(),checkpoint)
+        self.assertFalse((self.root/'.provision.lock').exists())
+        with self.assertRaisesRegex(Fault,'INPUT_CANCELLED'):
+            project_credentials(self.api,self.root,'sample','cliFixture',['script'],lambda _: ':quit')
+        self.assertEqual(len(self.api.posts),1)
     def test_unknown_project_credential_creation_never_reprompts_or_duplicates(self):
         from portable_n8n import project_credentials
         self.api.fail=True
