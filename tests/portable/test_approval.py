@@ -115,7 +115,7 @@ class Lifecycle(unittest.TestCase):
         self.config={**copy.deepcopy(CONFIG),'project':'fixture','verification_only':True,
             'workflows':{'confirm-script':{'workflow':'confirm','project':'fixture-confirm'}}}
         self.save('fixture-events/events.json',self.config)
-        self.template={'nodes':[{'name':'Authorization test receipt'}],'connections':{},'settings':{}}
+        self.template={'nodes':[{'name':'Authorization test receipt','notes':'中文审核回执'}],'connections':{},'settings':{}}
         self.save('binding-fixture-confirm.json',{'workflow':'confirm','owned_template':self.template})
         self.flows={'confirm':{'id':'confirm','active':False,**copy.deepcopy(self.template)}}
         self.calls=[];self.rows={'execution':[{'status':'idle'}], 'approval':[{
@@ -123,7 +123,7 @@ class Lifecycle(unittest.TestCase):
         self.api=type('FakeAPI',(),{'url':CONFIG['origin'],'request':lambda _,*a:self.request(*a)})()
 
     def save(self,path,value):
-        (self.root/path).write_text(json.dumps(value))
+        (self.root/path).write_text(json.dumps(value,ensure_ascii=False),encoding='utf-8')
 
     def request(self,method,path,body=None):
         self.calls.append((method,path,body))

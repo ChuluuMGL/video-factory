@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
-from portable_n8n import Fault, ask_choice, ask_value, identifier, welcome
+from portable_n8n import Fault, ask_choice, ask_value, identifier, welcome, private_write
 from portable_service import Backend, system_quote, install, control, location, serve
 
 
@@ -57,15 +57,15 @@ class Service(unittest.TestCase):
             self.assertFalse(target.exists())
 
     def test_uninstall_preserves_data_and_marks_receipt(self):
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory(prefix='vf 中文 ') as d:
             root=Path(d);directory=location(root,'n8n');directory.mkdir()
             (root/'data').mkdir();(root/'data/keep').write_text('keep')
-            (directory/'service.json').write_text(json.dumps({'root':str(root.resolve()),'component':'n8n','command':['fixture'],'installed':True}))
+            private_write(directory/'service.json',{'root':str(root.resolve()),'component':'n8n','command':['fixture'],'installed':True})
             with patch('portable_service.Backend.control',return_value={'data_preserved':True}) as native:
                 self.assertTrue(control(root,'n8n','uninstall')['data_preserved'])
                 native.assert_called_once_with('uninstall')
             self.assertEqual((root/'data/keep').read_text(),'keep')
-            self.assertFalse(json.loads((directory/'service.json').read_text())['installed'])
+            self.assertFalse(json.loads((directory/'service.json').read_text(encoding='utf-8'))['installed'])
 
     def test_receiver_waits_for_n8n_before_reading_or_dispatching_events(self):
         with tempfile.TemporaryDirectory() as d:

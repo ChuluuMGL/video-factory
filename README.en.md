@@ -1,6 +1,6 @@
 # Video Factory
 
-> Deploy video workflows to your own server with an Agent Skill.
+> Build video workflows on your own n8n with an Agent Skill.
 >
 > Feishu Base and n8n by default, with reusable infrastructure for multiple projects.
 
@@ -16,13 +16,13 @@ Video Factory is being built to connect product information, script generation, 
 - **Multiple projects:** reuse infrastructure while configuring products, Feishu and models per project.
 - **Resumable operations:** one Skill supports installation, new projects, interrupted setup and diagnosis.
 
-The installer runs on the customer's server. The Skill guides the AI agent. The public website explains the product and installation; it does not store customer project accounts or model keys.
+The Skill guides the AI agent; the selected route determines whether installation runs locally or on a server. The public website explains the product and installation; it does not store customer project accounts or model keys.
 
 ## Version and availability
 
 **MIT-licensed public alpha. The public Release defines the pinned version and hashes.**
 
-Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
+Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their runtime environment, Feishu and model accounts.
 
 Cloud regression covers fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL, real n8n, cold restore, and disconnected installation with both Docker storage modes. Results apply to the exact source commit checked by Actions.
 
@@ -43,7 +43,9 @@ The Setup Skill first asks where your n8n runs, whether a Feishu application and
 | Validate local installation or connect existing n8n | Run candidate Skill `portable_n8n.py welcome`; choose existing n8n, Node.js or Docker | Configures Feishu/model workflows without another Ubuntu server; real business acceptance remains open |
 | Install the current pinned release | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
 
-The current package **cannot yet integrate** with an existing n8n Cloud or local instance. This is a product gap, not a reason to discard an existing installation. The Ubuntu requirement applies to the **current pinned package's full automated deployment**, not to n8n itself. See the [existing-n8n integration plan](docs/product/EXISTING_N8N_INTEGRATION.md). Read-only inventory is not a completed installation.
+**Pinned package versus portable candidate:** the current server package still requires Ubuntu. PR #49 implements local installation and existing-n8n integration through the public API while preserving existing workflows and credentials. Cloud SaaS has not been tested this round. Follow the [portable guide](docs/product/PORTABLE_N8N.md) for candidate validation, not the server package's bootstrap.
+
+The candidate also provides [background startup](docs/product/PORTABLE_N8N.md#后台运行与自启开发候选): boot-time services for Linux root and login-time jobs for macOS/Windows. Existing n8n retains its own management.
 
 The portable development candidate adds [designated-owner billing approval](docs/product/PORTABLE_BILLING_APPROVAL.md): first validate a real Feishu event without model calls, then explicitly enable plan-bound execution. This is not a stable-release acceptance claim.
 

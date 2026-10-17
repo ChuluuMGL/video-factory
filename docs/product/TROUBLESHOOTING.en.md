@@ -16,6 +16,20 @@ This index is for administrators, installers and their agents. First read the **
 | Video or attachment missing | Media decode and SHA-256, upload receipt, remote row and write intent | Read back and reconcile before retrying a write. See [result sync](BASE_RESULTS.md). |
 | Upgrade or restore failed | Old/new stack roots, containers, database, backup and restore receipt | Identify the running version and rollback path. A backup file alone is not a restore test. See [stack operations](STACK_USAGE.md). |
 
+## Portable candidate: terminal and startup
+
+Use the [portable guide](PORTABLE_N8N.md) for local or existing n8n. The Ubuntu restriction belongs to the pinned server package.
+
+- Invalid menu/address input can be retried; `:quit` preserves completed configuration. Resume with the same root and project ID.
+- `PRIVATE_TERMINAL_REQUIRED`: use the installer's own interactive terminal, not an agent output pipe. Never put keys in chat or command arguments.
+- `N8N_API_PERMISSION_REQUIRED`: check the instance and public API key. The wizard permits three read-only authentication attempts without recreating the project.
+- `SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS`: run `status` with the same root/component, then inspect that OS job, executable path and port. Preserve data.
+- `SERVICE_DEFINITION_CHANGED_PRESERVED`: compare the saved and OS definitions before any repair; do not overwrite someone else's job.
+- macOS/Windows jobs start at user login. Ordinary Linux user services need login or administrator-configured linger. Docker needs its own engine to start.
+- Receiver process status does not prove authenticated Feishu delivery. Check the app, subscription, competing receivers and SDK receipt before reconciling an unknown delivery.
+
+`uninstall` cancels startup and preserves data. `stop` pauses the current process; a later login or boot may start it again.
+
 ## Exhausted Docker address pools
 
 Stopped containers can retain Compose networks. Repeated upgrades and restore drills can consume the available subnets even while the active stack is healthy. A new authorization worker or project runner may then fail to start; this does not indicate an incorrect password or model key.

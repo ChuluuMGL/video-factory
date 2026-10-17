@@ -55,8 +55,8 @@ def load_secrets(root):
         if p.is_symlink(): raise Fault('EVENT_SECRET_SYMLINK_REJECTED')
         if os.name!='nt' and (p.stat().st_uid!=os.getuid() or p.stat().st_mode&0o077):
             raise Fault('EVENT_SECRET_PERMISSIONS_TOO_BROAD')
-    return json.loads(Fernet(json.loads((root/'events.key').read_text())['key'].encode()).decrypt(
-        json.loads((root/'events.enc').read_text())['ciphertext'].encode()))
+    return json.loads(Fernet(json.loads((root/'events.key').read_text(encoding='utf-8'))['key'].encode()).decrypt(
+        json.loads((root/'events.enc').read_text(encoding='utf-8'))['ciphertext'].encode()))
 
 
 def confirmation_text(raw):
@@ -182,7 +182,7 @@ def receiver_lock(root):
 
 def _serve(root):
     import lark_oapi as lark
-    root=Path(root); config=json.loads((root/'events.json').read_text()); policy_checked(config['policy'])
+    root=Path(root); config=json.loads((root/'events.json').read_text(encoding='utf-8')); policy_checked(config['policy'])
     values=load_secrets(root); inbox=Inbox(root)
     # SDK debug/errors may include signed connection URLs or raw event values.
     logging.getLogger('Lark').disabled=True

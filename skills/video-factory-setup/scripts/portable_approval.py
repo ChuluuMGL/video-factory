@@ -190,14 +190,14 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
     from portable_events import save_secrets, load_secrets, secure_directory
     policy=policy_checked(policy);identifier(project);identifier(base);identifier(table)
     root=Path(root); ask_secret=ask_secret or secret
-    pool=json.loads((root/('credentials-'+project+'.json')).read_text())
+    pool=json.loads((root/('credentials-'+project+'.json')).read_text(encoding='utf-8'))
     if pool['origin']!=api.url or pool['app']!=policy['app']: raise Fault('APPROVAL_CREDENTIAL_SCOPE_MISMATCH')
     event_root=secure_directory(root/(project+'-events'))
     scope={'origin':api.url,'project':project,'base':base,'table':table,'policy':policy,'verification_only':verification_only}
     with locked(event_root):
         config_path=event_root/'events.json'
         if config_path.exists():
-            config=json.loads(config_path.read_text())
+            config=json.loads(config_path.read_text(encoding='utf-8'))
             if any(config.get(k)!=v for k,v in scope.items()): raise Fault('APPROVAL_SCOPE_CHANGED_USE_PROMOTE_AFTER_ACCEPTANCE')
         else:
             if not verification_only: raise Fault('OWNER_ZERO_CHARGE_ACCEPTANCE_REQUIRED_FIRST')
@@ -236,11 +236,11 @@ def set_approval_active(api, root, project, active):
     """Explicit activation with exact owned-template readback and rollback."""
     from portable_n8n import digest
     root=Path(root);identifier(project)
-    config=json.loads((root/(project+'-events')/'events.json').read_text())
+    config=json.loads((root/(project+'-events')/'events.json').read_text(encoding='utf-8'))
     if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
     owned=[]
     for item in config['workflows'].values():
-        state=json.loads((root/('binding-'+item['project']+'.json')).read_text())
+        state=json.loads((root/('binding-'+item['project']+'.json')).read_text(encoding='utf-8'))
         saved=api.request('GET','/api/v1/workflows/'+item['workflow'])
         if state['workflow']!=saved['id']: raise Fault('APPROVAL_WORKFLOW_ID_CHANGED')
         # Normalize credential bindings and API-provided node display metadata
@@ -279,9 +279,9 @@ def _promote_approval(api, root, project):
     from portable_n8n import private_write, ensure_ledger, provision, locked
     from portable_events import Inbox,load_secrets
     root=Path(root);identifier(project);event_root=root/(project+'-events')
-    config=json.loads((event_root/'events.json').read_text())
+    config=json.loads((event_root/'events.json').read_text(encoding='utf-8'))
     checkpoint=event_root/'promotion.json'
-    pending=json.loads(checkpoint.read_text()) if checkpoint.exists() else None
+    pending=json.loads(checkpoint.read_text(encoding='utf-8')) if checkpoint.exists() else None
     if config['origin']!=api.url: raise Fault('PROMOTION_SOURCE_INVALID')
     if not config['verification_only']:
         if pending and pending.get('complete'):
@@ -311,7 +311,7 @@ def _promote_approval(api, root, project):
     for name,item in config['workflows'].items():
         if name.startswith('confirm-'):
             saved=api.request('GET','/api/v1/workflows/'+item['workflow'])
-            expected=json.loads((root/('binding-'+item['project']+'.json')).read_text())['owned_template']
+            expected=json.loads((root/('binding-'+item['project']+'.json')).read_text(encoding='utf-8'))['owned_template']
             if saved['nodes']!=expected['nodes'] or saved['connections']!=expected['connections'] or any(n['name'] in ('Generate script','Submit video once') for n in saved['nodes']):
                 raise Fault('ZERO_CHARGE_TEMPLATE_CHANGED')
     set_approval_active(api,root,project,False)
@@ -324,7 +324,7 @@ def _promote_approval(api, root, project):
                 {'columnName':'status','condition':'eq','value':'consumed'},{'columnName':'result','condition':'eq','value':a[0]['result']}]},
             'data':{'status':'idle'},'returnData':True})
         if len(cleared)!=1: raise Fault('APPROVAL_SLOT_CHANGED')
-    pool=json.loads((root/('credentials-'+project+'.json')).read_text())['roles'];values=load_secrets(event_root)
+    pool=json.loads((root/('credentials-'+project+'.json')).read_text(encoding='utf-8'))['roles'];values=load_secrets(event_root)
     new=json.loads(json.dumps(config));new['workflows']={};new['hooks']={};new['verification_only']=False
     for flow,role in [('script','script'),('video-submit','video')]:
         if role not in pool:continue
@@ -357,7 +357,7 @@ def cancel_plan(api, root, project, expected):
     from portable_n8n import ensure_ledger,locked
     root=Path(root);identifier(project)
     with locked(root/(project+'-events')):
-        config=json.loads((root/(project+'-events')/'events.json').read_text())
+        config=json.loads((root/(project+'-events')/'events.json').read_text(encoding='utf-8'))
         if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
         approval=ensure_ledger(api,root,project+'-approval',config['base'],config['table'])
         rows=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data']
