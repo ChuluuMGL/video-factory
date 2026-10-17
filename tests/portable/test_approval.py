@@ -5,11 +5,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
 from portable_n8n import Fault
-from portable_approval import plan_workflow, confirmation_workflow, policy_checked
-from portable_events import Inbox, reduce_verified, save_secrets, load_secrets
+from portable_approval import plan_workflow, confirmation_workflow, policy_checked, set_approval_active, promote_approval, cancel_plan
+from portable_events import Inbox, reduce_verified, save_secrets, load_secrets, receiver_lock
 
 POLICY={'app':'cli_fixture','tenant':'tenant_fixture','billing_owner':'ou_owner',
         'billing_account':'test-account','configuration':'fixture-v1'}
@@ -26,6 +27,13 @@ def event():
 
 
 class Approval(unittest.TestCase):
+    def test_receiver_singleton_releases_after_exit(self):
+        with tempfile.TemporaryDirectory() as d:
+            with receiver_lock(d):
+                with self.assertRaisesRegex(Fault,'ALREADY_RUNNING'):
+                    with receiver_lock(d): self.fail('duplicate receiver')
+            with receiver_lock(d): pass
+
     def test_relay_scope_and_actor_fail_closed(self):
         self.assertIsNotNone(reduce_verified(event(),CONFIG))
         for obj,key,value in [('header','tenant_key','other'),('header','app_id','cli_other'),
@@ -94,10 +102,99 @@ class Approval(unittest.TestCase):
     def test_expired_policy_and_unrelated_edits_do_not_approve(self):
         w=confirmation_workflow('baseFixture','tableFixture','script',{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'confirm')
         source=next(n['parameters']['jsCode'] for n in w['nodes'] if n['name']=='Check protected plan')
-        fixture={'payload':json.dumps({'plan':{'policy':POLICY,'flow':'script','max_submissions':1,'automatic_retry':False,'expires_at':0}})}
+        fixture={'payload':json.dumps({'plan':{'policy':POLICY,'flow':'script','max_submissions':1,'automatic_retry':False,'expires_at':0,'verification_only':False}})}
         js="const F=(async()=>{}).constructor;new F('$json',process.argv[1])(JSON.parse(process.argv[2])).then(()=>process.exit(9)).catch(e=>{if(e.message!=='APPROVAL_EXPIRED')process.exit(8)});"
         result=subprocess.run(['node','-e',js,source,json.dumps(fixture)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
+
+
+class Lifecycle(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name);self.events=self.root/'fixture-events';self.events.mkdir()
+        self.config={**copy.deepcopy(CONFIG),'project':'fixture','verification_only':True,
+            'workflows':{'confirm-script':{'workflow':'confirm','project':'fixture-confirm'}}}
+        self.save('fixture-events/events.json',self.config)
+        self.template={'nodes':[{'name':'Authorization test receipt'}],'connections':{},'settings':{}}
+        self.save('binding-fixture-confirm.json',{'workflow':'confirm','owned_template':self.template})
+        self.flows={'confirm':{'id':'confirm','active':False,**copy.deepcopy(self.template)}}
+        self.calls=[];self.rows={'execution':[{'status':'idle'}], 'approval':[{
+            'id':1,'status':'consumed','result':json.dumps({'event':'evtFixture'}),'payload':json.dumps({'plan':{'id':'plan-one'}})}]}
+        self.api=type('FakeAPI',(),{'url':CONFIG['origin'],'request':lambda _,*a:self.request(*a)})()
+
+    def save(self,path,value):
+        (self.root/path).write_text(json.dumps(value))
+
+    def request(self,method,path,body=None):
+        self.calls.append((method,path,body))
+        if '/workflows/' in path:
+            key=path.split('/workflows/')[1].split('/')[0]
+            if method=='GET':return copy.deepcopy(self.flows[key])
+            self.flows[key]['active']=path.endswith('/activate');return {}
+        if '/data-tables/' in path:
+            key=path.split('/data-tables/')[1].split('/')[0]
+            if method=='GET':return {'data':copy.deepcopy(self.rows[key])}
+            self.rows[key][0].update(body['data']);return copy.deepcopy(self.rows[key])
+        raise AssertionError(path)
+
+    def test_activation_checks_template_and_disable_can_stop_drift(self):
+        self.flows['confirm']['nodes'].append({'name':'unexpected'})
+        with self.assertRaisesRegex(Fault,'CHANGED_REVIEW'):set_approval_active(self.api,self.root,'fixture',True)
+        self.assertFalse(any(c[0]=='POST' for c in self.calls))
+        self.flows['confirm']['active']=True
+        self.assertFalse(set_approval_active(self.api,self.root,'fixture',False)['active'])
+        self.assertFalse(self.flows['confirm']['active'])
+
+    def test_activation_rolls_back_partial_failure(self):
+        self.config['workflows']['plan-script']={'workflow':'plan','project':'fixture-plan'}
+        self.save('fixture-events/events.json',self.config)
+        self.flows['plan']={'id':'plan','active':False,**copy.deepcopy(self.template)}
+        self.save('binding-fixture-plan.json',{'workflow':'plan','owned_template':self.template})
+        original=self.api.request
+        def fail(method,path,body=None):
+            if path.endswith('plan/activate'):
+                original(method,path,body)
+                raise Fault('INJECTED_FAILURE')
+            return original(method,path,body)
+        self.api.request=fail
+        with self.assertRaisesRegex(Fault,'INJECTED'):set_approval_active(self.api,self.root,'fixture',True)
+        self.assertFalse(self.flows['confirm']['active'])
+        self.assertFalse(self.flows['plan']['active'])
+
+    def test_promotion_requires_real_receipt_and_resumes_without_recharging(self):
+        with self.assertRaisesRegex(Fault,'REAL_OWNER'):promote_approval(self.api,self.root,'fixture')
+        inbox=Inbox(self.events);inbox.enqueue(*reduce_verified(event(),self.config))
+        inbox.dispatch_one(self.config,'synthetic',lambda *_:{'authorization':'verified','provider_requests':0,'verification_only':True})
+        save_secrets(self.events,'synthetic-app','synthetic-relay')
+        self.save('credentials-fixture.json',{'roles':{'feishu':{},'script':{}}})
+        created={};failed=[False]
+        def provision(api,root,name,w,creds):
+            if 'confirm-script-paid' in name and not failed[0]:
+                failed[0]=True;raise Fault('INJECTED_IMPORT_INTERRUPTION')
+            created[name]=copy.deepcopy(w)
+            self.flows[name]={'id':name,'active':False,**copy.deepcopy(w)}
+            return {'project':name,'workflow':name}
+        def ledger(api,root,name,*_):return {'table':'approval' if name.endswith('-approval') else 'execution','row':1}
+        with patch('portable_n8n.ensure_ledger',ledger),patch('portable_n8n.provision',provision):
+            with self.assertRaisesRegex(Fault,'IMPORT_INTERRUPTION'):promote_approval(self.api,self.root,'fixture')
+            self.assertEqual(self.rows['approval'][0]['status'],'idle')
+            self.assertFalse(json.loads((self.events/'promotion.json').read_text())['complete'])
+            result=promote_approval(self.api,self.root,'fixture')
+        self.assertTrue(result['promoted']);self.assertFalse(result['active'])
+        current=json.loads((self.events/'events.json').read_text())
+        self.assertFalse(current['verification_only']);self.assertTrue(current['hooks']['script'].endswith('-paid'))
+        self.assertTrue(all(not w['active'] for w in created.values()))
+        self.assertEqual(created['fixture-plan-script-paid']['nodes'][0]['type'],'n8n-nodes-base.scheduleTrigger')
+        self.flows['fixture-confirm-script-paid']['active']=True
+        self.assertTrue(promote_approval(self.api,self.root,'fixture')['active'])
+
+    def test_cancel_refuses_consumed_or_wrong_plan(self):
+        with patch('portable_n8n.ensure_ledger',return_value={'table':'approval','row':1}):
+            with self.assertRaisesRegex(Fault,'CONSUMED'):cancel_plan(self.api,self.root,'fixture','plan-one')
+            self.rows['approval'][0]['status']='awaiting'
+            with self.assertRaisesRegex(Fault,'ID_MISMATCH'):cancel_plan(self.api,self.root,'fixture','wrong')
+            self.assertEqual(cancel_plan(self.api,self.root,'fixture','plan-one')['provider_requests'],0)
+            self.assertEqual(self.rows['approval'][0]['status'],'idle')
 
 
 if __name__=='__main__':unittest.main()

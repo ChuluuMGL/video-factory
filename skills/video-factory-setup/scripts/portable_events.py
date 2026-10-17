@@ -156,7 +156,31 @@ class Inbox:
         return {'status':status,'receipt':receipt}
 
 
-def serve(root):
+@contextmanager
+def receiver_lock(root):
+    """OS-held lock survives neither process exit nor crash; no stale PID reset."""
+    root=secure_directory(root); path=root/'receiver.lock'
+    if path.is_symlink(): raise Fault('EVENT_LOCK_SYMLINK_REJECTED')
+    with open(path,'a+b') as stream:
+        if os.name!='nt': path.chmod(0o600)
+        if path.stat().st_size==0: stream.write(b'0');stream.flush()
+        stream.seek(0)
+        try:
+            if os.name=='nt':
+                import msvcrt
+                msvcrt.locking(stream.fileno(),msvcrt.LK_NBLCK,1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except OSError: raise Fault('EVENT_RECEIVER_ALREADY_RUNNING') from None
+        try: yield
+        finally:
+            stream.seek(0)
+            if os.name=='nt': msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
+            else: fcntl.flock(stream.fileno(),fcntl.LOCK_UN)
+
+
+def _serve(root):
     import lark_oapi as lark
     root=Path(root); config=json.loads((root/'events.json').read_text()); policy_checked(config['policy'])
     values=load_secrets(root); inbox=Inbox(root)
@@ -166,13 +190,23 @@ def serve(root):
         result=reduce_verified(json.loads(lark.JSON.marshal(data)),config)
         if result: inbox.enqueue(*result)
     def dispatch():
-        while True:
-            result=inbox.dispatch_one(config,values['relay_token'])
-            if result['status']!='idle': print(json.dumps(result),flush=True)
-            time.sleep(1)
+        try:
+            while True:
+                result=inbox.dispatch_one(config,values['relay_token'])
+                if result['status']!='idle': print(json.dumps(result),flush=True)
+                time.sleep(1)
+        except Exception:
+            # Do not leave an apparently healthy SDK connection acknowledging
+            # events while its durable dispatcher has died. OS releases locks.
+            print('EVENT_DISPATCHER_STOPPED_REVIEW_INBOX',flush=True)
+            os._exit(2)
     handler=lark.EventDispatcherHandler.builder('','').register_p2_drive_file_bitable_record_changed_v1(receive).build()
     threading.Thread(target=dispatch,daemon=True).start()
     lark.ws.Client(config['policy']['app'],values['app_secret'],event_handler=handler,log_level=lark.LogLevel.ERROR).start()
+
+
+def serve(root):
+    with receiver_lock(root): _serve(root)
 
 
 def main():

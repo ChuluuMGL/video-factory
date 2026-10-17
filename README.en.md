@@ -45,6 +45,8 @@ The Setup Skill first asks where your n8n runs, whether a Feishu application and
 
 The current package **cannot yet integrate** with an existing n8n Cloud or local instance. This is a product gap, not a reason to discard an existing installation. The Ubuntu requirement applies to the **current pinned package's full automated deployment**, not to n8n itself. See the [existing-n8n integration plan](docs/product/EXISTING_N8N_INTEGRATION.md). Read-only inventory is not a completed installation.
 
+The portable development candidate adds [designated-owner billing approval](docs/product/PORTABLE_BILLING_APPROVAL.md): first validate a real Feishu event without model calls, then explicitly enable plan-bound execution. This is not a stable-release acceptance claim.
+
 ## Model availability
 
 | Purpose | Selectable in the pinned release | Development candidate or planned |

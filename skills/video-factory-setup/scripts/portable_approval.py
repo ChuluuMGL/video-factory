@@ -42,7 +42,7 @@ def scheduled(workflow):
     return workflow
 
 
-def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn'):
+def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn',verification_only=False):
     """No model nodes. One pending plan per project; never replace it silently."""
     policy = policy_checked(policy)
     if flow not in ('script', 'video-submit'):
@@ -52,7 +52,7 @@ def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https:/
     search = {'filter': {'conjunction': 'and', 'conditions': [
         {'field_name': '状态', 'operator': 'is', 'value': [state]}]}}
     nodes += [http('Find plan request', url+'/search?page_size=1', 'POST', json.dumps(search, ensure_ascii=False), feishu=True),
-        code('Select task', "const policy="+json.dumps(policy)+",flow="+json.dumps(flow)+",base="+json.dumps(base)+",table="+json.dumps(table)+";"+r'''
+        code('Select task', "const verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+",base="+json.dumps(base)+",table="+json.dumps(table)+";"+r'''
 if($json.code!==0) throw new Error('PLAN_SEARCH_FAILED');
 const row=$json.data.items?.[0]; if(!row) return [];
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
@@ -66,8 +66,10 @@ snapshot['参考图附件']=(fields['参考图附件']||[]).map(a=>({file_token:
 const model=flow==='script'?{provider:'DeepSeek',model:'deepseek-flash',max_tokens:2048}:
   {provider:'MiniMax China',model:'MiniMax-H3',duration:6,resolution:'768P',ratio:'9:16'};
 const plan={schema:1,id:'vf-'+policy.configuration+'-'+flow+'-'+String($execution.id),base,table,record:row.record_id,
-  policy,flow,model,max_submissions:1,automatic_retry:false,snapshot,expires_at:Date.now()+86400000};
-const display=JSON.stringify(plan,null,2)+'\n费用确认：使用上列费用账户，最多调用一次，实际费用按供应商计费；不是人民币金额保证。核对商品、脚本、参考图与模型后，由指定负责人把本计划 id 复制到「费用确认编号」。有效期 24 小时。';
+  policy,flow,model,verification_only:verificationOnly,max_submissions:1,automatic_retry:false,snapshot,expires_at:Date.now()+86400000};
+const display=(verificationOnly?'【零费用身份验收：不调用模型，不生成内容】\n':'【确认后将调用模型并产生费用】\n')+JSON.stringify(plan,null,2)+
+  (verificationOnly?'\n本次仅核验身份和一次性确认。':'\n费用确认：使用上列费用账户，最多调用一次，实际费用按供应商计费；不是人民币金额保证。')+
+  '核对商品、脚本、参考图与模型后，由指定负责人把本计划 id 复制到「费用确认编号」。有效期 24 小时。';
 if(display.length>19000) throw new Error('PLAN_TOO_LARGE');
 return [{json:{id:row.record_id,execution:String($execution.id),plan,display,source_status:fields['状态']}}];'''),
         ledger_update('Claim plan slot', approval, 'idle', {'status':'planning','owner':"={{ $('Select task').first().json.execution }}",'payload':"={{ JSON.stringify($('Select task').first().json) }}",'result':''}),
@@ -117,9 +119,9 @@ if(e.event.operator_id?.open_id!==policy.billing_owner) throw new Error('BILLING
 if(typeof e.header.event_id!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(e.header.event_id) ||
  !Array.isArray(e.event.action_list) || e.event.action_list.length>100) throw new Error('APPROVAL_EVENT_INVALID');
 return [{json:{event:e}}];'''),read_approval(approval,'awaiting'),
-        code('Check protected plan',"const policy="+json.dumps(policy)+",flow="+json.dumps(flow)+";"+r'''
+        code('Check protected plan',"const verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+";"+r'''
 const saved=JSON.parse($json.payload),p=saved.plan;
-if(JSON.stringify(p.policy)!==JSON.stringify(policy) || p.flow!==flow || p.max_submissions!==1 || p.automatic_retry!==false)
+if(JSON.stringify(p.policy)!==JSON.stringify(policy) || p.flow!==flow || p.max_submissions!==1 || p.automatic_retry!==false || p.verification_only!==verificationOnly)
  throw new Error('APPROVAL_POLICY_CHANGED');
 if(!Number.isFinite(p.expires_at) || p.expires_at<Date.now()) throw new Error('APPROVAL_EXPIRED');
 return [{json:saved}];'''),
@@ -217,7 +219,7 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']
         identifier(path)
         config['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow,
-            scheduled(plan_workflow(base,table,flow,approval,policy)),{'httpCustomAuth':pool['roles']['feishu']})
+            scheduled(plan_workflow(base,table,flow,approval,policy,verification_only=verification_only)),{'httpCustomAuth':pool['roles']['feishu']})
         credentials={'httpCustomAuth':pool['roles']['feishu'],
                      'relay':{'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':values['relay_token']}}}
         if not verification_only:credentials['httpHeaderAuth']=pool['roles'][role]
@@ -252,14 +254,19 @@ def set_approval_active(api, root, project, active):
     try:
         for workflow,was_active in owned:
             if was_active==active:continue
-            api.request('POST','/api/v1/workflows/'+workflow+('/activate' if active else '/deactivate'),{})
             changed.append(workflow)
+            api.request('POST','/api/v1/workflows/'+workflow+('/activate' if active else '/deactivate'),{})
             if bool(api.request('GET','/api/v1/workflows/'+workflow).get('active'))!=active:
                 raise Fault('APPROVAL_ACTIVATION_READBACK_FAILED')
     except Exception:
         if active:
+            rollback_failed=False
             for workflow in changed:
-                api.request('POST','/api/v1/workflows/'+workflow+'/deactivate',{})
+                try:
+                    api.request('POST','/api/v1/workflows/'+workflow+'/deactivate',{})
+                    if api.request('GET','/api/v1/workflows/'+workflow).get('active'):rollback_failed=True
+                except Exception:rollback_failed=True
+            if rollback_failed:raise Fault('APPROVAL_ACTIVATION_UNCERTAIN_RUN_DISABLE_AND_READ_BACK') from None
         raise
     return {'active':active,'verification_only':config['verification_only'],'workflow_count':len(owned),'provider_requests':0}
 
@@ -277,7 +284,10 @@ def _promote_approval(api, root, project):
     pending=json.loads(checkpoint.read_text()) if checkpoint.exists() else None
     if config['origin']!=api.url: raise Fault('PROMOTION_SOURCE_INVALID')
     if not config['verification_only']:
-        if pending and pending.get('complete'):return {'promoted':True,'active':False,'provider_requests':0}
+        if pending and pending.get('complete'):
+            active=any(api.request('GET','/api/v1/workflows/'+item['workflow']).get('active',False)
+                       for item in config['workflows'].values())
+            return {'promoted':True,'active':active,'provider_requests':0}
         raise Fault('PROMOTION_SOURCE_INVALID')
     with Inbox(event_root).connect() as db:
         receipts=db.execute("SELECT payload,receipt FROM events WHERE status='done'").fetchall()
@@ -319,7 +329,8 @@ def _promote_approval(api, root, project):
     for flow,role in [('script','script'),('video-submit','video')]:
         if role not in pool:continue
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']+'-paid';identifier(path)
-        new['workflows']['plan-'+flow]=config['workflows']['plan-'+flow]
+        new['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow+'-paid',
+            scheduled(plan_workflow(base,table,flow,approval,policy)),{'httpCustomAuth':pool['feishu']})
         new['workflows']['confirm-'+flow]=provision(api,root,project+'-confirm-'+flow+'-paid',
             confirmation_workflow(base,table,flow,execution,approval,policy,path),
             {'httpCustomAuth':pool['feishu'],'httpHeaderAuth':pool[role],

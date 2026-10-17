@@ -427,7 +427,7 @@ try:
     assert api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]['status']=='idle'
     assert api.request('GET','/api/v1/data-tables/'+owner_execution['table']+'/rows')['data'][0]['status']=='idle'
     phase='video owner confirmation and zero-charge acceptance mode'
-    video_plan=provision(api,root/'bindings','owner-video-plan',plan_workflow('baseFixture','tableFixture','video-submit',approval,policy,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    video_plan=provision(api,root/'bindings','owner-video-plan',plan_workflow('baseFixture','tableFixture','video-submit',approval,policy,feishu_origin=fixture_origin,verification_only=True),{'httpCustomAuth':credentials['httpCustomAuth']})
     video_check=provision(api,root/'bindings','owner-video-check',confirmation_workflow('baseFixture','tableFixture','video-submit',owner_execution,approval,policy,'owner-video-check',feishu_origin=fixture_origin,verification_only=True),{'httpCustomAuth':credentials['httpCustomAuth']})
     state['status']='申请视频计划';state['job']=''
     execute(video_plan['workflow'])
