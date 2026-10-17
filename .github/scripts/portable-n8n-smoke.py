@@ -36,7 +36,7 @@ class Fixture(BaseHTTPRequestHandler):
             if state.get('edit_during_poll'): state['status']='视频退回'
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'审核意见':state['feedback'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}}})
+            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),'审核意见':state['feedback'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -76,8 +76,12 @@ class Fixture(BaseHTTPRequestHandler):
         state['writes']+=1
         if state['fail_writeback'] and '脚本' in fields:
             self.reply({'code':999,'msg':'synthetic writeback failure'}); return
+        if state.get('ack_without_record_write') and '脚本' in fields:
+            self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}}); return
         if '状态' in fields: state['status']=fields['状态']
         if '脚本' in fields: state['script']=fields['脚本']
+        if '脚本历史' in fields: state['history']=fields['脚本历史']
+        if '视频链接' in fields: state['video_link']=fields['视频链接']
         if '执行编号' in fields: state['execution']=fields['执行编号']
         if '视频任务ID' in fields: state['job']=fields['视频任务ID']
         self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}})
@@ -267,6 +271,19 @@ try:
     state['feedback']=''; state['edit_during_model']=False
     execute(recovery['workflow'])
     assert state['status']=='脚本待审核' and state['model_calls']==3
+    phase='successful write response without persisted result preserves recovery lock'
+    state['status']='请求脚本';state['ack_without_record_write']=True
+    execute(saved['workflow'],expect_failure=True)
+    assert state['model_calls']==4 and state['status']=='脚本生成中'
+    rows=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data']
+    assert rows[0]['status']=='result_ready'
+    execute(recovery['workflow'],expect_failure=True)
+    assert state['model_calls']==4 and state['status']=='脚本生成中'
+    rows=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data']
+    assert rows[0]['status']=='result_ready','ACK_ALONE_MUST_NOT_RELEASE_SAVED_RESULT'
+    state['ack_without_record_write']=False
+    execute(recovery['workflow'])
+    assert state['model_calls']==4 and state['status']=='脚本待审核'
     phase='atomic concurrent claims'
     from concurrent.futures import ThreadPoolExecutor
     def claim(index):
@@ -305,7 +322,7 @@ try:
             for kind,ref in node.get('credentials',{}).items():
                 role='feishu' if kind=='httpCustomAuth' else 'script' if flow=='script' else 'video'
                 assert ref==pool[role]['existing']
-    assert state['model_calls']==3 and state['video_calls']==1, 'SETUP_MUST_NOT_CALL_MODELS'
+    assert state['model_calls']==4 and state['video_calls']==1, 'SETUP_MUST_NOT_CALL_MODELS'
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
     phase='guided setup and interrupted-session continuation'
@@ -327,7 +344,7 @@ try:
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
         assert not resumed['production_ready']
-    assert state['model_calls']==3 and state['video_calls']==1,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
+    assert state['model_calls']==4 and state['video_calls']==1,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')

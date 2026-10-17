@@ -41,6 +41,21 @@ def compile_nodes(nodes):
                          'saveManualExecutions': False}, 'active': False}
 
 
+def persisted_fields_check(name, result_node):
+    """A successful write receipt is not proof that Base saved the result."""
+    return code(name, "const expected=$(" + json.dumps(result_node) + ").first().json.fields;" + r"""
+if($json.code!==0 || !$json.data?.record?.fields) throw new Error('RESULT_READBACK_UNAVAILABLE_RESULT_SAVED');
+const actual=$json.data.record.fields;
+const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
+for(const [key,value] of Object.entries(expected)) {
+  const equal=value && typeof value==='object' && !Array.isArray(value)
+    ? actual[key]?.link===value.link && actual[key]?.text===value.text
+    : text(actual[key])===String(value);
+  if(!equal) throw new Error('RESULT_NOT_PERSISTED_RECONCILE_WITHOUT_MODEL_RETRY');
+}
+return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];""")
+
+
 def start(base, table, feishu_origin='https://open.feishu.cn'):
     identifier(base); identifier(table)
     url = f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/records'
@@ -134,6 +149,9 @@ if(fields['状态']!=='视频生成中' || text(fields['视频任务ID'])!==task
 return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
+    result_node={'script':'Validate script','video-submit':'Validate video receipt','video-poll':'Check video completion'}[flow]
+    nodes += [http('Read persisted result',target,feishu=True),
+              persisted_fields_check('Verify persisted result',result_node)]
     return compile_nodes(nodes)
 
 
@@ -293,6 +311,8 @@ if(text(fields['脚本'])!==saved.script && text(fields['脚本'])!==saved.resul
 return [{json:saved.result}];"""),
         http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),
         code('Verify recovery writeback',"if ($json.code!==0) throw new Error('WRITEBACK_STILL_UNAVAILABLE_NO_MODEL_RETRY'); return $input.all();"),
+        http('Read recovered result','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",feishu=True),
+        persisted_fields_check('Verify recovered result','Verify unchanged task'),
         ledger_update('Release recovered execution',ledger,'result_ready',{'status':'idle'},owner=True),
         code('Recovery receipt',"return [{json:{writeback:'verified',provider_requests:0,recovered:true}}];")]
     return compile_nodes(nodes)
