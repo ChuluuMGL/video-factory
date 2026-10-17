@@ -112,7 +112,7 @@ class Service(unittest.TestCase):
                 result=welcome(root)
                 self.assertFalse(result['production_ready']);background.assert_not_called()
                 api.assert_called_once_with('http://127.0.0.1:5678','synthetic')
-            handoff=json.loads((root/'bindings/handoff-fixture.json').read_text())
+            handoff=json.loads((root/'bindings/handoff-fixture.json').read_text(encoding='utf-8'))
             self.assertFalse(handoff['background']['managed'])
             self.assertNotIn('synthetic',json.dumps(handoff))
 

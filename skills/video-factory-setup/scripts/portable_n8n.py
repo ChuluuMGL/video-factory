@@ -403,7 +403,7 @@ def process_identity(pid):
 
 def local_control(root, action):
     service=Path(root)/'.vf-n8n-service/service.json'
-    if service.exists() and json.loads(service.read_text()).get('installed'):
+    if service.exists() and json.loads(service.read_text(encoding='utf-8')).get('installed'):
         from portable_service import control
         return control(root,'n8n',action)
     with locked(root) as root:

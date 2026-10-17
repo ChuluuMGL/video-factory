@@ -167,14 +167,14 @@ def install(root, component):
     with locked(directory):
         receipt=directory/'service.json'
         if receipt.exists():
-            spec=json.loads(receipt.read_text())
+            spec=json.loads(receipt.read_text(encoding='utf-8'))
             if spec['root']!=str(root) or spec['component']!=component:raise Fault('SERVICE_RECEIPT_MISMATCH')
             backend=Backend(directory,spec['command']);backend.verify_file()
             if spec.get('installed'):
                 if not backend.control('status')['running']:backend.control('start')
                 return {**wait_running(root,component),'reused':True}
         if component=='n8n':
-            saved=json.loads((root/'local.json').read_text())
+            saved=json.loads((root/'local.json').read_text(encoding='utf-8'))
             if saved['mode']!='node':raise Fault('DOCKER_USES_RESTART_POLICY_ENABLE_DOCKER_STARTUP')
             if not Path(saved['node_executable']).is_file() or not (root/'node_modules/n8n/bin/n8n').is_file():raise Fault('LOCAL_N8N_NOT_INSTALLED')
         else:
@@ -207,7 +207,7 @@ def install(root, component):
 
 def backend_for(root,component):
     directory=location(root,component)
-    spec=json.loads((directory/'service.json').read_text())
+    spec=json.loads((directory/'service.json').read_text(encoding='utf-8'))
     if spec['root']!=str(Path(root).resolve()) or spec['component']!=component:raise Fault('SERVICE_RECEIPT_MISMATCH')
     return Backend(directory,spec['command'])
 
@@ -217,7 +217,7 @@ def wait_running(root,component):
     for _ in range(60):
         state=backend.control('status')
         if state['running']:
-            if component!='n8n' or health(json.loads((Path(root)/'local.json').read_text())['origin']):
+            if component!='n8n' or health(json.loads((Path(root)/'local.json').read_text(encoding='utf-8'))['origin']):
                 return {**state,'installed':True,'provider_calls_by_setup':0,'production_ready':False}
         time.sleep(2)
     raise Fault('SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS')
@@ -230,7 +230,7 @@ def control(root,component,action):
         if action in ('start','restart'):return wait_running(root,component)
         if action=='uninstall':
             receipt=location(root,component)/'service.json'
-            spec=json.loads(receipt.read_text());spec['installed']=False;private_write(receipt,spec)
+            spec=json.loads(receipt.read_text(encoding='utf-8'));spec['installed']=False;private_write(receipt,spec)
         return result
 
 
@@ -259,13 +259,13 @@ def serve(root,component):
     root=Path(root).resolve()
     if component=='events':
         from portable_events import serve as events
-        url=json.loads((root/'events.json').read_text())['origin']
+        url=json.loads((root/'events.json').read_text(encoding='utf-8'))['origin']
         for _ in range(30):
             if health(url):break
             time.sleep(2)
         else:raise Fault('SERVICE_N8N_NOT_READY_NO_EVENT_DISPATCH')
         return events(root)
-    saved=json.loads((root/'local.json').read_text())
+    saved=json.loads((root/'local.json').read_text(encoding='utf-8'))
     if saved['mode']!='node':raise Fault('SERVICE_OWNED_NODE_ONLY')
     with receiver_lock(location(root,component)/'process'):
         if health(saved['origin']):raise Fault('SERVICE_PORT_ALREADY_IN_USE')
