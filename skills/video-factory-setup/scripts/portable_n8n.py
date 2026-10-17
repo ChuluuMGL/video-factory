@@ -179,7 +179,8 @@ def provision(api, root, project, workflow, credentials):
             body['name'] = f'Video Factory {project}'
             for node in body['nodes']:
                 for kind in node.get('credentials', {}):
-                    node['credentials'][kind] = state['credentials'][kind]
+                    role = 'relay' if node['credentials'][kind].get('id') == 'RELAY_UNBOUND' else kind
+                    node['credentials'][kind] = state['credentials'][role]
             state['pending'] = {'kind': 'workflow', 'name': body['name']}
             private_write(path, state)
             result = api.request('POST', '/api/v1/workflows', body)
@@ -192,7 +193,8 @@ def provision(api, root, project, workflow, credentials):
         expected = json.loads(json.dumps(workflow))
         for node in expected['nodes']:
             for kind in node.get('credentials', {}):
-                node['credentials'][kind] = state['credentials'][kind]
+                role = 'relay' if node['credentials'][kind].get('id') == 'RELAY_UNBOUND' else kind
+                node['credentials'][kind] = state['credentials'][role]
         if (saved.get('nodes') != expected['nodes'] or saved.get('connections') != expected['connections']
                 or any(saved.get('settings',{}).get(k) != v for k,v in expected['settings'].items())):
             raise Fault('WORKFLOW_READBACK_MISMATCH')
@@ -623,6 +625,10 @@ def main(argv=None):
     parser.add_argument('--dependency-timeout', type=int, default=1200, help='原生 npm 安装时限（秒，60–7200）；超时保留目录，可原地续接')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('welcome')
+    owner=commands.add_parser('approval-setup',help='配置飞书指定负责人确认流程，默认零费用验收')
+    for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
+        owner.add_argument('--'+name,required=True)
+    owner.add_argument('--paid-workflows',action='store_true',help='导入有模型节点的关闭流程；不会激活')
     install = commands.add_parser('install')
     install.add_argument('--mode', choices=['node', 'docker'], required=True)
     install.add_argument('--port', type=int, default=5678)
@@ -650,6 +656,13 @@ def main(argv=None):
     try:
         if args.command == 'welcome':
             value = welcome(args.root,args.dependency_timeout)
+        elif args.command == 'approval-setup':
+            from portable_approval import configure_approval
+            api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()
+            value=configure_approval(api,args.root,args.project,args.base,args.table,
+                {'app':args.app,'tenant':args.tenant,'billing_owner':args.billing_owner,
+                 'billing_account':args.billing_account,'configuration':args.configuration},
+                verification_only=not args.paid_workflows)
         elif args.command == 'export':
             from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
             if args.flow not in ('probe','schema') and not args.experimental_manual:

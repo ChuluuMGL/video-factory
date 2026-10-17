@@ -29,7 +29,7 @@ def task_fields():
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
             '审核意见':state['feedback'],'视频任务ID':state['job'],
             '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
-            '参考图附件':state.get('attachments',[])}
+            '参考图附件':state.get('attachments',[]),'生成计划':state.get('plan',''),'费用确认编号':state.get('confirmation','')}
 class Fixture(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
@@ -54,7 +54,7 @@ class Fixture(BaseHTTPRequestHandler):
             if state.get('edit_during_poll'): state['status']='视频退回'
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':task_fields()}}})
+            self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':task_fields()}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -98,6 +98,8 @@ class Fixture(BaseHTTPRequestHandler):
             self.reply({'code':999,'msg':'synthetic writeback failure'}); return
         if state.get('ack_without_record_write') and '脚本' in fields:
             self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}}); return
+        if '生成计划' in fields: state['plan']=fields['生成计划']
+        if '费用确认编号' in fields: state['confirmation']=fields['费用确认编号']
         if '状态' in fields: state['status']=fields['状态']
         if '脚本' in fields: state['script']=fields['脚本']
         if '脚本历史' in fields: state['history']=fields['脚本历史']
@@ -168,6 +170,8 @@ try:
         workflow['connections'][hook['name']]=workflow['connections'][start]
         credentials={**credentials,'httpHeaderAuth':{'type':'httpHeaderAuth',
                      'data':{'name':'Authorization','value':'Bearer synthetic-model-key'}}}
+        if any(n.get('credentials',{}).get('httpHeaderAuth',{}).get('id')=='RELAY_UNBOUND' for n in workflow['nodes']):
+            credentials['relay']={'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':'synthetic-distinct-relay-token'}}
         saved=provision_disabled(api,bindings,project,workflow,credentials)
         hooks[saved['workflow']]=path
         return saved
@@ -181,12 +185,12 @@ try:
     workflow=probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin)
     saved=provision(api,root/'bindings','probe',workflow,credentials)
     assert provision(api,root/'bindings','probe',workflow,credentials)==saved
-    def execute(workflow_id, expect_failure=False):
+    def execute(workflow_id, expect_failure=False, body=None):
         before=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
         previous=before[0]['id'] if before else None
         try:
             api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
-            req=Request(api_origin+'/webhook/'+hooks[workflow_id],method='POST',data=b'{}',
+            req=Request(api_origin+'/webhook/'+hooks[workflow_id],method='POST',data=json.dumps(body or {}).encode(),
                         headers={'Authorization':'Bearer synthetic-model-key','Content-Type':'application/json'})
             for attempt in range(5):
                 try:
@@ -387,6 +391,41 @@ try:
         assert first['flows']==resumed['flows']
         assert not resumed['production_ready']
     assert state['model_calls']==4 and state['video_calls']==3,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
+    phase='designated billing owner and exact plan confirmation'
+    from portable_approval import plan_workflow,confirmation_workflow
+    approval=ensure_ledger(api,root/'bindings','owner-approval','baseFixture','tableFixture')
+    owner_execution=ensure_ledger(api,root/'bindings','owner-execution','baseFixture','tableFixture')
+    policy={'app':'cli_fixture','tenant':'tenant_fixture','billing_owner':'ou_owner','billing_account':'test-account','configuration':'fixture-v1'}
+    owner_plan=provision(api,root/'bindings','owner-plan',plan_workflow('baseFixture','tableFixture','script',approval,policy,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    owner_flow=provision(api,root/'bindings','owner-confirm',confirmation_workflow('baseFixture','tableFixture','script',owner_execution,approval,policy,'owner-confirm',feishu_origin=fixture_origin,script_origin=fixture_origin),credentials)
+    state['status']='申请脚本计划'
+    execute(owner_plan['workflow'])
+    assert state['status']=='费用待确认' and state['model_calls']==4
+    protected=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]
+    plan=json.loads(protected['payload'])['plan'];assert protected['status']=='awaiting'
+    field=next(f['field_id'] for f in state['fields'] if f['field_name']=='费用确认编号')
+    def confirmation_event(actor='ou_owner',token=None):
+        return {'schema':'2.0','header':{'event_id':'event-fixture','app_id':'cli_fixture','tenant_key':'tenant_fixture','event_type':'drive.file.bitable_record_changed_v1'},
+                'event':{'file_type':'bitable','file_token':'baseFixture','table_id':'tableFixture','operator_id':{'open_id':actor},
+                         'action_list':[{'action':'record_edited','record_id':'recFixture','after_value':[{'field_id':field,'field_value':json.dumps(token or plan['id'])}]}]}}
+    state['confirmation']=plan['id']
+    for bad in [confirmation_event('ou_other'),confirmation_event(token='vf-stale-plan')]:
+        execute(owner_flow['workflow'],True,bad)
+        assert state['model_calls']==4 and state['status']=='费用待确认'
+    original_script=state['script'];state['script']='Changed after plan'
+    execute(owner_flow['workflow'],True,confirmation_event())
+    assert state['model_calls']==4
+    state['script']=original_script
+    state['plan']+=' edited'
+    execute(owner_flow['workflow'],True,confirmation_event())
+    assert state['model_calls']==4
+    state['plan']=json.loads(protected['payload'])['display']
+    execute(owner_flow['workflow'],False,confirmation_event())
+    assert state['model_calls']==5 and state['status']=='脚本待审核'
+    execute(owner_flow['workflow'],False,confirmation_event())
+    assert state['model_calls']==5,'APPROVAL_REPLAY_MUST_NOT_CALL_MODEL'
+    assert api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]['status']=='idle'
+    assert api.request('GET','/api/v1/data-tables/'+owner_execution['table']+'/rows')['data'][0]['status']=='idle'
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')
@@ -396,7 +435,7 @@ try:
             break
         except Exception: time.sleep(1)
     else: raise AssertionError('RESTART_DID_NOT_PRESERVE_WORKFLOW')
-    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run'}),flush=True)
+    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
         print((error.output or b'').decode(errors='replace')[-5000:],flush=True)
