@@ -100,16 +100,18 @@ python3 portable_n8n.py export --base YOUR_BASE_TOKEN --table YOUR_TABLE_ID \
 
 ## 当前验收记录
 
-2026-10-17（北京时间）的[云端矩阵运行](https://github.com/ChuluuMGL/video-factory/actions/runs/38929115815)，源码 `2a8942f`，四条路线全部通过：
+2026-10-17（北京时间）的[云端矩阵运行](https://github.com/ChuluuMGL/video-factory/actions/runs/38930989898)，源码 `f98a521`，四条路线全部通过：
 
 | 云端测试环境 | 实际运行 | 结果 |
 |---|---|---|
-| Windows Server 2022 x64 | 原生 Node.js + n8n | 安装、启动与完整合成流程通过；该步骤约 6 分 36 秒 |
+| Windows Server 2022 x64 | 原生 Node.js + n8n | 安装、启动与完整合成流程通过；安装与集成步骤约 6 分 10 秒 |
 | macOS 14 ARM64 | 原生 Node.js + n8n | 通过 |
 | Ubuntu 24.04 x64 | 原生 Node.js + n8n | 通过 |
 | Ubuntu Docker | 固定摘要 n8n 镜像 | 通过 |
 
-检查包含安装续接、已有 n8n 公共 API 接入、保留无关工作流、连续配置/凭据复用、字段补齐、脚本/视频状态、重复提交阻断、并发抢占、结果恢复写回、人工修改保护和重启。模型与飞书接口使用合成数据，真实模型调用为零。Docker Desktop 在 Windows/Mac 上的图形安装过程不属于上述 Linux Docker 实测。
+检查包含安装续接、已有 n8n 公共 API 接入、保留无关工作流、连续配置/凭据复用、字段补齐、脚本/视频状态、重复提交阻断、并发抢占、结果恢复写回、人工修改保护和重启；三个原生平台分别通过 22 项失败与数据保留测试。模型与飞书接口使用合成数据，真实模型调用为零。Docker Desktop 在 Windows/Mac 上的图形安装过程不属于上述 Linux Docker 实测。
+
+同一源码的[完整云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/38930989910)、[安装页检查](https://github.com/ChuluuMGL/video-factory/actions/runs/38930989904)和[发布隐私检查](https://github.com/ChuluuMGL/video-factory/actions/runs/38930989915)也已通过。这些检查不替代下面的真实业务验收。
 
 Windows 原超时发生在依赖下载/展开阶段。调整测试机安装磁盘、把 npm 缓存放到安装目标所在磁盘后，使用原 npm 安装器完成了完整测试；没有改用未经验证的包管理器，也没有仅靠延长时限判为通过。此结果不保证每台 Windows 电脑的磁盘或网络速度。
 
