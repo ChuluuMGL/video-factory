@@ -12,6 +12,8 @@ import tempfile
 import threading
 import time
 import uuid
+import base64
+from urllib.parse import urlsplit, parse_qs
 from urllib.error import HTTPError
 from urllib.request import build_opener, HTTPCookieProcessor, Request
 
@@ -21,6 +23,13 @@ from portable_n8n import API, environment, install_local, local_control, provisi
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
+image_bytes=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7V0AAAAASUVORK5CYII=')
+def task_fields():
+    return {'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
+            '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
+            '审核意见':state['feedback'],'视频任务ID':state['job'],
+            '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
+            '参考图附件':state.get('attachments',[])}
 class Fixture(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
@@ -29,14 +38,23 @@ class Fixture(BaseHTTPRequestHandler):
         self.send_header('Content-Type','application/json'); self.send_header('Content-Length', str(len(raw)))
         self.end_headers(); self.wfile.write(raw)
     def do_GET(self):
-        if '/fields?' in self.path:
+        if '/open-apis/drive/v1/medias/' in self.path:
+            assert self.headers['Authorization']=='Bearer synthetic-token'
+            extra=json.loads(parse_qs(urlsplit(self.path).query)['extra'][0])
+            field=next(f for f in state['fields'] if f['field_name']=='参考图附件')
+            assert extra=={'bitablePerm':{'tableId':'tableFixture','attachments':{field['field_id']:{'recFixture':['fileFixture']}}}}
+            raw=b'x'*len(image_bytes) if state.get('bad_image') else image_bytes
+            self.send_response(403 if state.get('deny_image') else 200)
+            self.send_header('Content-Type','image/png');self.send_header('Content-Length',str(len(raw)))
+            self.end_headers();self.wfile.write(raw)
+        elif '/fields?' in self.path:
             self.reply({'code':0,'data':{'items':state['fields'],'has_more':False}})
         elif '/v2/query/video_generation/' in self.path:
             state['polls']+=1
             if state.get('edit_during_poll'): state['status']='视频退回'
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
         elif self.path.endswith('/recFixture'):
-            self.reply({'code':0,'data':{'record':{'fields':{'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),'审核意见':state['feedback'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}}})
+            self.reply({'code':0,'data':{'record':{'fields':task_fields()}}})
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
@@ -49,7 +67,9 @@ class Fixture(BaseHTTPRequestHandler):
             if not state.get('ack_without_field_write'): state['fields'].append(field)
             self.reply({'code':0,'data':{'field':field}})
         elif self.path.endswith('/v2/video_generation'):
-            assert body['model']=='MiniMax-H3' and len(body['content'])==2
+            assert body['model']=='MiniMax-H3' and len(body['content'])==1+(len(state.get('attachments',[])) or 1)
+            if state.get('attachments'):
+                assert all(item['image_url']['url']=='data:image/png;base64,'+base64.b64encode(image_bytes).decode() for item in body['content'][1:])
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['video_calls']+=1
             self.reply({'task_id':'123456789012345'})
@@ -57,7 +77,7 @@ class Fixture(BaseHTTPRequestHandler):
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
             if state['status'] in [c['value'][0] for c in body['filter']['conditions']]:
-                items=[{'record_id':'recFixture','fields':{'状态':state['status'],'商品资料':'A synthetic product','脚本':state['script'],'视频任务ID':state['job'],'参考图链接':'https://media.example.invalid/reference.png'}}]
+                items=[{'record_id':'recFixture','fields':task_fields()}]
             self.reply({'code':0,'data':{'items':items,'has_more':False}})
         elif self.path.endswith('/chat/completions'):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
@@ -248,6 +268,28 @@ try:
     execute(poll['workflow'],expect_failure=True)
     assert state['status']=='视频退回' and state['video_calls']==1
     state['edit_during_poll']=False
+    phase='Feishu attachment video references and download failures before provider'
+    state['status']='视频生成已确认';state['references']=''
+    state['attachments']=[{'file_token':'fileFixture','name':'reference.png','size':len(image_bytes)}]
+    for failure in ['deny_image','bad_image']:
+        state[failure]=True
+        execute(submit['workflow'],expect_failure=True)
+        assert state['video_calls']==1 and state['status']=='视频生成已确认'
+        rows=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data']
+        assert rows[0]['status']=='idle','REFERENCE_FAILURE_MUST_NOT_CLAIM_PAID_EXECUTION'
+        state[failure]=False
+    execute(submit['workflow'])
+    assert state['video_calls']==2 and state['status']=='视频生成中'
+    execute(submit['workflow'])
+    assert state['video_calls']==2
+    execute(poll['workflow'])
+    assert state['status']=='视频待审核'
+    state['status']='视频生成已确认';state['attachments']*=2
+    execute(submit['workflow'])
+    assert state['video_calls']==3 and state['status']=='视频生成中','MULTIPLE_ATTACHMENTS_MUST_MAKE_ONE_MODEL_CALL'
+    execute(poll['workflow'])
+    assert state['status']=='视频待审核'
+    state['attachments']=[];state['references']='https://media.example.invalid/reference.png'
     phase='writeback outage and no-charge recovery'
     recovery=provision(api,root/'bindings','recover',recovery_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     state['status']='请求脚本'; state['fail_writeback']=True
@@ -322,7 +364,7 @@ try:
             for kind,ref in node.get('credentials',{}).items():
                 role='feishu' if kind=='httpCustomAuth' else 'script' if flow=='script' else 'video'
                 assert ref==pool[role]['existing']
-    assert state['model_calls']==4 and state['video_calls']==1, 'SETUP_MUST_NOT_CALL_MODELS'
+    assert state['model_calls']==4 and state['video_calls']==3, 'SETUP_MUST_NOT_CALL_MODELS'
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
     phase='guided setup and interrupted-session continuation'
@@ -344,7 +386,7 @@ try:
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
         assert not resumed['production_ready']
-    assert state['model_calls']==4 and state['video_calls']==1,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
+    assert state['model_calls']==4 and state['video_calls']==3,'GUIDED_SETUP_MUST_NOT_CALL_MODELS'
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')

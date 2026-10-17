@@ -33,12 +33,54 @@ def compile_nodes(nodes):
     for index, node in enumerate(nodes):
         node['id'] = 'vf-' + str(index)
         node['position'] = [index * 240, 0]
-    return {'name': 'Video Factory portable', 'nodes': nodes,
+    workflow = {'name': 'Video Factory portable', 'nodes': nodes,
             'connections': {left['name']: {'main': [[{'node': right['name'], 'type': 'main', 'index': 0}]]}
                             for left, right in zip(nodes, nodes[1:])},
             'settings': {'executionOrder': 'v1', 'executionTimeout': 240,
                          'saveDataSuccessExecution': 'none', 'saveDataErrorExecution': 'none',
                          'saveManualExecutions': False}, 'active': False}
+    if any(n['name']=='Have Feishu images' for n in nodes):
+        workflow['connections']['Have Feishu images']={'main':[
+            [{'node':'Read reference field','type':'main','index':0}],
+            [{'node':'Resolve video references','type':'main','index':0}]]}
+    return workflow
+
+
+def attachment_nodes(base, table, feishu_origin):
+    """Download scoped Base attachments without publishing a public image URL."""
+    field_url=f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/fields?page_size=100'
+    download=http('Download Feishu image','={{ $json.download }}',feishu=True)
+    download['parameters']['options']['response']={'response':{'responseFormat':'file','outputPropertyName':'image'}}
+    return [
+        {'name':'Have Feishu images','type':'n8n-nodes-base.if','typeVersion':2.2,
+         'parameters':{'conditions':{'options':{'caseSensitive':True,'leftValue':'','typeValidation':'strict'},
+                       'conditions':[{'id':'has-images','leftValue':"={{ $('Select task').first().json.attachments.length > 0 }}",
+                                      'rightValue':True,'operator':{'type':'boolean','operation':'true','singleValue':True}}],
+                       'combinator':'and'},'options':{}}},
+        http('Read reference field',field_url,feishu=True),
+        code('Prepare attachment downloads',"const origin="+json.dumps(feishu_origin)+",table="+json.dumps(table)+";"+r"""
+if($json.code!==0 || $json.data?.has_more) throw new Error('REFERENCE_FIELD_UNAVAILABLE');
+const fields=$json.data.items.filter(f=>f.field_name==='参考图附件' && f.type===17);
+if(fields.length!==1) throw new Error('REFERENCE_ATTACHMENT_FIELD_REQUIRED');
+const task=$('Select task').first().json;
+return task.attachments.map(a=>({json:{download:origin+'/open-apis/drive/v1/medias/'+a.file_token+'/download?extra='+encodeURIComponent(JSON.stringify({bitablePerm:{tableId:table,attachments:{[fields[0].field_id]:{[task.id]:[a.file_token]}}}}))}}));"""),
+        download,
+        code('Resolve video references',r"""const task=$('Select task').first().json;
+const references=[...task.references]; let total=0;
+if(task.attachments.length) {
+  if($input.all().length!==task.attachments.length) throw new Error('REFERENCE_DOWNLOAD_INCOMPLETE');
+  for(let i=0;i<task.attachments.length;i++) {
+    const data=await this.helpers.getBinaryDataBuffer(i,'image');
+    total+=data.length;
+    if(!data.length || data.length!==task.attachments[i].size || total>20*1024*1024) throw new Error('REFERENCE_SIZE_MISMATCH');
+    const hex=data.subarray(0,12).toString('hex');
+    const mime=hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('89504e470d0a1a0a')?'image/png':
+      data.subarray(0,4).toString()==='RIFF' && data.subarray(8,12).toString()==='WEBP'?'image/webp':null;
+    if(!mime) throw new Error('REFERENCE_NOT_JPEG_PNG_WEBP');
+    references.push('data:'+mime+';base64,'+data.toString('base64'));
+  }
+}
+return [{json:{...task,model_references:references}}];""")]
 
 
 def persisted_fields_check(name, result_node):
@@ -74,7 +116,7 @@ def probe_workflow(base, table, *, feishu_origin='https://open.feishu.cn'):
     return compile_nodes(nodes)
 
 
-FIELDS = {'状态': 3, '商品资料': 1, '脚本': 1, '审核意见': 1, '脚本历史': 1,
+FIELDS = {'状态': 3, '商品资料': 1, '脚本': 1, '审核意见': 1, '脚本历史': 1, '参考图附件': 17,
           '执行编号': 1, '视频任务ID': 1, '视频链接': 15, '参考图链接': 1}
 STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过', '脚本退回',
             '视频生成已确认', '视频提交中', '视频生成中', '视频待审核', '视频通过', '视频退回']
@@ -95,14 +137,17 @@ const row = ($json.data.items || [])[0]; if (!row) return [];
 const text = v => Array.isArray(v) ? v.map(x => x.text || '').join('') : String(v || '');
 return [{json:{id:row.record_id, fields:row.fields, product:text(row.fields['商品资料']),
 script:text(row.fields['脚本']), feedback:text(row.fields['审核意见']), history:text(row.fields['脚本历史']),
-references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean), job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
+references:text(row.fields['参考图链接']).split(/\s+/).filter(Boolean),
+attachments:(row.fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})),
+job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
     target = "={{ " + json.dumps(url + '/') + " + $('Select task').first().json.id }}"
     def write(name, fields):
         return http(name, target, 'PUT', fields, feishu=True)
     if flow != 'video-poll':
         required = 'product' if flow == 'script' else 'script'
         if flow == 'video-submit':
-            nodes.append(code('Validate references', "if ($json.script.length>7000) throw new Error('H3_SCRIPT_TOO_LONG'); if ($json.references.length<1 || $json.references.length>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_HTTPS_URLS_REQUIRED'); return $input.all();"))
+            nodes.append(code('Validate references', "if ($json.script.length>7000) throw new Error('H3_SCRIPT_TOO_LONG'); const count=$json.references.length+$json.attachments.length; if (count<1 || count>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_IMAGES_REQUIRED'); if($json.attachments.some(a=>! /^[A-Za-z0-9_-]+$/.test(a.file_token || '') || !Number.isInteger(a.size) || a.size<1 || !/\\.(jpe?g|png|webp)$/i.test(a.name || '')) || $json.attachments.reduce((n,a)=>n+a.size,0)>20*1024*1024) throw new Error('REFERENCE_ATTACHMENT_INVALID_OR_TOO_LARGE'); return $input.all();"))
+            nodes += attachment_nodes(base,table,feishu_origin)
         nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED');" +
                           "if (($json.history+'\\n'+JSON.stringify({execution:$json.execution,script:$json.script,feedback:$json.feedback})).trim().length>18000) throw new Error('HISTORY_FULL_BEFORE_PROVIDER'); return $input.all();"))
         state = '脚本生成中' if flow == 'script' else '视频提交中'
@@ -115,6 +160,7 @@ const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
 if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references)) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
+if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_BEFORE_PROVIDER');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
         nodes += [code('Build script request', """return [{json:{model:'deepseek-flash',stream:false,max_tokens:2048,thinking:{type:'disabled'},messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
@@ -127,7 +173,7 @@ if (history.length>18000) throw new Error('HISTORY_FULL_RECONCILE_BEFORE_RETRY')
 return [{json:{fields:{'脚本':script,'脚本历史':history,'状态':'脚本待审核'}}}];"""),
                   write('Write script for human review', '={{ $json }}')]
     elif flow == 'video-submit':
-        nodes += [code('Build video request', """return [{json:{model:'MiniMax-H3',content:[{type:'text',text:$('Select task').first().json.script},...$('Select task').first().json.references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:6,resolution:'768P',ratio:'9:16'}}];"""),
+        nodes += [code('Build video request', """return [{json:{model:'MiniMax-H3',content:[{type:'text',text:$('Select task').first().json.script},...$('Resolve video references').first().json.model_references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:6,resolution:'768P',ratio:'9:16'}}];"""),
                   http('Submit video once', video_origin + '/v2/video_generation', 'POST', '={{ $json }}', 'httpHeaderAuth'),
                   code('Validate video receipt', "if (!/^[0-9]{10,24}$/.test($json.task_id || '')) throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION'); return [{json:{fields:{'视频任务ID':String($json.task_id),'状态':'视频生成中'}}}];"),
                   write('Save video job receipt', '={{ $json }}')]
@@ -279,6 +325,7 @@ if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected 
    text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback ||
    JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references))
     throw new Error('TASK_CHANGED_RESULT_SAVED_NO_OVERWRITE');
+if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_RESULT_SAVED');
 return [{json:result}];""")
     nodes[before:before]=[save,restore,fresh,unchanged]
     nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
@@ -307,6 +354,7 @@ if(text(fields['执行编号'])!==saved.execution) throw new Error('TASK_CHANGED
 const expected=saved.result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
 if(fields['状态']!==expected && fields['状态']!==saved.result.fields['状态']) throw new Error('REVIEW_STATE_CHANGED_NO_WRITEBACK');
 if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(saved.references)) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
+if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(saved.attachments || [])) throw new Error('ATTACHMENTS_CHANGED_NO_WRITEBACK');
 if(text(fields['脚本'])!==saved.script && text(fields['脚本'])!==saved.result.fields['脚本']) throw new Error('SCRIPT_CHANGED_NO_WRITEBACK');
 return [{json:saved.result}];"""),
         http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),

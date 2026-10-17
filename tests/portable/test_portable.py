@@ -83,7 +83,7 @@ class Portable(unittest.TestCase):
         workflows += [production_workflow('baseTest','tableTest',flow) for flow in ['script','video-submit','video-poll']]
         workflows += [guard_workflow(production_workflow('baseTest','tableTest','script'),{'table':'ledgerTest','row':1}),recovery_workflow('baseTest','tableTest',{'table':'ledgerTest','row':1})]
         source=[node['parameters']['jsCode'] for workflow in workflows for node in workflow['nodes'] if node['type']=='n8n-nodes-base.code']
-        result=subprocess.run(['node','-e',"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{for(const code of JSON.parse(s))new Function('$json','$input','$','$execution',code);});"],input=json.dumps(source),text=True,capture_output=True)
+        result=subprocess.run(['node','-e',"let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>{const AsyncFunction=(async function(){}).constructor;for(const code of JSON.parse(s))new AsyncFunction('$json','$input','$','$execution',code);});"],input=json.dumps(source),text=True,capture_output=True)
         self.assertEqual(result.returncode,0,result.stderr)
     def test_private_node_archive_rejects_escape_paths(self):
         from node_runtime import destination
