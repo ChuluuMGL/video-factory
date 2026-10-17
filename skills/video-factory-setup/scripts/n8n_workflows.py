@@ -170,10 +170,30 @@ return changes.length ? changes : [{json:{noop:true}}];""".replace('REQUIRED_FIE
                   'combinator':'and'},'options':{}}},
               http('Apply missing fields','={{ '+json.dumps(fields_url)+' + $json.suffix }}',
                    '={{ $json.method }}','={{ $json.body }}',feishu=True),
-              code('Schema receipt',"if ($input.all().some(item=>!item.json.noop && item.json.code !== 0)) throw new Error('SCHEMA_CHANGE_INCOMPLETE_REREAD_FIELDS'); return [{json:{schema_change:'accepted',provider_requests:0}}];")]
+              code('Check schema responses',"if ($input.all().some(item=>!item.json.noop && item.json.code !== 0)) throw new Error('SCHEMA_CHANGE_INCOMPLETE_REREAD_FIELDS'); return [{json:{ok:true}}];"),
+              http('Read prepared fields',fields_url+'?page_size=100',feishu=True),
+              code('Schema receipt',r"""if ($json.code!==0 || $json.data.has_more) throw new Error('SCHEMA_READBACK_INCOMPLETE');
+const fields=$json.data.items || [], specs=REQUIRED_FIELDS, statuses=REQUIRED_STATUSES;
+for (const [name,type] of Object.entries(specs)) {
+  const matches=fields.filter(f=>f.field_name===name);
+  if(matches.length!==1 || matches[0].type!==type) throw new Error('SCHEMA_READBACK_MISMATCH');
+  if(type===3 && statuses.some(name=>!(matches[0].property?.options || []).some(o=>o.name===name)))
+    throw new Error('SCHEMA_STATUS_OPTIONS_INCOMPLETE');
+}
+for (const before of $('Read existing fields').first().json.data.items || []) {
+  const after=fields.find(f=>f.field_id===before.field_id);
+  if(!after || after.field_name!==before.field_name || after.type!==before.type)
+    throw new Error('SCHEMA_EXISTING_FIELD_CHANGED');
+  for (const option of before.property?.options || []) {
+    if(!(after.property?.options || []).some(o=>o.name===option.name &&
+        (option.id===undefined || o.id===option.id) && (option.color===undefined || o.color===option.color)))
+      throw new Error('SCHEMA_EXISTING_OPTION_CHANGED');
+  }
+}
+return [{json:{schema_change:'accepted',schema_readback:'verified',provider_requests:0}}];""".replace('REQUIRED_FIELDS',json.dumps(FIELDS,ensure_ascii=False)).replace('REQUIRED_STATUSES',json.dumps(STATUSES,ensure_ascii=False)))]
     workflow=compile_nodes(nodes)
     workflow['connections']['Fields already ready']={'main':[
-        [{'node':'Schema receipt','type':'main','index':0}],
+        [{'node':'Check schema responses','type':'main','index':0}],
         [{'node':'Apply missing fields','type':'main','index':0}]]}
     return workflow
 

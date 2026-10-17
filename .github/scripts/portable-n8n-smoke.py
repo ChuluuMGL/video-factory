@@ -45,8 +45,9 @@ class Fixture(BaseHTTPRequestHandler):
             assert body == {'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}, body.keys()
             state['token_calls']+=1; self.reply({'code':0,'tenant_access_token':'synthetic-token'})
         elif self.path.endswith('/fields'):
-            state['fields'].append({**body,'field_id':'fld'+str(len(state['fields']))})
-            self.reply({'code':0,'data':{'field':state['fields'][-1]}})
+            field={**body,'field_id':'fld'+uuid.uuid4().hex}
+            if not state.get('ack_without_field_write'): state['fields'].append(field)
+            self.reply({'code':0,'data':{'field':field}})
         elif self.path.endswith('/v2/video_generation'):
             assert body['model']=='MiniMax-H3' and len(body['content'])==2
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
@@ -66,7 +67,12 @@ class Fixture(BaseHTTPRequestHandler):
         else: raise AssertionError('unknown fixture route')
     def do_PUT(self):
         assert self.headers['Authorization']=='Bearer synthetic-token'
-        fields=json.loads(self.rfile.read(int(self.headers['Content-Length'])))['fields']
+        body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if '/fields/' in self.path:
+            field=next(f for f in state['fields'] if f['field_id']==self.path.rsplit('/',1)[1])
+            field.update(body)
+            self.reply({'code':0,'data':{'field':field}}); return
+        fields=body['fields']
         state['writes']+=1
         if state['fail_writeback'] and '脚本' in fields:
             self.reply({'code':999,'msg':'synthetic writeback failure'}); return
@@ -190,11 +196,23 @@ try:
     execute(saved['workflow'])
     assert state['token_calls']==1
     phase='schema prepare and repeat'
+    state['fields']=[{'field_id':'fldStatus','field_name':'状态','type':3,
+                      'property':{'options':[{'id':'optExisting','name':'Existing customer option','color':2}]}},
+                     {'field_id':'fldPreserved','field_name':'Existing customer field','type':1}]
     schema=provision(api,root/'bindings','schema',schema_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin),credentials)
     execute(schema['workflow'])
-    assert len(state['fields'])==len(FIELDS),state['fields']
+    assert len(state['fields'])==len(FIELDS)+1,state['fields']
+    preserved=json.loads(json.dumps(state['fields']))
     execute(schema['workflow'])
-    assert len(state['fields'])==len(FIELDS)
+    assert state['fields']==preserved
+    assert state['fields'][0]['property']['options'][0]=={'id':'optExisting','name':'Existing customer option','color':2}
+    phase='schema acknowledgement without persisted field is rejected'
+    missing=next(f for f in state['fields'] if f['field_name']=='脚本历史')
+    state['fields'].remove(missing); state['ack_without_field_write']=True
+    execute(schema['workflow'],expect_failure=True)
+    state['ack_without_field_write']=False
+    execute(schema['workflow'])
+    assert len(state['fields'])==len(FIELDS)+1
     credentials['httpHeaderAuth']={'type':'httpHeaderAuth','data':{'name':'Authorization','value':'Bearer synthetic-model-key'}}
     ledger=ensure_ledger(api,root/'bindings','fixture','baseFixture','tableFixture')
     workflow=production_workflow('baseFixture','tableFixture','script',feishu_origin=fixture_origin,script_origin=fixture_origin)
