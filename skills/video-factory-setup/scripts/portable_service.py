@@ -155,17 +155,20 @@ def location(root, component):
     if component not in ('n8n','events'):raise Fault('SERVICE_COMPONENT_INVALID')
     root=Path(root)
     if root.is_symlink():raise Fault('SERVICE_ROOT_SYMLINK')
-    return root.resolve()/('.vf-'+component+'-service')
+    directory=root.resolve()/('.vf-'+component+'-service')
+    if directory.is_symlink():raise Fault('SERVICE_DIRECTORY_SYMLINK')
+    return directory
 
 
 def install(root, component):
-    root=Path(root).resolve(); directory=location(root,component)
+    directory=location(root,component);root=Path(root).resolve()
     if not (root/('local.json' if component=='n8n' else 'events.json')).is_file():
         raise Fault('SERVICE_REQUIRES_EXISTING_INSTALLATION_OR_EVENT_CONFIGURATION')
     # The containing installation/event directory must already be private/owned.
     secure_directory(root)
     with locked(directory):
         receipt=directory/'service.json'
+        if receipt.is_symlink():raise Fault('SERVICE_RECEIPT_SYMLINK')
         if receipt.exists():
             spec=json.loads(receipt.read_text(encoding='utf-8'))
             if spec['root']!=str(root) or spec['component']!=component:raise Fault('SERVICE_RECEIPT_MISMATCH')
@@ -181,7 +184,9 @@ def install(root, component):
             from portable_events import load_secrets
             load_secrets(root)
             with receiver_lock(root):pass
-        runtime=directory/'runtime';runtime.mkdir(exist_ok=True)
+        runtime=directory/'runtime'
+        if runtime.is_symlink():raise Fault('SERVICE_RUNTIME_SYMLINK')
+        runtime.mkdir(exist_ok=True)
         for name in FILES:
             destination=runtime/name
             if destination.is_symlink():raise Fault('SERVICE_RUNTIME_SYMLINK')
@@ -207,7 +212,9 @@ def install(root, component):
 
 def backend_for(root,component):
     directory=location(root,component)
-    spec=json.loads((directory/'service.json').read_text(encoding='utf-8'))
+    receipt=directory/'service.json'
+    if receipt.is_symlink():raise Fault('SERVICE_RECEIPT_SYMLINK')
+    spec=json.loads(receipt.read_text(encoding='utf-8'))
     if spec['root']!=str(Path(root).resolve()) or spec['component']!=component:raise Fault('SERVICE_RECEIPT_MISMATCH')
     return Backend(directory,spec['command'])
 

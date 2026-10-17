@@ -50,6 +50,27 @@ class Service(unittest.TestCase):
                 self.assertEqual(commands[-1],['launchctl','kickstart','-k','gui/501/'+b.name])
                 self.assertFalse(any('bootout' in c or 'bootstrap' in c for c in commands))
 
+    @unittest.skipIf(os.name=='nt','Symlink creation requires a separate Windows privilege')
+    def test_linked_installation_service_and_receipt_are_not_adopted(self):
+        from portable_service import backend_for
+        with tempfile.TemporaryDirectory() as d:
+            base=Path(d);target=base/'target';target.mkdir();(target/'keep').write_text('preserved')
+            linked=base/'linked';linked.symlink_to(target,target_is_directory=True)
+            with self.assertRaisesRegex(Fault,'ROOT_SYMLINK'):install(linked,'n8n')
+            root=base/'owned';root.mkdir();(root/'.vf-n8n-service').symlink_to(target,target_is_directory=True)
+            with self.assertRaisesRegex(Fault,'DIRECTORY_SYMLINK'):install(root,'n8n')
+            (root/'.vf-n8n-service').unlink();directory=location(root,'n8n');directory.mkdir()
+            (directory/'service.json').symlink_to(target/'keep')
+            with self.assertRaisesRegex(Fault,'RECEIPT_SYMLINK'):backend_for(root,'n8n')
+            (directory/'service.json').unlink();(directory/'runtime').symlink_to(target,target_is_directory=True)
+            private_write(root/'local.json',{'mode':'node','node_executable':sys.executable})
+            cli=root/'node_modules/n8n/bin/n8n';cli.parent.mkdir(parents=True);cli.write_text('fixture')
+            with patch('portable_service.local_control') as stop:
+                with self.assertRaisesRegex(Fault,'RUNTIME_SYMLINK'):install(root,'n8n')
+                stop.assert_not_called()
+            self.assertEqual(list(target.iterdir()),[target/'keep'])
+            self.assertEqual((target/'keep').read_text(),'preserved')
+
     def test_unknown_installation_not_modified(self):
         with tempfile.TemporaryDirectory() as d:
             target=Path(d)/'unknown'
