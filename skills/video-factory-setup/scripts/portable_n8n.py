@@ -95,6 +95,7 @@ def secret(prompt):
     if not sys.stdin.isatty():
         raise Fault('PRIVATE_TERMINAL_REQUIRED')
     value = getpass.getpass(prompt)
+    if value==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
     if not value or '\n' in value or '\r' in value:
         raise Fault('SECRET_EMPTY_OR_MULTILINE')
     return value
@@ -574,16 +575,36 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
     return result
 
 
-def ask_choice(prompt, choices, default=None):
+def console_utf8():
+    if os.name=='nt':
+        for stream in (sys.stdout,sys.stderr):
+            if hasattr(stream,'reconfigure'):stream.reconfigure(encoding='utf-8')
+
+
+def ask_value(prompt, validate=lambda value:value, default=None):
+    console_utf8()
     while True:
         answer=input(prompt).strip()
         if answer==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
         answer=answer or default
+        try:
+            if answer is None:raise ValueError()
+            return validate(answer)
+        except (ValueError,Fault):print('格式不正确，请重输；输入 :quit 保存退出。')
+
+
+def ask_choice(prompt, choices, default=None):
+    console_utf8()
+    while True:
+        answer=input(prompt).strip()
+        if answer==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
+        answer=answer.lower() or default
         if answer in choices:return answer
         print('请选择 '+ '/'.join(choices)+'；输入 :quit 保存退出。')
 
 
 def welcome(root, dependency_timeout=1200):
+    console_utf8()
     import platform
     from n8n_workflows import probe_workflow, schema_workflow
     print('Video Factory · 本机 / 已有 n8n 接入（开发候选）')
@@ -594,16 +615,26 @@ def welcome(root, dependency_timeout=1200):
     choice=ask_choice('选择 1/2/3/4: ',('1','2','3','4'))
     if choice in ('2','3'):
         previous=root/'local.json'
-        port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else int(input('本机端口 [5678]: ').strip() or '5678')
+        def port_value(value):
+            number=int(value)
+            if not 1024<=number<=65535:raise ValueError()
+            return number
+        port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else ask_value('本机端口 [5678]: ',port_value,'5678')
         saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout)
         local_control(root,'start')
         url=saved['origin']
         print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')
     else:
-        url=origin(input('已有 n8n 地址: ').strip())
-    api=API(url,secret('n8n API Key（隐藏输入，本轮只需一次）: '))
-    api.preflight()
-    project=identifier(input('项目标识（字母、数字、短横线；续接用原标识）: ').strip())
+        url=ask_value('已有 n8n 地址: ',origin)
+    for attempt in range(3):
+        key=secret('n8n API Key（隐藏输入，本轮验证后复用；:quit 退出）: ')
+        if key==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
+        api=API(url,key)
+        try:api.preflight();break
+        except Fault as error:
+            if str(error)!='N8N_API_PERMISSION_REQUIRED' or attempt==2:raise
+            print('API Key 未通过只读认证，请核对实例和权限后重新输入。已有配置保留。')
+    project=ask_value('项目标识（字母、数字、短横线；续接用原标识）: ',identifier)
     bindings=root/'bindings'
     path=bindings/('project-'+project+'.json')
     if path.exists():
@@ -612,21 +643,21 @@ def welcome(root, dependency_timeout=1200):
         base,table,app=config['base'],config['table'],config['app']
         print('续接已保存的项目：'+project+'；Base：'+base+'；任务表：'+table)
     else:
-        base=identifier(input('飞书 Base token: ').strip())
-        table=identifier(input('任务表 table ID: ').strip())
-        app=identifier(input('飞书 App ID: ').strip())
+        base=ask_value('飞书 Base token: ',identifier)
+        table=ask_value('任务表 table ID: ',identifier)
+        app=ask_value('飞书 App ID: ',identifier)
         with locked(bindings):
             private_write(path,{'origin':url,'base':base,'table':table,'app':app})
     credentials=project_credentials(api,bindings,project,app,['feishu'])
     selected={'httpCustomAuth':credentials['feishu']}
     receipt=verify_setup(api,bindings,project+'-probe',probe_workflow(base,table),selected)
     print('飞书读取检查完成。')
-    if input('为这张表补齐审核字段（保留原字段与选项）？y/N: ').strip().lower()=='y':
+    if ask_choice('为这张表补齐审核字段（保留原字段与选项）？y/N: ',('y','n'),'n')=='y':
         receipt['schema']=verify_setup(api,bindings,project+'-schema',schema_workflow(base,table),selected)
     roles=[]
     print('接下来可导入脚本、视频和恢复流程，均保持关闭，不会调用模型。')
-    if input('配置 DeepSeek 脚本流程？y/N: ').strip().lower()=='y': roles.append('script')
-    if input('配置 MiniMax H3 视频流程？y/N: ').strip().lower()=='y': roles.append('video')
+    if ask_choice('配置 DeepSeek 脚本流程？y/N: ',('y','n'),'n')=='y': roles.append('script')
+    if ask_choice('配置 MiniMax H3 视频流程？y/N: ',('y','n'),'n')=='y': roles.append('video')
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
         receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
@@ -644,6 +675,7 @@ def welcome(root, dependency_timeout=1200):
 
 
 def main(argv=None):
+    console_utf8()
     parser = argparse.ArgumentParser(description='Video Factory 本机 n8n / 已有实例接入')
     parser.add_argument('--root', type=Path, default=Path.home() / '.video-factory/n8n')
     parser.add_argument('--dependency-timeout', type=int, default=1200, help='原生 npm 安装时限（秒，60–7200）；超时保留目录，可原地续接')

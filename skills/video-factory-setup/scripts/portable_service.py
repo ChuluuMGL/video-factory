@@ -128,10 +128,17 @@ class Backend:
             target=self.domain+'/'+self.name
             present=run(['launchctl','print',target],True)
             if action=='status':return {'running':present.returncode==0 and b'state = running' in present.stdout,'startup':self.startup}
-            if action in ('stop','uninstall','restart') and present.returncode==0:run(['launchctl','bootout',target])
+            if action in ('stop','uninstall') and present.returncode==0:
+                run(['launchctl','bootout',target])
+                # bootout returns before launchd has removed the job. Do not
+                # bootstrap into that transient state or report removal early.
+                for _ in range(45):
+                    if run(['launchctl','print',target],True).returncode!=0:break
+                    time.sleep(1)
+                else:raise Fault('SERVICE_STOP_PENDING_PRESERVE_DEFINITION')
             if action in ('start','restart'):
-                if present.returncode!=0 or action=='restart':run(['launchctl','bootstrap',self.domain,str(self.path)])
-                else:run(['launchctl','kickstart',target])
+                if present.returncode!=0:run(['launchctl','bootstrap',self.domain,str(self.path)])
+                else:run(['launchctl','kickstart']+(['-k'] if action=='restart' else [])+[target])
             if action=='uninstall':self.path.unlink()
         else:
             check=self.task_check()+'if(!$t){throw "SERVICE_TASK_MISSING"};'
@@ -207,7 +214,7 @@ def backend_for(root,component):
 
 def wait_running(root,component):
     backend=backend_for(root,component)
-    for _ in range(30):
+    for _ in range(60):
         state=backend.control('status')
         if state['running']:
             if component!='n8n' or health(json.loads((Path(root)/'local.json').read_text())['origin']):
@@ -283,6 +290,8 @@ def serve(root,component):
 
 
 def main():
+    from portable_n8n import console_utf8
+    console_utf8()
     parser=argparse.ArgumentParser(description='Video Factory 后台运行：保留数据，不自动启用收费工作流')
     parser.add_argument('--root',required=True,type=Path)
     parser.add_argument('--component',required=True,choices=['n8n','events'])
