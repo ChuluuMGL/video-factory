@@ -199,6 +199,7 @@ def provision(api, root, project, workflow, credentials):
                 or any(saved.get('settings',{}).get(k) != v for k,v in expected['settings'].items())):
             raise Fault('WORKFLOW_READBACK_MISMATCH')
         state['verified_disabled'] = True
+        state['owned_template'] = {k: expected[k] for k in ('nodes','connections','settings')}
         private_write(path, state)
         return {k: state[k] for k in ('project', 'workflow', 'verified_disabled')}
 
@@ -629,6 +630,11 @@ def main(argv=None):
     for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
         owner.add_argument('--'+name,required=True)
     owner.add_argument('--paid-workflows',action='store_true',help='导入有模型节点的关闭流程；不会激活')
+    for name in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
+        command=commands.add_parser(name)
+        command.add_argument('--url',required=True)
+        command.add_argument('--project',required=True)
+        if name=='approval-cancel':command.add_argument('--expect-plan',required=True)
     install = commands.add_parser('install')
     install.add_argument('--mode', choices=['node', 'docker'], required=True)
     install.add_argument('--port', type=int, default=5678)
@@ -663,6 +669,15 @@ def main(argv=None):
                 {'app':args.app,'tenant':args.tenant,'billing_owner':args.billing_owner,
                  'billing_account':args.billing_account,'configuration':args.configuration},
                 verification_only=not args.paid_workflows)
+        elif args.command in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
+            from portable_approval import set_approval_active,promote_approval,cancel_plan
+            api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()
+            if args.command=='approval-promote':value=promote_approval(api,args.root,args.project)
+            elif args.command=='approval-cancel':value=cancel_plan(api,args.root,args.project,args.expect_plan)
+            else:
+                if args.command=='approval-enable' and input('启用本项目计划与确认入口？负责人确认有效计划后才执行，输入 yes: ').strip()!='yes':
+                    raise Fault('ACTIVATION_NOT_CONFIRMED')
+                value=set_approval_active(api,args.root,args.project,args.command=='approval-enable')
         elif args.command == 'export':
             from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
             if args.flow not in ('probe','schema') and not args.experimental_manual:

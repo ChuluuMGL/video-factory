@@ -5,6 +5,7 @@ A dispatch intent is committed before POST. Uncertain delivery is never retried
 automatically, because the destination may already have charged a model call.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import logging
@@ -108,8 +109,13 @@ class Inbox:
             db.execute('CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, digest TEXT NOT NULL, flow TEXT NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, receipt TEXT, created REAL NOT NULL)')
         if os.name!='nt': self.path.chmod(0o600)
 
+    @contextmanager
     def connect(self):
-        db=sqlite3.connect(self.path,timeout=10); db.row_factory=sqlite3.Row; return db
+        db=sqlite3.connect(self.path,timeout=10); db.row_factory=sqlite3.Row
+        try:
+            with db: yield db
+        finally:
+            db.close()
 
     def enqueue(self,flow,event):
         payload=json.dumps(event,sort_keys=True,separators=(',',':')); digest=hashlib.sha256(payload.encode()).hexdigest()

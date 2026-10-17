@@ -426,6 +426,18 @@ try:
     assert state['model_calls']==5,'APPROVAL_REPLAY_MUST_NOT_CALL_MODEL'
     assert api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]['status']=='idle'
     assert api.request('GET','/api/v1/data-tables/'+owner_execution['table']+'/rows')['data'][0]['status']=='idle'
+    phase='video owner confirmation and zero-charge acceptance mode'
+    video_plan=provision(api,root/'bindings','owner-video-plan',plan_workflow('baseFixture','tableFixture','video-submit',approval,policy,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    video_check=provision(api,root/'bindings','owner-video-check',confirmation_workflow('baseFixture','tableFixture','video-submit',owner_execution,approval,policy,'owner-video-check',feishu_origin=fixture_origin,verification_only=True),{'httpCustomAuth':credentials['httpCustomAuth']})
+    state['status']='申请视频计划';state['job']=''
+    execute(video_plan['workflow'])
+    protected=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]
+    plan=json.loads(protected['payload'])['plan'];state['confirmation']=plan['id']
+    execute(video_check['workflow'],False,confirmation_event())
+    assert state['model_calls']==5 and state['video_calls']==3 and state['status']=='费用待确认'
+    assert api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]['status']=='consumed'
+    execute(video_check['workflow'],False,confirmation_event())
+    assert state['video_calls']==3,'ZERO_CHARGE_ACCEPTANCE_MUST_NOT_CONTAIN_PROVIDER_CALL'
     phase='stop and restart'
     local_control(root,'stop')
     local_control(root,'start')

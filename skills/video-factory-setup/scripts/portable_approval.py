@@ -36,6 +36,12 @@ def read_approval(ledger, status):
                 'returnAll': False, 'limit': 1}}
 
 
+def scheduled(workflow):
+    workflow['nodes'][0].update(type='n8n-nodes-base.scheduleTrigger',typeVersion=1.2,
+        parameters={'rule':{'interval':[{'field':'minutes','minutesInterval':1}]}})
+    return workflow
+
+
 def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn'):
     """No model nodes. One pending plan per project; never replace it silently."""
     policy = policy_checked(policy)
@@ -190,8 +196,9 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
         config_path=event_root/'events.json'
         if config_path.exists():
             config=json.loads(config_path.read_text())
-            if any(config.get(k)!=v for k,v in scope.items()): raise Fault('APPROVAL_SCOPE_CHANGED_EXPLICIT_MIGRATION_REQUIRED')
+            if any(config.get(k)!=v for k,v in scope.items()): raise Fault('APPROVAL_SCOPE_CHANGED_USE_PROMOTE_AFTER_ACCEPTANCE')
         else:
+            if not verification_only: raise Fault('OWNER_ZERO_CHARGE_ACCEPTANCE_REQUIRED_FIRST')
             config={**scope,'hooks':{},'workflows':{}};private_write(config_path,config)
         if not (event_root/'events.enc').exists():
             save_secrets(event_root,ask_secret('事件接收器首次配置：同一飞书 App Secret（隐藏输入）: '),secrets.token_urlsafe(48))
@@ -210,7 +217,7 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']
         identifier(path)
         config['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow,
-            plan_workflow(base,table,flow,approval,policy),{'httpCustomAuth':pool['roles']['feishu']})
+            scheduled(plan_workflow(base,table,flow,approval,policy)),{'httpCustomAuth':pool['roles']['feishu']})
         credentials={'httpCustomAuth':pool['roles']['feishu'],
                      'relay':{'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':values['relay_token']}}}
         if not verification_only:credentials['httpHeaderAuth']=pool['roles'][role]
@@ -221,3 +228,137 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
     return {'configured':True,'active':False,'verification_only':verification_only,
             'event_root':str(event_root),'workflows':config['workflows'],
             'next':'先在飞书应用配置记录变更长连接订阅；启动事件接收器并完成零费用负责人验收，再显式启用付费流程。'}
+
+
+def set_approval_active(api, root, project, active):
+    """Explicit activation with exact owned-template readback and rollback."""
+    from portable_n8n import digest
+    root=Path(root);identifier(project)
+    config=json.loads((root/(project+'-events')/'events.json').read_text())
+    if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
+    owned=[]
+    for item in config['workflows'].values():
+        state=json.loads((root/('binding-'+item['project']+'.json')).read_text())
+        saved=api.request('GET','/api/v1/workflows/'+item['workflow'])
+        if state['workflow']!=saved['id']: raise Fault('APPROVAL_WORKFLOW_ID_CHANGED')
+        # Normalize credential bindings and API-provided node display metadata
+        # using the exact originally provisioned template saved at setup time.
+        evidence=state.get('owned_template')
+        if active and (not evidence or saved['nodes']!=evidence['nodes'] or saved['connections']!=evidence['connections']
+            or any(saved.get('settings',{}).get(k)!=v for k,v in evidence['settings'].items())):
+            raise Fault('APPROVAL_WORKFLOW_CHANGED_REVIEW_REQUIRED')
+        owned.append((saved['id'],saved.get('active',False)))
+    changed=[]
+    try:
+        for workflow,was_active in owned:
+            if was_active==active:continue
+            api.request('POST','/api/v1/workflows/'+workflow+('/activate' if active else '/deactivate'),{})
+            changed.append(workflow)
+            if bool(api.request('GET','/api/v1/workflows/'+workflow).get('active'))!=active:
+                raise Fault('APPROVAL_ACTIVATION_READBACK_FAILED')
+    except Exception:
+        if active:
+            for workflow in changed:
+                api.request('POST','/api/v1/workflows/'+workflow+'/deactivate',{})
+        raise
+    return {'active':active,'verification_only':config['verification_only'],'workflow_count':len(owned),'provider_requests':0}
+
+
+def _promote_approval(api, root, project):
+    """Only an SDK-received, zero-charge owner confirmation can unlock promotion.
+
+    Imports paid workflows disabled. Explicit activation remains separate.
+    """
+    from portable_n8n import private_write, ensure_ledger, provision, locked
+    from portable_events import Inbox,load_secrets
+    root=Path(root);identifier(project);event_root=root/(project+'-events')
+    config=json.loads((event_root/'events.json').read_text())
+    checkpoint=event_root/'promotion.json'
+    pending=json.loads(checkpoint.read_text()) if checkpoint.exists() else None
+    if config['origin']!=api.url: raise Fault('PROMOTION_SOURCE_INVALID')
+    if not config['verification_only']:
+        if pending and pending.get('complete'):return {'promoted':True,'active':False,'provider_requests':0}
+        raise Fault('PROMOTION_SOURCE_INVALID')
+    with Inbox(event_root).connect() as db:
+        receipts=db.execute("SELECT payload,receipt FROM events WHERE status='done'").fetchall()
+    passed=[r for r in receipts if json.loads(r['receipt']).get('verification_only') is True
+            and json.loads(r['receipt']).get('provider_requests')==0
+            and json.loads(r['payload'])['event']['operator_id']['open_id']==config['policy']['billing_owner']]
+    if not passed: raise Fault('REAL_OWNER_ZERO_CHARGE_ACCEPTANCE_REQUIRED')
+    base,table=config['base'],config['table'];policy=policy_checked(config['policy'])
+    execution=ensure_ledger(api,root,project,base,table);approval=ensure_ledger(api,root,project+'-approval',base,table)
+    rows=api.request('GET','/api/v1/data-tables/'+execution['table']+'/rows')['data']
+    if len(rows)!=1 or rows[0]['status']!='idle': raise Fault('PROJECT_EXECUTION_RECONCILIATION_REQUIRED')
+    a=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data']
+    if len(a)!=1: raise Fault('OWNER_ACCEPTANCE_PLAN_NOT_CONSUMED')
+    if pending:
+        if pending['policy']!=config['policy'] or a[0]['result']!=pending['result'] or a[0]['status'] not in ('consumed','idle'):
+            raise Fault('PROMOTION_CHECKPOINT_CHANGED')
+    elif a[0]['status']!='consumed':raise Fault('OWNER_ACCEPTANCE_PLAN_NOT_CONSUMED')
+    decision=json.loads(a[0]['result'])
+    if not any(json.loads(r['payload'])['header']['event_id']==decision['event'] for r in passed):
+        raise Fault('OWNER_ACCEPTANCE_RECEIPT_MISMATCH')
+    for name,item in config['workflows'].items():
+        if name.startswith('confirm-'):
+            saved=api.request('GET','/api/v1/workflows/'+item['workflow'])
+            expected=json.loads((root/('binding-'+item['project']+'.json')).read_text())['owned_template']
+            if saved['nodes']!=expected['nodes'] or saved['connections']!=expected['connections'] or any(n['name'] in ('Generate script','Submit video once') for n in saved['nodes']):
+                raise Fault('ZERO_CHARGE_TEMPLATE_CHANGED')
+    set_approval_active(api,root,project,False)
+    if pending is None:
+        pending={'policy':config['policy'],'result':a[0]['result'],'complete':False};private_write(checkpoint,pending)
+    # No model existed in the test workflow; only now release its consumed slot.
+    if a[0]['status']=='consumed':
+        cleared=api.request('PATCH','/api/v1/data-tables/'+approval['table']+'/rows/update',{
+            'filter':{'type':'and','filters':[{'columnName':'id','condition':'eq','value':approval['row']},
+                {'columnName':'status','condition':'eq','value':'consumed'},{'columnName':'result','condition':'eq','value':a[0]['result']}]},
+            'data':{'status':'idle'},'returnData':True})
+        if len(cleared)!=1: raise Fault('APPROVAL_SLOT_CHANGED')
+    pool=json.loads((root/('credentials-'+project+'.json')).read_text())['roles'];values=load_secrets(event_root)
+    new=json.loads(json.dumps(config));new['workflows']={};new['hooks']={};new['verification_only']=False
+    for flow,role in [('script','script'),('video-submit','video')]:
+        if role not in pool:continue
+        path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']+'-paid';identifier(path)
+        new['workflows']['plan-'+flow]=config['workflows']['plan-'+flow]
+        new['workflows']['confirm-'+flow]=provision(api,root,project+'-confirm-'+flow+'-paid',
+            confirmation_workflow(base,table,flow,execution,approval,policy,path),
+            {'httpCustomAuth':pool['feishu'],'httpHeaderAuth':pool[role],
+             'relay':{'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':values['relay_token']}}})
+        new['hooks'][flow]=path
+    if 'video' in pool:
+        new['workflows']['video-poll']=provision(api,root,project+'-approved-poll',
+            scheduled(production_workflow(base,table,'video-poll')),
+            {'httpCustomAuth':pool['feishu'],'httpHeaderAuth':pool['video']})
+    private_write(event_root/'owner-acceptance.json',{'policy':policy,'decision':decision,'provider_requests':0})
+    pending['complete']=True;private_write(checkpoint,pending)
+    private_write(event_root/'events.json',new)
+    return {'promoted':True,'active':False,'provider_requests':0,'next':'重启事件接收器读取已更新配置；核对后显式 approval-enable。'}
+
+
+def promote_approval(api, root, project):
+    from portable_n8n import locked
+    with locked(Path(root)/(identifier(project)+'-events')):
+        return _promote_approval(api,root,project)
+
+
+def cancel_plan(api, root, project, expected):
+    """Cancel only an unconsumed plan; never reset an uncertain paid execution."""
+    from portable_n8n import ensure_ledger,locked
+    root=Path(root);identifier(project)
+    with locked(root/(project+'-events')):
+        config=json.loads((root/(project+'-events')/'events.json').read_text())
+        if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
+        approval=ensure_ledger(api,root,project+'-approval',config['base'],config['table'])
+        rows=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data']
+        if len(rows)!=1 or rows[0]['status'] not in ('planning','awaiting'):raise Fault('PLAN_CONSUMED_OR_UNKNOWN_NO_RESET')
+        row=rows[0]
+        if json.loads(row['payload'])['plan']['id']!=expected:raise Fault('CANCEL_PLAN_ID_MISMATCH')
+        result=api.request('PATCH','/api/v1/data-tables/'+approval['table']+'/rows/update',{
+            'filter':{'type':'and','filters':[{'columnName':'id','condition':'eq','value':approval['row']},
+                {'columnName':'status','condition':'eq','value':row['status']},
+                {'columnName':'payload','condition':'eq','value':row['payload']}]},
+            'data':{'status':'idle','result':json.dumps({'cancelled':expected})},'returnData':True})
+        if len(result)!=1:raise Fault('PLAN_CHANGED_DURING_CANCEL')
+        current=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data']
+        if len(current)!=1 or current[0]['status']!='idle':raise Fault('PLAN_CANCEL_READBACK_FAILED')
+    return {'cancelled':expected,'provider_requests':0,'next':'旧确认编号无效；在飞书重新选择申请计划后，核对新计划。'}
