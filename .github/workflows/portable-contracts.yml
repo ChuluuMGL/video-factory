@@ -1,6 +1,8 @@
 name: Portable CLI contracts
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/portable-cli-error-boundary]
 permissions:
   contents: read
 jobs:
