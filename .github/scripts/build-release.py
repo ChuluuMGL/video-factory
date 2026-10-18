@@ -6,10 +6,28 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tarfile
 import tomllib
 import zipfile
 import urllib.request
+
+
+def copy_tracked_skill(destination):
+    """Keep local caches and private installer checkpoints out of releases."""
+    source_root = Path('skills/video-factory-setup')
+    names = subprocess.check_output(
+        ['git', 'ls-files', '-z', '--', str(source_root)]).decode().split('\0')
+    names = list(filter(None, names))
+    assert names, 'TRACKED_SKILL_REQUIRED'
+    for name in names:
+        source = Path(name)
+        relative = source.relative_to(source_root)
+        assert source.is_file() and not source.is_symlink(), 'SKILL_SOURCE_MUST_BE_REGULAR'
+        assert source.resolve() == Path.cwd().resolve() / source, 'SKILL_SOURCE_LINK_REJECTED'
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
 
 
 def release_member(info):
@@ -56,7 +74,7 @@ def build(out, wheel_dirs, source, public_release=False):
     shutil.copyfile('distribution/install.py', root / 'install.py')
     shutil.copyfile('distribution/start.py', root / 'start.py')
     shutil.copyfile('distribution/bootstrap.sh', root / 'bootstrap.sh')
-    shutil.copytree('skills/video-factory-setup', root / 'skill/video-factory-setup')
+    copy_tracked_skill(root / 'skill/video-factory-setup')
     # Deliver operator documentation only, never internal cloud receipts or
     # historical customer/test configuration through a blanket directory copy.
     docs = json.loads(Path('distribution/customer-docs.json').read_text())
