@@ -109,6 +109,39 @@ class Upgrade(unittest.TestCase):
         plan=self.plan();self.api.workflows['wf2']['active']=True
         with self.assertRaisesRegex(Fault,'PAUSED'):apply(self.api,self.root,'fixture',plan)
         self.assertEqual(self.api.puts,[])
+    def test_owner_bundle_preserves_paid_mode_webhook_and_relay_reference(self):
+        from portable_approval import confirmation_workflow
+        policy={'app':'cli_fixture','tenant':'tenant_fixture','billing_owner':'ou_owner',
+                'billing_account':'fixture-account','configuration':'fixture-v1'}
+        event_root=self.root/'fixture-events';event_root.mkdir()
+        event={'origin':self.api.url,'project':'fixture','base':'baseFixture','table':'tableFixture',
+               'policy':policy,'verification_only':False,'hooks':{'script':'existing-owner-hook'},
+               'workflows':{'confirm-script':{'project':'fixture-confirm-script-paid','workflow':'wf2'}}}
+        private_write(event_root/'events.json',event)
+        for name,table in [('fixture','execution'),('fixture-approval','approval')]:
+            private_write(self.root/('ledger-'+name+'.json'),{'origin':self.api.url,'project':name,
+                'base':'baseFixture','task_table':'tableFixture','table':table,'row':1})
+        self.api.rows=[{'id':1,'status':'idle','payload':'','result':''}]
+        template=confirmation_workflow('baseFixture','tableFixture','script',
+            {'table':'execution','row':1},{'table':'approval','row':1},policy,'existing-owner-hook',verification_only=False)
+        old=copy.deepcopy(template);old['nodes'][0]['position']=[20,20]
+        binding={**copy.deepcopy(self.binding),'project':'fixture-confirm-script-paid','workflow':'wf2',
+                 'template_sha256':digest(old)}
+        binding['credentials'].update({'relay':{'id':'relay','name':'Relay'},'httpHeaderAuth':{'id':'model','name':'Model'}})
+        binding['owned_template']=bound(old,binding)
+        private_write(self.root/'binding-fixture-confirm-script-paid.json',binding)
+        self.api.workflows['wf2']={'name':'Owner script','active':False,**copy.deepcopy(binding['owned_template'])}
+        plan=self.plan();apply(self.api,self.root,'fixture',plan)
+        updated=json.loads((self.root/'binding-fixture-confirm-script-paid.json').read_text())
+        self.assertEqual(updated['owned_template'],bound(template,binding))
+        self.assertEqual(updated['credentials'],binding['credentials'])
+        self.assertEqual(json.loads((event_root/'events.json').read_text()),event)
+    def test_running_receiver_blocks_preview(self):
+        from portable_events import receiver_lock
+        event_root=self.root/'fixture-events';event_root.mkdir()
+        with receiver_lock(event_root):
+            with self.assertRaisesRegex(Fault,'ALREADY_RUNNING'):self.plan()
+        self.assertEqual(self.api.puts,[])
     def test_symlink_binding_rejected(self):
         path=self.root/'binding-fixture-probe.json';moved=self.root/'saved.json';path.rename(moved)
         try:path.symlink_to(moved)

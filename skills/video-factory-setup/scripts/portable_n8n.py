@@ -148,7 +148,7 @@ def provision(api, root, project, workflow, credentials):
             'schema': 1, 'origin': api.url, 'project': project,
             'template_sha256': config_hash, 'credentials': {}, 'workflow': None}
         if state['origin'] != api.url or state['template_sha256'] != config_hash:
-            raise Fault('BINDING_CHANGED_USE_NEW_PROJECT_OR_EXPLICIT_MIGRATION')
+            raise Fault('BINDING_CHANGED_CHECK_ORIGIN_THEN_RUN_UPGRADE_PLAN_IN_ORIGINAL_DIRECTORY')
         if state.get('pending'):
             raise Fault('PREVIOUS_MUTATION_UNCERTAIN_RECONCILE_RESOURCE_FIRST')
         api.preflight()
