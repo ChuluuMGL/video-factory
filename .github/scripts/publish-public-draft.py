@@ -8,13 +8,13 @@ assert os.environ['GITHUB_REPOSITORY']=='ChuluuMGL/video-factory'
 root=Path('public-release');r=json.loads((root/'release.json').read_text());assert r['public_release'] is True
 notes=Path('public-release-notes.md');notes.write_text('''Video Factory · MIT public alpha / MIT 开源测试版
 
-在客户自己的服务器部署视频工作流；默认飞书 Base + n8n。源码和固定安装包可公开获取。
+在自己的本机或服务器搭建视频工作流，或接入已有 n8n；默认飞书 Base + n8n。源码和固定安装包可公开获取。
 安装指南：https://www.yueyu.tech/zh/products/video-factory/
 
 包含固定安装包、完整 Setup Skill、校验清单、依赖许可和 Psycopg 对应源码。第三方 wheel 不在公开归档中再分发，首次安装直接从 PyPI 官方文件源获取并校验固定哈希。服务镜像由客户服务器按固定摘要从上游获取；不分发历史内部镜像或原始日志。
 
 Cloud-tested fixed installer, complete Setup Skill, checksums and dependency notices/source. Customer servers obtain pinned upstream service images. No historical internal images or raw logs are included.
 
-This is an alpha. A development candidate completed one real-account Feishu review and H3 video writeback flow. That does not replace fresh fixed-release installation, distinct employee authorization or production acceptance. See docs/product/DELIVERY_ACCEPTANCE.md and handoff.json for their separate scopes.
+This alpha includes portable Node.js/Docker setup and existing-n8n integration. Isolated acceptance verified real Feishu, DeepSeek, one H3 shot and first-attempt owner-confirmed script generation with human approval. Distinct employee authorization, nonauthor installation and actual desktop logout/login remain unverified. See docs/product/DELIVERY_ACCEPTANCE.md and handoff.json for their separate scopes.
 ''')
 subprocess.run(['gh','release','create','v'+r['version'],'--target',r['source_commit'],'--draft','--prerelease','--title','Video Factory '+r['version'],'--notes-file',str(notes),*[str(p) for p in sorted(root.iterdir())]],check=True)

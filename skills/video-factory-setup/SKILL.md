@@ -5,15 +5,25 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 # Video Factory 安装与维护
 
-这是客户自托管产品的操作 Skill，配合固定版本发行包中的 `vfctl`。每客户独立服务器、账户、数据库和密钥；一个客户内可建多个项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
+这是 Video Factory 的安装与维护 Skill。首次进入先识别用户已有的 n8n、飞书和运行环境，再选择路径；不能预设每位用户都需要新购 Ubuntu 服务器。已安装客户可复用同一套服务新增项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
 
 ## 开始前
 
-0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口；安装结束按 [交接模板](references/handoff.md) 报告。不要把内部 CLI 指令清单当作用户交付。
+0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：现有 n8n 在哪里、飞书应用/Base 是否已有、产品执行服务打算放在哪里。这个脚本只识别环境，不安装软件、不读取密钥、不扫描远端。已有 n8n 时先保留原实例与凭据，不创建第二套 n8n。安装结束按 [交接模板](references/handoff.md) 报告。
 1. 读取 [操作流程](references/operations.md)，定位用户请求属于安装、续接、新项目、检查还是恢复。沿用当前会话已授权的对象和动作；缺少确切主机、目录或客户/项目时先做独立的只读检查，不猜测目标。
-2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。操作人员可在 Windows/Mac 使用 Agent，但安装命令要在目标客户 Ubuntu 24.04 x86_64 主机执行；远程连接必须已有可信 SSH 主机指纹，禁止关闭指纹检查。安装 CLI 当前要求 Python 3.12 + venv、root；运行服务另需本地 Docker/Compose。单独在 Windows/Mac 装好 n8n 不表示产品已安装。
+2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。按识别结果告知当前可执行的路线和缺口。**服务器完整栈部署**在 Ubuntu 24.04 x86_64 主机执行，要求 Python 3.12 + venv、root 和本地 Docker/Compose；远程连接须核对可信 SSH 主机指纹。已有本机 Node.js/Docker n8n、其他服务器 n8n 或 n8n Cloud 时，可先只读检查 API 和飞书环境；a36 可使用下方便携向导配置已有实例；不要运行完整栈命令覆盖已有 n8n。接入与验收按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 完成并验收。
 3. 固定版本、来源提交、发行包 SHA256 和清单 SHA256。先验证归档，再解压或执行包内代码。校验值必须来自可信交付记录；包内自报哈希不是发布者身份验证。
 4. 只用该包安装的 CLI 绝对路径。不要把 `isolated/vf` 或旧四项目 canary 当作客户安装器。不创建中央客户数据库，不自动启动旧 ECS、不另租服务器。
+
+## 便携安装与已有 n8n 接入（a36 测试版）
+
+便携视频参考图支持「参考图附件」的候选接入（JPEG/PNG/WebP，合计最多 20 MiB）和原有 HTTPS 链接，合计最多 9 张；附件在模型调用前由 n8n 按本行权限读取并校验，不需要用户把图片公开。附件读取已通过四平台合成回归与真实飞书原图校验；一次明确授权的真实 H3 提交、查询及飞书待审核写回已完成。成片实测 6.584 秒、768×1344，与请求的 6 秒、9:16 有差异；维护者已接受本次流程测试，未将成片质量与精确规格作为通过条件。不能据此声称自动生产已交付。保留实际下载权限错误，不擅自扩权。
+
+完整 Skill 提供实际执行脚本 `scripts/portable_n8n.py` 和通用工作流模块 `scripts/n8n_workflows.py`。便携路线优先运行 `welcome` 连续向导：先连接或安装 n8n，再复用项目凭据完成 Base 检查、字段准备及脚本/视频/恢复流程导入。续接沿用原目录、地址和项目标识；不要让用户逐个工作流重新输入同一把 Key。凭据轮换在 n8n Credentials 显式处理。按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a36/docs/product/PORTABLE_N8N.md) 区分本机安装与已有实例接入；不要将候选的合成测试说成稳定发行或全业务验收。已有实例优先通过 `welcome` 连续配置，`check/connect` 仅作分步排障，不强制新装 Ubuntu。原生安装超时先检查磁盘和网络，保留原目录续接；必要时在子命令前显式设置 `--dependency-timeout 2400`，不要删除数据重装。收费入口需先完成本项目的真实负责人事件验收，再按单次计划显式启用。
+
+负责人身份与费用确认使用 `portable_approval.py` 和官方长连接 `portable_events.py`，先按 [负责人确认指南](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a36/docs/product/PORTABLE_BILLING_APPROVAL.md) 做零费用验收。不能用可编辑人员列、最后修改人或状态文字充当操作人认证。不得跳过真实事件验收直接启用付费入口；同一应用已有其他长连接时先处理分流冲突，不擅自停用其他项目。
+
+便携后台自启使用 `scripts/portable_service.py`，支持 `install/status/start/stop/restart/uninstall`。只接管本安装器创建的原生 n8n；已有实例保持原管理方式。桌面端明确告知是“当前用户登录后启动”，Linux root 才是系统开机启动，普通用户不自动开启 linger。事件服务必须先核对同一应用无其他接收器，才传 `--exclusive-app`；不因开机自启擅自启用收费工作流。安装成功回执与接收器均等待 n8n `/healthz/readiness`；不能将 `/healthz` 的进程存活视为数据库就绪。安装后读取 OS 状态、重启后检查数据与事件回执；卸载注册保留所有业务数据。向导交接记录为 `bindings/handoff-PROJECT.json`，不要把“后台进程运行”写成业务验收通过。自启生命周期已通过对应四平台 CI；整机重启、桌面重新登录与独立安装的当前结果见 `docs/product/COMPLETION_WORK.md`，固定发行包能力以版本回执为准。
 
 ## 安装、配置与接入
 

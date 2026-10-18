@@ -8,12 +8,24 @@
 
 - 已有服务：先读取客户交接中的主机、stack、CLI 和 session，实际查询版本与状态；不用最新包覆盖旧服务。
 - 新增项目：原 session 只作配置来源，新 session 使用独立路径；同一 stack。继续按 operations.md 第 3 节完成。
-- 首次部署：确认真实目标服务器和连接后，再获取安装包。
+- 首次部署：先识别已有 n8n 和飞书，再决定是否需要新装基础服务；不要先要求服务器。
 - 继续安装：先读原状态，不创建替代 session、不删除未知 Base 创建日志。
 
 ## 2. 安装本 Skill
 
-用户从指南下载的 ZIP 顶层为 video-factory-setup，需保留 SKILL.md 和 references/。只安装到当前 Agent 支持的自定义 Skill 目录，不猜所有 Agent 使用同一路径。已有同名 Skill 时比较版本，保留本地修改，不静默覆盖。用户只要使用一次可以先读取完整目录，无需重复注册。
+用户从指南下载的 ZIP 顶层为 video-factory-setup，需保留 SKILL.md、references/ 和 scripts/。只安装到当前 Agent 支持的自定义 Skill 目录，不猜所有 Agent 使用同一路径。已有同名 Skill 时比较版本，保留本地修改，不静默覆盖。用户只要使用一次可以先读取完整目录，无需重复注册。
+
+## 2a. 首次部署先选择环境
+
+在安装人员的私有终端运行 `python3 scripts/choose_install_path.py`，或由 Agent 按相同顺序问三个问题。不要将答案中的密码或 Key 写进文件。
+
+1. 已有 n8n 吗？选择没有、本机 Node.js、本机 Docker、其他服务器或 n8n Cloud；不确定可先选“不确定”。
+2. 飞书应用和 Base 都有、只有一部分、都没有，还是不确定？
+3. 产品执行服务希望运行在已有 Ubuntu 主机、本机 Windows/Mac、其他服务器，还是尚未决定？
+
+a36 完整 Skill 提供本机 Node.js、Docker 和已有 n8n 接入。已有实例先核对公共 API、版本及网络，保留原工作流、数据和凭据；没有 n8n 时由用户选择安装方式。Cloud SaaS 本轮未实测，说明该范围后由有相应实例的操作者验证。
+
+本机或已有 n8n 路线运行 `scripts/portable_n8n.py welcome`：连接或安装 n8n，选择项目，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a36/docs/product/PORTABLE_N8N.md) 继续。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。选择 Ubuntu 完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
 
 ## 3. 取得服务器发行包
 

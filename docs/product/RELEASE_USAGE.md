@@ -4,7 +4,7 @@
 
 云端验证通过的版本提供服务器安装包、完整 Skill ZIP、release.json、SHA256SUMS、依赖许可与 handoff.json。Psycopg 对应源码保留在包内；上游服务镜像由客户服务器按固定摘要获取，公开发行不附带整套离线镜像。
 
-Agent 获取指定标签与摘要，在客户服务器核验后按 INSTALL.md 使用 start.py 进入安装和 Setup。已有服务新增项目沿用兼容版本，不因更新 Skill 自动升级服务器。
+Agent 获取指定标签与摘要。本机/已有 n8n 使用完整 Skill 的 portable_n8n.py welcome；Ubuntu 完整栈在服务器核验后按 INSTALL.md 使用 start.py。已有服务新增项目沿用兼容版本，不因更新 Skill 自动升级服务器。
 
 源码分支和临时 CI 产物不是长期发行地址。当前不提供独立签名或自动更新服务。仓库公开不授予客户服务的管理员权限；独立客户及真实模型验收另行记录。
 
