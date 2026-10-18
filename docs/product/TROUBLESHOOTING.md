@@ -2,7 +2,7 @@
 
 本页供管理员、实施人员和 Agent 排查自托管安装。先确认正在运行的 `vfctl` 版本、项目、步骤和**准确错误码**，再读对应章节；不要仅凭页面提示或 CI 通过判断任务已完成。客户服务器、飞书 Base、n8n 和模型服务分别回读。
 
-Windows/Mac 可单独使用 n8n Cloud、在 Node.js 中试用 n8n，或用 Docker 自托管 n8n；这些都不是当前产品的完整安装。固定安装包必须在 Ubuntu 24.04 x86_64 上执行。若卡在 `UBUNTU_2404_X86_64_ROOT_REQUIRED`、`LINUX_X86_64_ROOT_ADMIN_REQUIRED` 或 `LOCAL_DOCKER_ENGINE_REQUIRED`，先读[平台矩阵](PLATFORMS_AND_MODELS.md)并核对 SSH 目标、Docker context 与本地 socket；不要绕过检查或覆盖电脑上已有 n8n。
+本机或已有 n8n 使用[便携候选指南](PORTABLE_N8N.md)，固定服务器包仍要求 Ubuntu 24.04 x86_64。先核对路线与版本，不能把服务器包的限制套到便携路线。遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED` 等平台错误时，检查是否误用了服务器 bootstrap；保留现有 n8n，不绕过检查。
 
 | 现象或错误 | 先检查 | 安全续接 |
 |---|---|---|
@@ -20,6 +20,21 @@ Windows/Mac 可单独使用 n8n Cloud、在 Node.js 中试用 n8n，或用 Docke
 | `PROVIDER_AUTH_REJECTED_CHECK_REGION_OR_KEY` | Key 所属区域、原计划摘要、是否确实没有供应商回执 | 含 `recover-auth` 的版本允许修正凭据后归档失败尝试，保留原脚本审核，再核对并授权新的生成计划。禁止用于未知提交或已有回执。见[执行器恢复](WORKER_USAGE.md#认证失败后更换密钥)。 |
 | 视频或附件未回写 | 媒体文件解码和 SHA-256、附件上传回执、远端记录和写入意图 | 先回读并对账，不删除旧媒体或伪造“审核通过”。见[结果同步](BASE_RESULTS.md)。 |
 | 升级或恢复后服务不可用 | 旧、新 stack 路径、容器、数据库、备份和恢复回执 | 确认当前运行版本及回退路径；备份存在不等于恢复成功。见[Stack 操作](STACK_USAGE.md)。 |
+
+## 便携候选：终端与后台运行
+
+| 现象 | 处理方式 |
+|---|---|
+| 菜单或地址输错 | 在当前向导重输；输入 `:quit` 保留已完成配置。继续时使用原目录与项目标识。 |
+| `PRIVATE_TERMINAL_REQUIRED` | Agent 的输出管道不是私密输入终端。由安装人员在自己的终端输入；不要把 Key 发给 Agent 或写进命令参数。 |
+| `N8N_API_PERMISSION_REQUIRED` | 核对实例地址与公共 API Key；向导允许最多三次只读认证，不重建项目。 |
+| `SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS` | 使用同一 `--root`、`--component` 运行 `status`，检查该服务的系统状态、执行路径和端口。数据保留，不删目录重装。 |
+| `SERVICE_DEFINITION_CHANGED_PRESERVED` | 原启动定义被外部修改，安装器停止接管；先比较保存的定义与系统定义，不能强制覆盖其他人的配置。 |
+| 关闭终端后运行，但重启电脑后没有启动 | Mac/Windows 默认在当前用户登录后启动；普通 Linux 用户需要登录或已配置 linger；Docker 需其自身服务启动。详见[自启方式](PORTABLE_N8N.md#后台运行与自启开发候选)。 |
+| `SERVICE_N8N_NOT_READY_NO_EVENT_DISPATCH` | n8n 数据库尚未就绪；检查 `/healthz/readiness`，不能仅看 `/healthz`。等待恢复后再检查服务，保留事件队列；不要重发付费任务。 |
+| 飞书接收器启动了但审核没有推进 | OS `running` 只证明进程存在。继续核对应用、事件订阅、同应用是否有其他接收器、真实 SDK 回执及未知派发状态。不要直接重发付费任务。 |
+
+取消自启使用 `uninstall`，保留数据；`stop` 只暂停当前进程，后续登录或开机可能再次启动。
 
 ## Docker 地址池用尽
 

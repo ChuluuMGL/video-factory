@@ -15,6 +15,16 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 3. 固定版本、来源提交、发行包 SHA256 和清单 SHA256。先验证归档，再解压或执行包内代码。校验值必须来自可信交付记录；包内自报哈希不是发布者身份验证。
 4. 只用该包安装的 CLI 绝对路径。不要把 `isolated/vf` 或旧四项目 canary 当作客户安装器。不创建中央客户数据库，不自动启动旧 ECS、不另租服务器。
 
+## 便携接入开发候选
+
+便携视频参考图支持「参考图附件」的候选接入（JPEG/PNG/WebP，合计最多 20 MiB）和原有 HTTPS 链接，合计最多 9 张；附件在模型调用前由 n8n 按本行权限读取并校验，不需要用户把图片公开。附件读取已通过四平台合成回归与真实飞书原图校验；一次明确授权的真实 H3 提交、查询及飞书待审核写回已完成。成片实测 6.584 秒、768×1344，与请求的 6 秒、9:16 有差异；维护者已接受本次流程测试，未将成片质量与精确规格作为通过条件。不能据此声称自动生产已交付。保留实际下载权限错误，不擅自扩权。
+
+本分支增加实际执行脚本 `scripts/portable_n8n.py` 和通用工作流模块 `scripts/n8n_workflows.py`。便携路线优先运行 `welcome` 连续向导：先连接或安装 n8n，再复用项目凭据完成 Base 检查、字段准备及脚本/视频/恢复流程导入。续接沿用原目录、地址和项目标识；不要让用户逐个工作流重新输入同一把 Key。凭据轮换在 n8n Credentials 显式处理。按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md) 区分本机安装与已有实例接入；不要将候选的合成测试说成稳定发行或全业务验收。已有实例优先通过 `welcome` 连续配置，`check/connect` 仅作分步排障，不强制新装 Ubuntu。原生安装超时先检查磁盘和网络，保留原目录续接；必要时在子命令前显式设置 `--dependency-timeout 2400`，不要删除数据重装。收费工作流仍为人工逐条验收候选，禁止擅自激活定时付费生产。
+
+负责人身份与费用确认使用候选 `portable_approval.py` 和官方长连接 `portable_events.py`，先按 [负责人确认指南](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_BILLING_APPROVAL.md) 做零费用验收。不能用可编辑人员列、最后修改人或状态文字充当操作人认证。不得跳过真实事件验收直接启用付费入口；同一应用已有其他长连接时先处理分流冲突，不擅自停用其他项目。
+
+便携后台自启使用 `scripts/portable_service.py`，支持 `install/status/start/stop/restart/uninstall`。只接管本安装器创建的原生 n8n；已有实例保持原管理方式。桌面端明确告知是“当前用户登录后启动”，Linux root 才是系统开机启动，普通用户不自动开启 linger。事件服务必须先核对同一应用无其他接收器，才传 `--exclusive-app`；不因开机自启擅自启用收费工作流。接收器先等待 n8n `/healthz/readiness`；不能将 `/healthz` 的进程存活视为数据库就绪。安装后读取 OS 状态、重启后检查数据与事件回执；卸载注册保留所有业务数据。向导交接记录为 `bindings/handoff-PROJECT.json`，不要把“后台进程运行”写成业务验收通过。新增自启代码尚待本轮云端实测，固定发行包能力以版本回执为准。
+
 ## 安装、配置与接入
 
 - 读取 [完整安装路径](references/complete-install.md) 并核对固定发行包。已有的常驻网页审核实现不是默认安装步骤；不得为了完成安装而部署网页或配置业务子域名。

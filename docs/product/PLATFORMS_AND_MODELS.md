@@ -1,6 +1,8 @@
 # 安装平台与模型接口
 
-首次进入由 Skill 先问已有 n8n、飞书应用/Base 与执行服务位置。复用已有 n8n 是产品目标；当前固定包尚未交付完整接入，见[接入路线与验收条件](EXISTING_N8N_INTEGRATION.md)。下面的 Ubuntu 条件只属于现版完整自动部署。
+首次进入先选择已有 n8n、本机 Node.js、Docker 或服务器。**便携开发候选已经能够实际安装和接入**：Windows、Mac、Linux 与 Linux Docker 的真实 n8n 合成流程均通过，详见[候选使用与验收记录](PORTABLE_N8N.md)。已有实例通过公共 API 接入，不接管原数据库、不覆盖旧工作流。真实飞书、模型、审核身份和费用确认仍需验收，Cloud SaaS 实测本轮跳过。
+
+以下 Ubuntu 要求针对**旧的固定发行包完整服务栈**，不适用于上述便携候选。两条路线不能混用安装命令或回执。
 
 先区分**操作电脑**和**运行服务器**。安装人员可以在 Windows、macOS 或 Linux 上使用 Agent，通过 SSH 管理客户服务器；这不会把服务安装到操作电脑。当前固定发行包只在客户自己的 **Ubuntu 24.04 x86_64** 主机上提供自动准备与完整栈部署。安装预检要求至少 4 GiB 内存、4 GiB **剩余**磁盘、Python 3.12、root、systemd、本地 Docker Engine 与 Compose 2.24+；4 GiB 剩余磁盘只是预检门槛，不是视频生产的容量建议。实际磁盘还要计入镜像、数据库、素材、成片和备份留存，按项目量规划并在上线前实测。安装器会核对本机 Unix Docker socket；不能指向远程 Docker daemon。
 
@@ -11,11 +13,11 @@
 | macOS 电脑或服务器 | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | **不支持原生安装整套产品** | 在独立 Ubuntu x86_64 主机/虚拟机部署，Mac Agent 通过 SSH 操作 |
 | 既有独立 n8n | 可以独立管理 | 尚未支持直接接管其数据库、凭据和工作流 | 不导入产品的私网执行凭据到未知 n8n；先做隔离迁移设计 |
 
-n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明它运行在哪里。[n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md) 由 n8n 托管，本机无需安装 Docker 或 n8n；[Node.js/npm 方式](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)可在本机启动并访问 `http://localhost:5678`，适合独立试用，但官方标注 npm 安装从 n8n 3.0 起弃用；自托管生产参考官方推荐的 [Docker Compose 安装](https://docs.n8n.io/deploy/host-n8n/install-options/install-using-docker-compose.md)。**单独启动 n8n 不等于完成 Video Factory 安装**：产品还需 PostgreSQL、运行服务、私网 Runner、固定镜像、密钥和备份。不要在 Windows PowerShell、macOS 终端或 WSL2 中直接执行本发行包的 `bootstrap.sh` 并绕过平台检查；WSL2 和 Apple Silicon 的完整栈还未验收。
+n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明它运行在哪里。[n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md) 由 n8n 托管，本机无需安装 Docker 或 n8n；[Node.js/npm 方式](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)可在本机启动并访问 `http://localhost:5678`，适合独立试用，但官方标注 npm 安装从 n8n 3.0 起弃用；自托管生产参考官方推荐的 [Docker Compose 安装](https://docs.n8n.io/deploy/host-n8n/install-options/install-using-docker-compose.md)。**单独启动 n8n 不等于完成飞书与模型配置**。旧固定包的完整服务栈还需 PostgreSQL、运行服务、私网 Runner、固定镜像、密钥和备份。不要在 Windows PowerShell、macOS 终端或 WSL2 中直接执行本发行包的 `bootstrap.sh` 并绕过平台检查；WSL2 和 Apple Silicon 的完整栈还未验收。
 
 如果只需**单独试用 n8n**，可直接注册 n8n Cloud，或在装有官方要求版本 Node.js 的 Windows/Mac 终端运行 `npx n8n`，然后打开 `http://localhost:5678`。`npx` 会下载依赖，不是“仅靠网页在本机运行”；请留意上述 npm 弃用公告。需要长期自托管 n8n 时，再按官方 Compose 指南准备持久存储、加密密钥、HTTPS、备份和更新。以上任一路线都不运行 `vfctl`，也不会自动获得 Video Factory 的任务、私网凭据或飞书接入。
 
-如果目标是**安装 Video Factory**，请在 Windows/Mac 的 Agent 中选择“远程 Ubuntu 主机”，经已核验指纹的 SSH 连接；在 Ubuntu 主机上按[完整安装路径](https://github.com/ChuluuMGL/video-factory/blob/main/skills/video-factory-setup/references/complete-install.md)检查 `bootstrap.sh --check`，再部署产品自带的 n8n。已有独立 n8n 时，不用“再装一个 n8n”作为诊断：先核对是否属于本产品 stack；属于则续接原 session，不属于则保持隔离。
+如果明确选择**旧固定包的完整服务栈**，请在 Windows/Mac 的 Agent 中选择“远程 Ubuntu 主机”，经已核验指纹的 SSH 连接；在 Ubuntu 主机上按[完整安装路径](https://github.com/ChuluuMGL/video-factory/blob/main/skills/video-factory-setup/references/complete-install.md)检查 `bootstrap.sh --check`，再部署产品自带的 n8n。已有独立 n8n 时，不用“再装一个 n8n”作为诊断：先核对是否属于本产品 stack；属于则续接原 session，不属于则保持隔离。
 
 客户遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED`、`LINUX_X86_64_ROOT_ADMIN_REQUIRED` 或 `LOCAL_DOCKER_ENGINE_REQUIRED` 时，Agent 应先回读目标主机的 `uname -s`、`uname -m`、`/etc/os-release`、Docker context、Compose 版本和可用空间，再决定是连接错机器、依赖缺失，还是平台不受支持。不能只因 n8n 网页能打开就继续 Setup。Ubuntu 服务器已有 n8n 时，也先核对其所有权、数据与备份，不覆盖现有实例。
 

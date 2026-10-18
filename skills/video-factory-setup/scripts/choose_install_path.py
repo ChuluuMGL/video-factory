@@ -61,12 +61,12 @@ def assess(answers, observed=None):
     elif n8n in ("local-node", "local-docker", "self-hosted", "cloud"):
         route = "reuse_existing_n8n_integration_pending"
         next_steps = ["保留现有 n8n 工作流和凭据；先只读核对实例、API 权限和飞书应用/Base。",
-                      "轻量工作流 JSON + 飞书接入、以及可选可靠执行组件均尚待交付；当前固定包不能完成此路线，不要导入旧样板或激活工作流。"]
+                      "候选分支可运行 scripts/portable_n8n.py welcome，接入现有实例并配置关闭状态的飞书与模型工作流；真实业务尚待验收，固定发行包不含此路径。"]
         supported = False
     elif n8n == "none" and runtime in ("local-desktop", "other-server"):
         route = "choose_n8n_install_method_integration_pending"
         next_steps = ["先选择在本机 Node.js、Docker、现有服务器或 n8n Cloud 使用 n8n；Agent 按所选方式检查官方安装要求。",
-                      "目前产品固定包仍需要 Ubuntu 主机和自带 n8n；不要把单独装好 n8n 当成 Video Factory 已可用。"]
+                      "候选分支可运行 scripts/portable_n8n.py welcome 安装本机 Node.js 或 Docker n8n，再配置飞书与模型；无需另租 Ubuntu，真实业务仍需验收。"]
         supported = False
     else:
         route = "host_or_n8n_choice_needed"
@@ -79,6 +79,8 @@ def assess(answers, observed=None):
         next_steps.append("n8n Cloud 免费试用期不开放公共 API；正式接入还需核对套餐权限与执行端点连通性。")
     return {"answers": answers, "observed_local": observed, "route": route,
             "current_release_can_complete": supported,
+            "candidate_entry": "scripts/portable_n8n.py welcome",
+            "candidate_production_accepted": False,
             "existing_n8n_modified": False, "software_installed": False,
             "provider_requests": 0, "next_steps": next_steps}
 
