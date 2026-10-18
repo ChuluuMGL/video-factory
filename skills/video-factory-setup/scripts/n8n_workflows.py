@@ -124,10 +124,24 @@ STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过'
             '申请脚本计划', '申请视频计划', '费用待确认']
 
 
+def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn'):
+    """The same non-secret contract is displayed, confirmed and executed."""
+    if flow == 'script':
+        return {'provider': 'DeepSeek', 'model': 'deepseek-flash',
+                'endpoint': script_origin + '/chat/completions', 'max_tokens': 2048,
+                'stream': False, 'thinking': {'type': 'disabled'}}
+    if flow in ('video-submit', 'video-poll'):
+        return {'provider': 'MiniMax China', 'model': 'MiniMax-H3',
+                'endpoint': video_origin + '/v2/video_generation',
+                'duration': 6, 'resolution': '768P', 'ratio': '9:16'}
+    raise ValueError('FLOW_INVALID')
+
+
 def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu.cn',
                         script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn'):
     if flow not in ('script', 'video-submit', 'video-poll'):
         raise ValueError('FLOW_INVALID')
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
     url, nodes = start(base, table, feishu_origin)
     status = {'script': ['请求脚本'], 'video-submit': ['视频生成已确认'], 'video-poll': ['视频生成中']}[flow]
     # Server-side filter avoids silently ignoring matching rows beyond page 1.
@@ -165,8 +179,8 @@ if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_BEFORE_PROVIDER');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
-        nodes += [code('Build script request', """return [{json:{model:'deepseek-flash',stream:false,max_tokens:2048,thinking:{type:'disabled'},messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
-                  http('Generate script', script_origin + '/chat/completions', 'POST', '={{ $json }}', 'httpHeaderAuth'),
+        nodes += [code('Build script request', 'const profile='+json.dumps(profile)+';'+"""return [{json:{model:profile.model,stream:profile.stream,max_tokens:profile.max_tokens,thinking:profile.thinking,messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
+                  http('Generate script', profile['endpoint'], 'POST', '={{ $json }}', 'httpHeaderAuth'),
                   code('Validate script', r"""const script = $json.choices?.[0]?.message?.content;
 if ($json.choices?.[0]?.finish_reason !== 'stop' || typeof script !== 'string' || !script.trim() || script.length>6500) throw new Error('SCRIPT_RESPONSE_REQUIRES_RECONCILIATION');
 const row=$('Select task').first().json;
@@ -175,8 +189,8 @@ if (history.length>18000) throw new Error('HISTORY_FULL_RECONCILE_BEFORE_RETRY')
 return [{json:{fields:{'脚本':script,'脚本历史':history,'状态':'脚本待审核'}}}];"""),
                   write('Write script for human review', '={{ $json }}')]
     elif flow == 'video-submit':
-        nodes += [code('Build video request', """return [{json:{model:'MiniMax-H3',content:[{type:'text',text:$('Select task').first().json.script},...$('Resolve video references').first().json.model_references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:6,resolution:'768P',ratio:'9:16'}}];"""),
-                  http('Submit video once', video_origin + '/v2/video_generation', 'POST', '={{ $json }}', 'httpHeaderAuth'),
+        nodes += [code('Build video request', 'const profile='+json.dumps(profile)+';'+"""return [{json:{model:profile.model,content:[{type:'text',text:$('Select task').first().json.script},...$('Resolve video references').first().json.model_references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:profile.duration,resolution:profile.resolution,ratio:profile.ratio}}];"""),
+                  http('Submit video once', profile['endpoint'], 'POST', '={{ $json }}', 'httpHeaderAuth'),
                   code('Validate video receipt', "if (!/^[0-9]{10,24}$/.test($json.task_id || '')) throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION'); return [{json:{fields:{'视频任务ID':String($json.task_id),'状态':'视频生成中'}}}];"),
                   write('Save video job receipt', '={{ $json }}')]
     else:
