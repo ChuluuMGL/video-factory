@@ -1,5 +1,8 @@
 """Offline vendor-contract fixtures; these are not paid provider canaries."""
 import unittest
+from unittest.mock import patch
+
+from video_factory.h3_provider import ProviderRejected
 
 from video_factory.runtime_store import RuntimeFault
 from video_factory.video_provider_candidates import CandidateVideoProvider, image_body
@@ -48,6 +51,69 @@ class CandidateVideoProviderTests(unittest.TestCase):
                                               'content': {'video_url': 'https://example.com/video.mp4'}})
         with self.assertRaisesRegex(RuntimeFault, 'UNVERIFIED'):
             seedance.poll('cgt-20261016-test', 'synthetic-key')
+
+    def test_error_with_task_receipt_is_not_safe_to_retry(self):
+        fixtures = [('seedance', {'id': 'accepted-task'}),
+                    ('wan', {'output': {'task_id': 'accepted-task'}}),
+                    ('kling', {'code': 1, 'data': {'id': 'accepted-task'}})]
+        for route, response in fixtures:
+            for status in (400, 401, 429, 500):
+                with self.subTest(route=route, status=status):
+                    provider = CandidateVideoProvider(route)
+                    provider._call = lambda *args: (status, response)
+                    with self.assertRaises(RuntimeFault) as caught:
+                        provider.submit({}, 'synthetic-key')
+                    self.assertNotIsInstance(caught.exception, ProviderRejected)
+                    self.assertIn('UNCERTAIN', str(caught.exception))
+
+    def test_explicit_rejection_without_task_remains_rejected(self):
+        for route in ('seedance', 'wan', 'kling'):
+            provider = CandidateVideoProvider(route)
+            provider._call = lambda *args: (401, {})
+            with self.assertRaises(ProviderRejected):
+                provider.submit({}, 'synthetic-key')
+
+    def test_malformed_provider_envelopes_are_bounded_faults(self):
+        for route, response in [('wan', {'output': []}), ('kling', {'data': []})]:
+            provider = CandidateVideoProvider(route)
+            provider._call = lambda *args: (200, response)
+            with self.assertRaisesRegex(RuntimeFault, 'UNCERTAIN'):
+                provider.submit({}, 'synthetic-key')
+        fixtures = [('wan', {'output': []}), ('kling', {'code': 0, 'data': [None]}),
+                    ('seedance', {'id': 'task-12345', 'model': 'doubao-seedance-2-5-260628',
+                                  'status': 'succeeded', 'content': []})]
+        for route, response in fixtures:
+            provider = CandidateVideoProvider(route)
+            provider._call = provider._call_kling_query = lambda *args: (200, response)
+            with self.assertRaisesRegex(RuntimeFault, 'UNVERIFIED'):
+                provider.poll('task-12345', 'synthetic-key')
+
+    def test_kling_query_rejects_invalid_secret_before_network(self):
+        provider = CandidateVideoProvider('kling')
+        with patch('video_factory.video_provider_candidates.opener') as network:
+            for key in ('Bearer key', 'key\nvalue', 'key\x00value', None):
+                with self.subTest(key=repr(key)), self.assertRaisesRegex(RuntimeFault, 'KEY_FORMAT'):
+                    provider.poll('task-12345', key)
+            network.assert_not_called()
+
+    def test_receipts_do_not_accept_local_or_credentialed_media_urls(self):
+        provider = CandidateVideoProvider('seedance')
+        for url in ('https://127.0.0.1/v.mp4', 'https://[::1]/v.mp4',
+                    'https://localhost/v.mp4', 'https://user:pass@example.com/v.mp4',
+                    'https://example.com:8080/v.mp4', 'https://example.com/\nv.mp4'):
+            with self.subTest(url=url):
+                provider._call = lambda *args: (200, {'id': 'task-12345', 'model': provider.model,
+                    'status': 'succeeded', 'content': {'video_url': url}})
+                with self.assertRaisesRegex(RuntimeFault, 'MEDIA_URL_UNVERIFIED'):
+                    provider.poll('task-12345', 'synthetic-key')
+
+    def test_invalid_first_frame_shapes_and_duration_do_not_escape(self):
+        for content in (None, {}, [None, None], [{}, {'type': 'image_url', 'image_url': None}]):
+            with self.subTest(content=content), self.assertRaises(RuntimeFault):
+                image_body('wan', 'fixture prompt', {**H3_BODY, 'content': content})
+        for duration in (True, '5', None, -1, 1000):
+            with self.subTest(duration=duration), self.assertRaises(RuntimeFault):
+                image_body('wan', 'fixture prompt', {**H3_BODY, 'duration': duration})
 
     def test_unknown_route_fails_closed(self):
         with self.assertRaisesRegex(RuntimeFault, 'NOT_SUPPORTED'):
