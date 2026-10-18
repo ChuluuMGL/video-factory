@@ -30,7 +30,7 @@
 | `N8N_API_PERMISSION_REQUIRED` | 核对实例地址与公共 API Key；向导允许最多三次只读认证，不重建项目。 |
 | `SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS` | 使用同一 `--root`、`--component` 运行 `status`，检查该服务的系统状态、执行路径和端口。数据保留，不删目录重装。 |
 | `SERVICE_DEFINITION_CHANGED_PRESERVED` | 原启动定义被外部修改，安装器停止接管；先比较保存的定义与系统定义，不能强制覆盖其他人的配置。 |
-| 关闭终端后运行，但重启电脑后没有启动 | Mac/Windows 默认在当前用户登录后启动；普通 Linux 用户需要登录或已配置 linger；Docker 需其自身服务启动。详见[自启方式](PORTABLE_N8N.md#后台运行与自启开发候选)。 |
+| 关闭终端后运行，但重启电脑后没有启动 | Mac/Windows 默认在当前用户登录后启动；普通 Linux 用户需要登录或已配置 linger；Docker 需其自身服务启动。详见[自启方式](PORTABLE_N8N.md#后台运行与自启)。 |
 | `SERVICE_N8N_NOT_READY_NO_EVENT_DISPATCH` | n8n 数据库尚未就绪；检查 `/healthz/readiness`，不能仅看 `/healthz`。等待恢复后再检查服务，保留事件队列；不要重发付费任务。 |
 | 飞书接收器启动了但审核没有推进 | OS `running` 只证明进程存在。继续核对应用、事件订阅、同应用是否有其他接收器、真实 SDK 回执及未知派发状态。不要直接重发付费任务。 |
 
@@ -41,6 +41,12 @@
 a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。
 
 先回读当前行、受保护审批与执行账本，以及 n8n 事件日志的节点轨迹。默认不保存完整执行数据，执行 API 没有记录不等于模型未调用。保留失败事件，不清队列、不自动重发；仅在确认未消费计划、未到模型节点、原计划未过期且当前内容一致后，再由负责人决定续接。原始日志仅保留在受控环境。详见[费用确认排查](PORTABLE_BILLING_APPROVAL.md#失败与停用)。
+
+## a37 费用计划与打包检查
+
+`APPROVAL_MODEL_PROFILE_CHANGED_REPLAN` 表示原计划版本、模型、接口或参数与当前执行流程不一致，已在模型调用前停止。先暂停该项目收费入口，核对原执行账本和供应商回执；没有在途或未知请求时，显式取消旧计划、申请新计划，再让负责人重新确认。不要修改账本中的计划版本、复用旧费用编号或直接重放事件。
+
+维护者打包遇到 `TRACKED_SKILL_REQUIRED`、`SKILL_SOURCE_MUST_BE_REGULAR` 或 `SKILL_SOURCE_LINK_REJECTED`，应在干净 Git checkout 中核对 Skill 文件是否已跟踪、是否为普通文件，以及路径是否经过符号链接。不要通过把 `.env`、本地安装目录或客户配置加入 Git 来通过检查。客户直接使用固定 Release；无须自己打包。
 
 ## Docker 地址池用尽
 
