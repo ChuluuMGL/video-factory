@@ -25,7 +25,7 @@
 
 a37 完整 Skill 提供本机 Node.js、Docker 和已有 n8n 接入。已有实例先核对公共 API、版本及网络，保留原工作流、数据和凭据；没有 n8n 时由用户选择安装方式。Cloud SaaS 本轮未实测，说明该范围后由有相应实例的操作者验证。
 
-本机或已有 n8n 路线运行 `scripts/portable_n8n.py welcome`：连接或安装 n8n，选择项目，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a37/docs/product/PORTABLE_N8N.md) 继续。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。选择 Ubuntu 完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
+本机或已有 n8n 路线运行 `scripts/portable_n8n.py welcome`：连接或安装 n8n，选择项目，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a38/docs/product/PORTABLE_N8N.md) 继续。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。选择 Ubuntu 完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
 
 ## 3. 取得服务器发行包
 
