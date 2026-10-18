@@ -59,15 +59,15 @@ def assess(answers, observed=None):
                       "随后按 Skill 配置飞书、首个项目，并逐项验收。"]
         supported = True
     elif n8n in ("local-node", "local-docker", "self-hosted", "cloud"):
-        route = "reuse_existing_n8n_integration_pending"
+        route = "reuse_existing_n8n"
         next_steps = ["保留现有 n8n 工作流和凭据；先只读核对实例、API 权限和飞书应用/Base。",
-                      "候选分支可运行 scripts/portable_n8n.py welcome，接入现有实例并配置关闭状态的飞书与模型工作流；真实业务尚待验收，固定发行包不含此路径。"]
-        supported = False
+                      "运行完整 Skill 内的 scripts/portable_n8n.py welcome，接入原实例并配置关闭状态的飞书与模型工作流；先核对该实例 API、版本与权限，再做本项目验收。"]
+        supported = n8n != "cloud"
     elif n8n == "none" and runtime in ("local-desktop", "other-server"):
-        route = "choose_n8n_install_method_integration_pending"
+        route = "portable_n8n_install_method"
         next_steps = ["先选择在本机 Node.js、Docker、现有服务器或 n8n Cloud 使用 n8n；Agent 按所选方式检查官方安装要求。",
-                      "候选分支可运行 scripts/portable_n8n.py welcome 安装本机 Node.js 或 Docker n8n，再配置飞书与模型；无需另租 Ubuntu，真实业务仍需验收。"]
-        supported = False
+                      "运行完整 Skill 内的 scripts/portable_n8n.py welcome，选择 Node.js 或 Docker 安装并配置飞书与模型；无需另租 Ubuntu，安装完成后仍需本项目验收。"]
+        supported = True
     else:
         route = "host_or_n8n_choice_needed"
         next_steps = ["确认 n8n 位于本机、其他服务器还是 n8n Cloud，以及产品执行服务打算运行的位置。",
@@ -76,10 +76,13 @@ def assess(answers, observed=None):
     if answers["feishu"] != "ready":
         next_steps.append("继续核对飞书组织、应用和 Base；缺项由 Setup 引导准备，不复用其他客户凭据。")
     if n8n == "cloud":
-        next_steps.append("n8n Cloud 免费试用期不开放公共 API；正式接入还需核对套餐权限与执行端点连通性。")
+        next_steps.append("Cloud SaaS 实例本轮未实测；先核对当前套餐的公共 API 和执行端点权限，再由实例操作者验证，不能标记已验收。")
     return {"answers": answers, "observed_local": observed, "route": route,
             "current_release_can_complete": supported,
-            "candidate_entry": "scripts/portable_n8n.py welcome",
+            "entry": "scripts/portable_n8n.py welcome",
+            "candidate_entry": "scripts/portable_n8n.py welcome",  # legacy reader compatibility
+            "instance_verified": False,
+            "production_accepted": False,
             "candidate_production_accepted": False,
             "existing_n8n_modified": False, "software_installed": False,
             "provider_requests": 0, "next_steps": next_steps}
