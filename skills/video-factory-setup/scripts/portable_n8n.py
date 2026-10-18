@@ -699,6 +699,11 @@ def main(argv=None):
         command.add_argument('--url',required=True)
         command.add_argument('--project',required=True)
         if name=='approval-cancel':command.add_argument('--expect-plan',required=True)
+    for name in ('upgrade-plan','upgrade-apply'):
+        command=commands.add_parser(name,help='预览或显式升级已记录的关闭工作流，保留凭据和账本')
+        command.add_argument('--url',required=True)
+        command.add_argument('--project',required=True)
+        if name=='upgrade-apply':command.add_argument('--expect-plan',required=True)
     install = commands.add_parser('install')
     install.add_argument('--mode', choices=['node', 'docker'], required=True)
     install.add_argument('--port', type=int, default=5678)
@@ -742,6 +747,11 @@ def main(argv=None):
                 if args.command=='approval-enable' and input('启用本项目计划与确认入口？负责人确认有效计划后才执行，输入 yes: ').strip()!='yes':
                     raise Fault('ACTIVATION_NOT_CONFIRMED')
                 value=set_approval_active(api,args.root,args.project,args.command=='approval-enable')
+        elif args.command in ('upgrade-plan','upgrade-apply'):
+            from portable_upgrade import preview,apply
+            api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()
+            value=(preview(api,args.root,args.project) if args.command=='upgrade-plan' else
+                   apply(api,args.root,args.project,args.expect_plan))
         elif args.command == 'export':
             from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
             if args.flow not in ('probe','schema') and not args.experimental_manual:
