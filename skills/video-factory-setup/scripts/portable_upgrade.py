@@ -11,7 +11,10 @@ from portable_n8n import Fault, digest, identifier, locked, private_write
 
 
 def read(root, relative):
-    path = root / relative
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or '..' in relative_path.parts:
+        raise Fault('UPGRADE_PATH_OUTSIDE_BINDINGS')
+    path = root / relative_path
     if path.is_symlink() or any(p.is_symlink() for p in path.parents if p != root.parent):
         raise Fault('UPGRADE_SYMLINK_REJECTED')
     return json.loads(path.read_text(encoding='utf-8'))
@@ -189,9 +192,21 @@ def apply(api, root, project, expected):
         journal_path = root / ('upgrade-' + expected + '-receipt.json')
         journal = read(root, journal_path.name) if journal_path.exists() else {'plan': expected, 'items': {}}
         if journal.get('plan') != expected: raise Fault('UPGRADE_RECEIPT_CHANGED')
+        if set(generated) != {t['before']['project'] for t in plan['targets']} or len(generated) != len(plan['targets']):
+            raise Fault('UPGRADE_TARGET_SET_CHANGED')
         # Check the entire set before any PUT, including the current package.
         for target in plan['targets']:
             name = target['before']['project']
+            if (target['binding_file'] != 'binding-' + identifier(name) + '.json' or
+                    target['workflow'] != target['before']['workflow']):
+                raise Fault('UPGRADE_TARGET_CHANGED')
+            expected_body = bound(generated[name], target['before'])
+            expected_binding = {**target['before'], 'template_sha256': digest(generated[name]),
+                                'owned_template': expected_body, 'verified_disabled': True}
+            expected_body = {**expected_body, 'name': target['old_live']['name'],
+                             'settings': {**target['old_live']['settings'], **expected_body['settings']}}
+            if target['after'] != expected_binding or target['body'] != expected_body:
+                raise Fault('UPGRADE_PLAN_BODY_CHANGED')
             if digest(generated[name]) != target['after']['template_sha256']:
                 raise Fault('UPGRADE_PACKAGE_CHANGED_REPLAN')
             binding = read(root, target['binding_file'])
