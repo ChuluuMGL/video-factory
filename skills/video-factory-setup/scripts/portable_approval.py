@@ -44,12 +44,12 @@ def scheduled(workflow):
 
 def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn',
                   script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn',
-                  verification_only=False):
+                  verification_only=False, script_selection=None):
     """No model nodes. One pending plan per project; never replace it silently."""
     policy = policy_checked(policy)
     if flow not in ('script', 'video-submit'):
         raise Fault('APPROVAL_FLOW_INVALID')
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection)
     url, nodes = start(base, table, feishu_origin)
     state = '申请脚本计划' if flow == 'script' else '申请视频计划'
     search = {'filter': {'conjunction': 'and', 'conditions': [
@@ -96,16 +96,16 @@ return [{json:{fields:{'状态':'费用待确认','生成计划':p.display,'费�
 
 def confirmation_workflow(base, table, flow, execution, approval, policy, path, *,
                           feishu_origin='https://open.feishu.cn',script_origin='https://api.deepseek.com',
-                          video_origin='https://api.minimax.cn', verification_only=False):
+                          video_origin='https://api.minimax.cn', verification_only=False, script_selection=None):
     """A trusted event selects the exact protected plan, never the first paid row.
 
     verification_only consumes the plan and returns a zero-provider receipt;
     it has no provider nodes. It cannot be toggled via a webhook request.
     """
     policy=policy_checked(policy); identifier(path)
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection)
     workflow=guard_workflow(production_workflow(base,table,flow,feishu_origin=feishu_origin,
-                          script_origin=script_origin,video_origin=video_origin),execution)
+                          script_origin=script_origin,video_origin=video_origin,script_selection=script_selection),execution)
     old=workflow['nodes']; url=f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/records/'
     hook={'name':'Verified Feishu event','type':'n8n-nodes-base.webhook','typeVersion':2,
           'webhookId':str(uuid5(NAMESPACE_URL,'vf-owner:'+path)),
@@ -200,8 +200,14 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
     root=Path(root); ask_secret=ask_secret or secret
     pool=json.loads((root/('credentials-'+project+'.json')).read_text(encoding='utf-8'))
     if pool['origin']!=api.url or pool['app']!=policy['app']: raise Fault('APPROVAL_CREDENTIAL_SCOPE_MISMATCH')
+    from portable_models import load as load_models
+    model_selection=load_models(root,project,api.url)
+    if 'script' in pool['roles'] and pool.get('script_selection',{'provider':'deepseek','model':'deepseek-flash'})!=model_selection:
+        raise Fault('APPROVAL_SCRIPT_CREDENTIAL_MODEL_MISMATCH')
+    model_options={} if model_selection=={'provider':'deepseek','model':'deepseek-flash'} else {'script_selection':model_selection}
     event_root=secure_directory(root/(project+'-events'))
     scope={'origin':api.url,'project':project,'base':base,'table':table,'policy':policy,'verification_only':verification_only}
+    if model_options: scope['script_selection']=model_selection
     with locked(event_root):
         config_path=event_root/'events.json'
         if config_path.exists():
@@ -227,12 +233,12 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']
         identifier(path)
         config['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow,
-            scheduled(plan_workflow(base,table,flow,approval,policy,verification_only=verification_only)),{'httpCustomAuth':pool['roles']['feishu']})
+            scheduled(plan_workflow(base,table,flow,approval,policy,verification_only=verification_only,**model_options)),{'httpCustomAuth':pool['roles']['feishu']})
         credentials={'httpCustomAuth':pool['roles']['feishu'],
                      'relay':{'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':values['relay_token']}}}
         if not verification_only:credentials['httpHeaderAuth']=pool['roles'][role]
         config['workflows']['confirm-'+flow]=provision(api,root,project+'-confirm-'+flow,
-            confirmation_workflow(base,table,flow,execution,approval,policy,path,verification_only=verification_only),credentials)
+            confirmation_workflow(base,table,flow,execution,approval,policy,path,verification_only=verification_only,**model_options),credentials)
         config['hooks'][flow]=path
         with locked(event_root):private_write(event_root/'events.json',config)
     return {'configured':True,'active':False,'verification_only':verification_only,
@@ -246,6 +252,10 @@ def set_approval_active(api, root, project, active):
     root=Path(root);identifier(project)
     config=json.loads((root/(project+'-events')/'events.json').read_text(encoding='utf-8'))
     if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
+    if active:
+        from portable_models import load as load_models, selection
+        if load_models(root,project,api.url)!=config.get('script_selection',selection()):
+            raise Fault('APPROVAL_MODEL_CHANGED_REPEAT_ZERO_CHARGE_ACCEPTANCE')
     owned=[]
     for item in config['workflows'].values():
         state=json.loads((root/('binding-'+item['project']+'.json')).read_text(encoding='utf-8'))
@@ -303,6 +313,11 @@ def _promote_approval(api, root, project):
             and json.loads(r['receipt']).get('provider_requests')==0
             and json.loads(r['payload'])['event']['operator_id']['open_id']==config['policy']['billing_owner']]
     if not passed: raise Fault('REAL_OWNER_ZERO_CHARGE_ACCEPTANCE_REQUIRED')
+    from portable_models import load as load_models
+    selected=load_models(root,project,api.url)
+    if selected!=config.get('script_selection',{'provider':'deepseek','model':'deepseek-flash'}):
+        raise Fault('APPROVAL_MODEL_CHANGED_REPEAT_ZERO_CHARGE_ACCEPTANCE')
+    model_options={'script_selection':selected} if 'script_selection' in config else {}
     base,table=config['base'],config['table'];policy=policy_checked(config['policy'])
     execution=ensure_ledger(api,root,project,base,table);approval=ensure_ledger(api,root,project+'-approval',base,table)
     rows=api.request('GET','/api/v1/data-tables/'+execution['table']+'/rows')['data']
@@ -338,9 +353,9 @@ def _promote_approval(api, root, project):
         if role not in pool:continue
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']+'-paid';identifier(path)
         new['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow+'-paid',
-            scheduled(plan_workflow(base,table,flow,approval,policy)),{'httpCustomAuth':pool['feishu']})
+            scheduled(plan_workflow(base,table,flow,approval,policy,**model_options)),{'httpCustomAuth':pool['feishu']})
         new['workflows']['confirm-'+flow]=provision(api,root,project+'-confirm-'+flow+'-paid',
-            confirmation_workflow(base,table,flow,execution,approval,policy,path),
+            confirmation_workflow(base,table,flow,execution,approval,policy,path,**model_options),
             {'httpCustomAuth':pool['feishu'],'httpHeaderAuth':pool[role],
              'relay':{'type':'httpHeaderAuth','data':{'name':'X-VF-Event-Relay','value':values['relay_token']}}})
         new['hooks'][flow]=path

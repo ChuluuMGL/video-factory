@@ -41,6 +41,12 @@ class Upgrade(unittest.TestCase):
         private_write(self.root/'binding-fixture-probe.json',self.binding)
         self.api.workflows['wf1']={'name':'My preserved workflow','active':False, **copy.deepcopy(self.binding['owned_template'])}
     def plan(self): return preview(self.api,self.root,'fixture')['plan']
+    def test_changed_provider_cannot_repurpose_saved_credential_during_upgrade(self):
+        from portable_models import save, selection
+        save(self.root,'fixture',self.api.url,selection('qwen-cn'))
+        private_write(self.root/'credentials-fixture.json',{'origin':self.api.url,'project':'fixture','roles':{'script':{'id':'old-deepseek'}}})
+        with self.assertRaisesRegex(Fault,'CREDENTIAL_MODEL_MISMATCH'):self.plan()
+        self.assertEqual(self.api.puts,[])
     def test_update_preserves_ids_credentials_name_and_remains_disabled(self):
         plan=self.plan(); self.assertEqual(self.api.puts,[])
         result=apply(self.api,self.root,'fixture',plan)

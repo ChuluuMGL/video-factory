@@ -21,7 +21,7 @@ import venv
 from portable_n8n import Fault, private_write, locked, environment, health, ready, local_control, run_checked
 from portable_events import secure_directory, receiver_lock
 
-FILES=('portable_service.py','portable_n8n.py','portable_events.py','portable_approval.py','portable_upgrade.py','n8n_workflows.py','node_runtime.py')
+FILES=('portable_service.py','portable_n8n.py','portable_events.py','portable_approval.py','portable_upgrade.py','portable_models.py','n8n_workflows.py','node_runtime.py')
 
 
 def path_text(value):

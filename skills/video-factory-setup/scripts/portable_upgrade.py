@@ -58,6 +58,23 @@ def scope(api, root, project):
     files = {project_file: config} if (root / project_file).exists() else {}
     if event:
         files[event_file] = event
+    from portable_models import load as load_models, selection
+    models = load_models(root,project,api.url)
+    model_file='models-'+project+'.json'
+    if (root/model_file).exists(): files[model_file]=read(root,model_file)
+    credential_file='credentials-'+project+'.json'
+    if (root/credential_file).exists():
+        pool=read(root,credential_file)
+        if pool.get('origin')!=api.url or pool.get('project')!=project:
+            raise Fault('UPGRADE_CREDENTIAL_SCOPE_CHANGED')
+        if 'script' in pool.get('roles',{}) and pool.get('script_selection',selection())!=models:
+            raise Fault('UPGRADE_SCRIPT_CREDENTIAL_MODEL_MISMATCH')
+        files[credential_file]=pool
+    elif models!=selection():
+        raise Fault('UPGRADE_MODEL_CREDENTIAL_EVIDENCE_REQUIRED')
+    if event and event.get('script_selection',selection())!=models:
+        raise Fault('UPGRADE_MODEL_SCOPE_CHANGED')
+    config={**config,'script_selection':models}
     ledgers = {}
     for name in (project, project + '-approval'):
         relative = 'ledger-' + name + '.json'
@@ -84,6 +101,9 @@ def templates(project, config, event, ledgers, root):
     from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow, recovery_workflow
     from portable_approval import scheduled, plan_workflow, confirmation_workflow
     base, table = config['base'], config['table']
+    from portable_models import selection
+    selected=config.get('script_selection',selection())
+    model_options={} if selected==selection() else {'script_selection':selected}
     result = {}
     execution = ledgers.get(project)
     for flow in ('probe', 'schema', 'script', 'video-submit', 'video-poll', 'recover'):
@@ -94,7 +114,7 @@ def templates(project, config, event, ledgers, root):
         template = (probe_workflow(base, table) if flow == 'probe' else
                     schema_workflow(base, table) if flow == 'schema' else
                     recovery_workflow(base, table, execution) if flow == 'recover' else
-                    production_workflow(base, table, flow))
+                    production_workflow(base, table, flow,**model_options))
         if flow in ('script', 'video-submit'): template = guard_workflow(template, execution)
         result[name] = template
     if event:
@@ -109,12 +129,12 @@ def templates(project, config, event, ledgers, root):
                 flow = logical[5:]
                 if flow not in ('script', 'video-submit'): raise Fault('UPGRADE_UNKNOWN_FLOW')
                 template = scheduled(plan_workflow(base, table, flow, approval, event['policy'],
-                                                  verification_only=event['verification_only']))
+                                                  verification_only=event['verification_only'],**model_options))
             elif logical.startswith('confirm-'):
                 flow = logical[8:]
                 if flow not in ('script', 'video-submit'): raise Fault('UPGRADE_UNKNOWN_FLOW')
                 template = confirmation_workflow(base, table, flow, execution, approval, event['policy'],
-                    event['hooks'][flow], verification_only=event['verification_only'])
+                    event['hooks'][flow], verification_only=event['verification_only'],**model_options)
             else: raise Fault('UPGRADE_UNKNOWN_FLOW')
             binding = read(root, 'binding-' + name + '.json')
             if binding['workflow'] != item['workflow']: raise Fault('UPGRADE_WORKFLOW_REFERENCE_CHANGED')

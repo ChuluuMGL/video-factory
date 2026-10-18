@@ -60,3 +60,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 ## 已有便携项目升级（源码候选；a37 发行包尚不含此命令）
 
 使用同一绑定目录，先停止本项目事件接收器并用 `approval-disable` 暂停原入口；核对正在执行的任务回执。执行 `portable_n8n.py --root <原绑定目录> upgrade-plan --url <原 n8n 地址> --project <原项目>`，向用户展示项目、工作流数量、变更数及计划摘要。明确确认该计划后，执行 `upgrade-apply` 的同样参数并加 `--expect-plan <完整摘要>`。API Key 只在隐藏终端输入。升级只修改已有关闭工作流并保留凭据引用、ID、Webhook 与账本；不创建表、不调用模型、不自动启用。未完成费用计划先用原 `approval-cancel` 逐条取消，未知执行先对账。PUT 结果未知时只能续接同一计划回读，不能删检查点或重新导入；读回仍是旧值也不自动重试。完成后做零费用检查，再明确恢复接收器和入口。旧版本不支持此命令时，不要删除绑定文件绕过校验。
+
+## 便携多脚本模型候选
+
+仅当完整 Skill 中包含 `scripts/portable_models.py` 时，`welcome` 才提供脚本供应商选择。该源码候选不在 a37 / a38 固定包；按 `docs/product/PORTABLE_SCRIPT_MODELS.md` 核对范围。续接沿用原模型和凭据；不同供应商使用独立项目及凭据，不能猜测 Key、改接口后沿用旧费用确认。其他模型尚需本项目真实验收，不把历史项目或合成测试说成已通过。
