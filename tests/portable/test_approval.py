@@ -197,7 +197,8 @@ const fn=new F('$json','$','$execution',process.argv[1]);
     def test_expired_policy_and_unrelated_edits_do_not_approve(self):
         w=confirmation_workflow('baseFixture','tableFixture','script',{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'confirm')
         source=next(n['parameters']['jsCode'] for n in w['nodes'] if n['name']=='Check protected plan')
-        fixture={'payload':json.dumps({'plan':{'policy':POLICY,'flow':'script','max_submissions':1,'automatic_retry':False,'expires_at':0,'verification_only':False}})}
+        from n8n_workflows import generation_profile
+        fixture={'payload':json.dumps({'plan':{'schema':2,'model':generation_profile('script'),'policy':POLICY,'flow':'script','max_submissions':1,'automatic_retry':False,'expires_at':0,'verification_only':False}})}
         js="const F=(async()=>{}).constructor;new F('$json',process.argv[1])(JSON.parse(process.argv[2])).then(()=>process.exit(9)).catch(e=>{if(e.message!=='APPROVAL_EXPIRED')process.exit(8)});"
         result=subprocess.run(['node','-e',js,source,json.dumps(fixture)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
