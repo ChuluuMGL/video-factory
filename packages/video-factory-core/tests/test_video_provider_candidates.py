@@ -15,6 +15,45 @@ H3_BODY = {'model': 'MiniMax-H3', 'duration': 5, 'content': [
 
 
 class CandidateVideoProviderTests(unittest.TestCase):
+    def test_kling_region_and_model_bind_both_submit_and_poll(self):
+        for region, host in [('beijing', 'api-beijing.klingai.com'),
+                             ('singapore', 'api-singapore.klingai.com')]:
+            provider = CandidateVideoProvider('kling', region=region, model='kling-3.0-turbo')
+            with patch('video_factory.video_provider_candidates.opener') as network:
+                response = network.return_value.open.return_value.__enter__.return_value
+                response.status = 200
+                response.read.return_value = b'{"code":0,"data":{"id":"task-12345"}}'
+                self.assertEqual(provider.submit({}, 'synthetic-key'), 'task-12345')
+                self.assertEqual(network.return_value.open.call_args.args[0].full_url,
+                                 'https://' + host + '/image-to-video/kling-3.0-turbo')
+                response.read.return_value = b'{"code":0,"data":[{"id":"task-12345","status":"processing"}]}'
+                self.assertEqual(provider.poll('task-12345', 'synthetic-key')['status'], 'running')
+                self.assertEqual(network.return_value.open.call_args.args[0].full_url,
+                                 'https://' + host + '/tasks?task_ids=task-12345')
+                self.assertEqual(network.return_value.open.call_count, 2)
+
+    def test_invalid_kling_profile_never_constructs_network_request(self):
+        with patch('video_factory.video_provider_candidates.opener') as network:
+            for options in ({'region': 'https://example.com'}, {'region': ''},
+                            {'model': '../tasks'}, {'model': ''}):
+                with self.subTest(options=options), self.assertRaises(RuntimeFault):
+                    CandidateVideoProvider('kling', **options)
+            with self.assertRaises(RuntimeFault):
+                CandidateVideoProvider('wan', region='beijing')
+            network.assert_not_called()
+
+    def test_kling_auth_failure_does_not_switch_region(self):
+        provider = CandidateVideoProvider('kling', region='beijing')
+        with patch('video_factory.video_provider_candidates.opener') as network:
+            response = network.return_value.open.return_value.__enter__.return_value
+            response.status = 401
+            response.read.return_value = b'{}'
+            with self.assertRaises(ProviderRejected):
+                provider.submit({}, 'synthetic-key')
+            self.assertEqual(network.return_value.open.call_count, 1)
+            self.assertTrue(network.return_value.open.call_args.args[0].full_url.startswith(
+                'https://api-beijing.klingai.com/'))
+
     def test_first_frame_formats_are_distinct(self):
         seedance = image_body('seedance', 'fixture prompt', H3_BODY)
         self.assertEqual(seedance['content'][1]['image_url']['url'], 'data:image/png;base64,YWJj')

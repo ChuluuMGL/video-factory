@@ -21,6 +21,9 @@ ROUTES = {
     'wan': ('https://dashscope.aliyuncs.com', 'wan2.7-i2v-2026-04-25'),
     'kling': ('https://api-singapore.klingai.com', 'kling-3.0'),
 }
+KLING_ORIGINS = {'beijing': 'https://api-beijing.klingai.com',
+                 'singapore': 'https://api-singapore.klingai.com'}
+KLING_MODELS = ('kling-3.0', 'kling-3.0-turbo')
 TASK_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{5,95}\Z')
 
 
@@ -102,11 +105,23 @@ def image_body(route, script, h3_body):
 
 class CandidateVideoProvider:
     """One POST; uncertain responses always require manual reconciliation."""
-    def __init__(self, route):
+    def __init__(self, route, *, region=None, model=None):
         if route not in ROUTES:
             raise RuntimeFault('VIDEO_PROVIDER_NOT_SUPPORTED')
         self.route = route
         self.origin, self.model = ROUTES[route]
+        # Credentials are region-specific. Never probe another region or
+        # silently fall back after authentication failure.
+        if route == 'kling':
+            self.region = 'singapore' if region is None else region
+            if self.region not in KLING_ORIGINS:
+                raise RuntimeFault('VIDEO_PROVIDER_REGION_UNSUPPORTED')
+            if model is not None and model not in KLING_MODELS:
+                raise RuntimeFault('VIDEO_PROVIDER_MODEL_UNSUPPORTED')
+            self.origin = KLING_ORIGINS[self.region]
+            self.model = self.model if model is None else model
+        elif region is not None or model is not None:
+            raise RuntimeFault('VIDEO_PROVIDER_PROFILE_OVERRIDE_UNSUPPORTED')
 
     def _call(self, method, path, secret, body=None):
         validate_secret(secret)
@@ -140,7 +155,7 @@ class CandidateVideoProvider:
         elif self.route == 'wan':
             path = '/api/v1/services/aigc/video-generation/video-synthesis'
         else:
-            path = '/image-to-video/kling-3.0'
+            path = '/image-to-video/' + self.model
         status, result = self._call('POST', path, secret, body)
         # An error response that also names a task is ambiguous, not proof
         # that no billable task was accepted. Never authorize a retry from it.
