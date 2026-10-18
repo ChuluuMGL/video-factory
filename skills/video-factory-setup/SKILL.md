@@ -23,7 +23,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 负责人身份与费用确认使用候选 `portable_approval.py` 和官方长连接 `portable_events.py`，先按 [负责人确认指南](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_BILLING_APPROVAL.md) 做零费用验收。不能用可编辑人员列、最后修改人或状态文字充当操作人认证。不得跳过真实事件验收直接启用付费入口；同一应用已有其他长连接时先处理分流冲突，不擅自停用其他项目。
 
-便携后台自启使用 `scripts/portable_service.py`，支持 `install/status/start/stop/restart/uninstall`。只接管本安装器创建的原生 n8n；已有实例保持原管理方式。桌面端明确告知是“当前用户登录后启动”，Linux root 才是系统开机启动，普通用户不自动开启 linger。事件服务必须先核对同一应用无其他接收器，才传 `--exclusive-app`；不因开机自启擅自启用收费工作流。安装后读取 OS 状态、重启后检查数据与事件回执；卸载注册保留所有业务数据。向导交接记录为 `bindings/handoff-PROJECT.json`，不要把“后台进程运行”写成业务验收通过。新增自启代码尚待本轮云端实测，固定发行包能力以版本回执为准。
+便携后台自启使用 `scripts/portable_service.py`，支持 `install/status/start/stop/restart/uninstall`。只接管本安装器创建的原生 n8n；已有实例保持原管理方式。桌面端明确告知是“当前用户登录后启动”，Linux root 才是系统开机启动，普通用户不自动开启 linger。事件服务必须先核对同一应用无其他接收器，才传 `--exclusive-app`；不因开机自启擅自启用收费工作流。接收器先等待 n8n `/healthz/readiness`；不能将 `/healthz` 的进程存活视为数据库就绪。安装后读取 OS 状态、重启后检查数据与事件回执；卸载注册保留所有业务数据。向导交接记录为 `bindings/handoff-PROJECT.json`，不要把“后台进程运行”写成业务验收通过。新增自启代码尚待本轮云端实测，固定发行包能力以版本回执为准。
 
 ## 安装、配置与接入
 

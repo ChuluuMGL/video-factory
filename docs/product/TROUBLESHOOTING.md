@@ -31,6 +31,7 @@
 | `SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS` | 使用同一 `--root`、`--component` 运行 `status`，检查该服务的系统状态、执行路径和端口。数据保留，不删目录重装。 |
 | `SERVICE_DEFINITION_CHANGED_PRESERVED` | 原启动定义被外部修改，安装器停止接管；先比较保存的定义与系统定义，不能强制覆盖其他人的配置。 |
 | 关闭终端后运行，但重启电脑后没有启动 | Mac/Windows 默认在当前用户登录后启动；普通 Linux 用户需要登录或已配置 linger；Docker 需其自身服务启动。详见[自启方式](PORTABLE_N8N.md#后台运行与自启开发候选)。 |
+| `SERVICE_N8N_NOT_READY_NO_EVENT_DISPATCH` | n8n 数据库尚未就绪；检查 `/healthz/readiness`，不能仅看 `/healthz`。等待恢复后再检查服务，保留事件队列；不要重发付费任务。 |
 | 飞书接收器启动了但审核没有推进 | OS `running` 只证明进程存在。继续核对应用、事件订阅、同应用是否有其他接收器、真实 SDK 回执及未知派发状态。不要直接重发付费任务。 |
 
 取消自启使用 `uninstall`，保留数据；`stop` 只暂停当前进程，后续登录或开机可能再次启动。

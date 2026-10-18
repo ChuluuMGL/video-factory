@@ -18,7 +18,7 @@ import sys
 import time
 import venv
 
-from portable_n8n import Fault, private_write, locked, environment, health, local_control, run_checked
+from portable_n8n import Fault, private_write, locked, environment, health, ready, local_control, run_checked
 from portable_events import secure_directory, receiver_lock
 
 FILES=('portable_service.py','portable_n8n.py','portable_events.py','portable_approval.py','n8n_workflows.py','node_runtime.py')
@@ -267,8 +267,10 @@ def serve(root,component):
     if component=='events':
         from portable_events import serve as events
         url=json.loads((root/'events.json').read_text(encoding='utf-8'))['origin']
-        for _ in range(30):
-            if health(url):break
+        # Boot may involve database recovery after the HTTP listener is alive.
+        # Wait before opening the SDK receiver or dispatching the durable inbox.
+        for _ in range(150):
+            if ready(url):break
             time.sleep(2)
         else:raise Fault('SERVICE_N8N_NOT_READY_NO_EVENT_DISPATCH')
         return events(root)

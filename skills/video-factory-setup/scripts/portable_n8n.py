@@ -307,6 +307,15 @@ def health(url):
         return False
 
 
+def ready(url):
+    """Database readiness, distinct from a live HTTP listener."""
+    try:
+        with build_opener(NoRedirect).open(origin(url) + '/healthz/readiness', timeout=2) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
 def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200):
     if type(dependency_timeout) is not int or not 60 <= dependency_timeout <= 7200:
         raise Fault('DEPENDENCY_TIMEOUT_MUST_BE_60_TO_7200_SECONDS')

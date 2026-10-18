@@ -14,6 +14,29 @@ from portable_service import Backend, system_quote, install, control, location, 
 
 
 class Service(unittest.TestCase):
+    def test_live_http_listener_does_not_imply_database_readiness(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        import threading
+        from portable_n8n import health, ready
+        paths=[]
+        class Handler(BaseHTTPRequestHandler):
+            database_ready=False
+            def do_GET(self):
+                paths.append(self.path)
+                self.send_response(200 if self.path=='/healthz' or self.database_ready else 503)
+                self.end_headers()
+            def log_message(self,*args):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            url='http://127.0.0.1:'+str(server.server_port)
+            self.assertTrue(health(url));self.assertFalse(ready(url))
+            Handler.database_ready=True
+            self.assertTrue(ready(url))
+            self.assertEqual(paths,['/healthz','/healthz/readiness','/healthz/readiness'])
+        finally:
+            server.shutdown();server.server_close();thread.join()
+
     def test_commands_preserve_spaces_unicode_and_do_not_include_credentials(self):
         with tempfile.TemporaryDirectory(prefix='vf 空格 ') as d:
             command=[str(Path(d)/'python.exe'),str(Path(d)/'runner.py'),'--root',d]
@@ -91,10 +114,10 @@ class Service(unittest.TestCase):
     def test_receiver_waits_for_n8n_before_reading_or_dispatching_events(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);(root/'events.json').write_text(json.dumps({'origin':'http://127.0.0.1:5678'}))
-            with patch('portable_service.health',side_effect=[False,True]),patch('portable_service.time.sleep'),\
+            with patch('portable_service.ready',side_effect=[False]*45+[True]),patch('portable_service.time.sleep'),\
                 patch('portable_events.serve') as receiver:
                 serve(root,'events');receiver.assert_called_once_with(root.resolve())
-            with patch('portable_service.health',return_value=False),patch('portable_service.time.sleep'),\
+            with patch('portable_service.health',return_value=True),patch('portable_service.ready',return_value=False),patch('portable_service.time.sleep'),\
                 patch('portable_events.serve') as receiver:
                 with self.assertRaisesRegex(Fault,'NOT_READY'):serve(root,'events')
                 receiver.assert_not_called()
