@@ -2,7 +2,7 @@
 
 本页供管理员、实施人员和 Agent 排查自托管安装。先确认正在运行的 `vfctl` 版本、项目、步骤和**准确错误码**，再读对应章节；不要仅凭页面提示或 CI 通过判断任务已完成。客户服务器、飞书 Base、n8n 和模型服务分别回读。
 
-本机或已有 n8n 使用[便携候选指南](PORTABLE_N8N.md)，固定服务器包仍要求 Ubuntu 24.04 x86_64。先核对路线与版本，不能把服务器包的限制套到便携路线。遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED` 等平台错误时，检查是否误用了服务器 bootstrap；保留现有 n8n，不绕过检查。
+本机或已有 n8n 使用[a36 便携路线指南](PORTABLE_N8N.md)，固定服务器包仍要求 Ubuntu 24.04 x86_64。先核对路线与版本，不能把服务器包的限制套到便携路线。遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED` 等平台错误时，检查是否误用了服务器 bootstrap；保留现有 n8n，不绕过检查。
 
 | 现象或错误 | 先检查 | 安全续接 |
 |---|---|---|
@@ -21,7 +21,7 @@
 | 视频或附件未回写 | 媒体文件解码和 SHA-256、附件上传回执、远端记录和写入意图 | 先回读并对账，不删除旧媒体或伪造“审核通过”。见[结果同步](BASE_RESULTS.md)。 |
 | 升级或恢复后服务不可用 | 旧、新 stack 路径、容器、数据库、备份和恢复回执 | 确认当前运行版本及回退路径；备份存在不等于恢复成功。见[Stack 操作](STACK_USAGE.md)。 |
 
-## 便携候选：终端与后台运行
+## a36 便携路线：终端与后台运行
 
 | 现象 | 处理方式 |
 |---|---|
@@ -38,7 +38,7 @@
 
 ## 收到负责人确认，但没有开始生成
 
-便携候选的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。
+a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。
 
 先回读当前行、受保护审批与执行账本，以及 n8n 事件日志的节点轨迹。默认不保存完整执行数据，执行 API 没有记录不等于模型未调用。保留失败事件，不清队列、不自动重发；仅在确认未消费计划、未到模型节点、原计划未过期且当前内容一致后，再由负责人决定续接。原始日志仅保留在受控环境。详见[费用确认排查](PORTABLE_BILLING_APPROVAL.md#失败与停用)。
 
