@@ -807,6 +807,8 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    # Child modules must share this entrypoint's Fault class, not import a second copy.
+    sys.modules.setdefault('portable_n8n', sys.modules[__name__])
     # Keep Chinese prompts/JSON usable when an Agent pipes Windows output.
     for stream in (sys.stdout,sys.stderr):
         if hasattr(stream,'reconfigure'): stream.reconfigure(encoding='utf-8')
