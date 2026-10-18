@@ -224,7 +224,7 @@ def wait_running(root,component):
     for _ in range(60):
         state=backend.control('status')
         if state['running']:
-            if component!='n8n' or health(json.loads((Path(root)/'local.json').read_text(encoding='utf-8'))['origin']):
+            if component!='n8n' or ready(json.loads((Path(root)/'local.json').read_text(encoding='utf-8'))['origin']):
                 return {**state,'installed':True,'provider_calls_by_setup':0,'production_ready':False}
         time.sleep(2)
     raise Fault('SERVICE_START_NOT_VERIFIED_DATA_PRESERVED_RUN_STATUS')

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'skills/video-factory-setup/scripts'))
 from portable_n8n import Fault, ask_choice, ask_value, identifier, welcome, private_write
-from portable_service import Backend, system_quote, install, control, location, serve
+from portable_service import Backend, system_quote, install, control, location, serve, wait_running
 
 
 class Service(unittest.TestCase):
@@ -36,6 +36,28 @@ class Service(unittest.TestCase):
             self.assertEqual(paths,['/healthz','/healthz/readiness','/healthz/readiness'])
         finally:
             server.shutdown();server.server_close();thread.join()
+
+    def test_install_receipt_waits_for_database_readiness(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            private_write(root/'local.json',{'origin':'http://127.0.0.1:5678'})
+            with patch('portable_service.backend_for') as backend, \
+                patch('portable_service.ready',side_effect=[False,False,True]) as readiness, \
+                patch('portable_service.health',return_value=True) as listener, \
+                patch('portable_service.time.sleep') as pause:
+                backend.return_value.control.return_value={'running':True,'startup':'user-login'}
+                result=wait_running(root,'n8n')
+                self.assertTrue(result['installed'])
+                self.assertEqual(readiness.call_count,3)
+                self.assertEqual(pause.call_count,2)
+                listener.assert_not_called()
+            with patch('portable_service.backend_for') as backend, \
+                patch('portable_service.ready',return_value=False), \
+                patch('portable_service.time.sleep'):
+                backend.return_value.control.return_value={'running':True}
+                with self.assertRaisesRegex(Fault,'START_NOT_VERIFIED_DATA_PRESERVED'):
+                    wait_running(root,'n8n')
+                self.assertTrue((root/'local.json').exists())
 
     def test_commands_preserve_spaces_unicode_and_do_not_include_credentials(self):
         with tempfile.TemporaryDirectory(prefix='vf 空格 ') as d:
