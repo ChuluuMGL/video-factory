@@ -26,13 +26,13 @@ Source, the complete Skill and pinned server packages are publicly readable with
 
 Cloud regression covers fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL, real n8n, cold restore, and disconnected installation with both Docker storage modes. Results apply to the exact source commit checked by Actions.
 
-A development candidate completed one real-account flow in an isolated Base: script return, revision-two approval, one real H3 generation, original-row video writeback and human video approval. The authenticated event and server ledger read back the same revision as `accepted`. **Fresh fixed-release deployment, live script-model generation, a second project, distinct employee permissions and nonauthor installation remain separate acceptance gates.** Historical examples and a successful installation do not replace them.
+Isolated real-account acceptance verified Feishu script revision and approval, one H3 generation and video writeback, and a fresh designated-owner-confirmed DeepSeek request without manual continuation. Human approval was read back in Feishu. Distinct-account authorization, independent installation and actual desktop logout/login remain separate acceptance gates.
 
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
 ## Choose what you want to run
 
-The local/existing-n8n candidate passes real n8n integration on Windows, macOS, Linux and Docker, using synthetic Feishu/model endpoints. [PR #49](https://github.com/ChuluuMGL/video-factory/pull/49) implements installation, guided configuration, credential reuse and workflow execution. See the [candidate guide and evidence](docs/product/PORTABLE_N8N.md). Real business acceptance remains open; this is not a stable release.
+The a36 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. Public downloads use the version shown in Releases.
 
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
@@ -40,14 +40,14 @@ The Setup Skill first asks where your n8n runs, whether a Feishu application and
 |---|---|---|
 | Use n8n in a browser | Sign up for [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md); no local n8n or Docker installation is needed | Standalone n8n, **not** a Video Factory installation |
 | Try n8n locally on Windows/Mac | Install Node.js as required by the [official n8n npm guide](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md), run `npx n8n`, then open `http://localhost:5678`. The upstream guide warns that npm installs are deprecated from n8n 3.0 | Standalone trial; it **does not** install this product |
-| Validate local installation or connect existing n8n | Run candidate Skill `portable_n8n.py welcome`; choose existing n8n, Node.js or Docker | Configures Feishu/model workflows without another Ubuntu server; real business acceptance remains open |
-| Install the current pinned release | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
+| Install locally or connect existing n8n | Run the complete Skill `portable_n8n.py welcome`; choose existing n8n, Node.js or Docker | Configures Feishu/model workflows without another Ubuntu server; verify permissions and tasks for the installed project |
+| Install the complete server stack | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
 
-**Pinned package versus portable candidate:** the current server package still requires Ubuntu. PR #49 implements local installation and existing-n8n integration through the public API while preserving existing workflows and credentials. Cloud SaaS has not been tested this round. Follow the [portable guide](docs/product/PORTABLE_N8N.md) for candidate validation, not the server package's bootstrap.
+**Choose the installation route:** the complete Skill supports local Node.js, Docker and an existing n8n instance, preserving workflows and credentials. The separate complete server stack requires Ubuntu. Cloud SaaS has not been tested. Follow the [portable guide](docs/product/PORTABLE_N8N.md) for local/existing instances.
 
-The candidate also provides [background startup](docs/product/PORTABLE_N8N.md#后台运行与自启开发候选): boot-time services for Linux root and login-time jobs for macOS/Windows. Existing n8n retains its own management.
+The portable route provides [background startup](docs/product/PORTABLE_N8N.md#后台运行与自启): boot-time services for Linux root and login-time jobs for macOS/Windows. Existing n8n retains its own management.
 
-The portable development candidate adds [designated-owner billing approval](docs/product/PORTABLE_BILLING_APPROVAL.md): first validate a real Feishu event without model calls, then explicitly enable plan-bound execution. This is not a stable-release acceptance claim.
+The portable route includes [designated-owner billing approval](docs/product/PORTABLE_BILLING_APPROVAL.md): first validate a real Feishu event without model calls, then explicitly enable plan-bound execution. This is not a stable-release acceptance claim.
 
 ## Model availability
 
@@ -81,7 +81,7 @@ terminal on my server; do not collect them in chat.
 
 For the current pinned package's **full automated deployment**, prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
-An agent on Windows or macOS connects to that Ubuntu server over SSH. The current release does not deploy its full stack natively on Windows/macOS; this does not prevent standalone use of n8n Cloud or local n8n.
+Windows and macOS users can choose local Node.js, Docker or an existing n8n instance. SSH access to Ubuntu is required only when selecting the complete server stack.
 
 Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 
