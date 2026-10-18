@@ -396,7 +396,7 @@ try:
     approval=ensure_ledger(api,root/'bindings','owner-approval','baseFixture','tableFixture')
     owner_execution=ensure_ledger(api,root/'bindings','owner-execution','baseFixture','tableFixture')
     policy={'app':'cli_fixture','tenant':'tenant_fixture','billing_owner':'ou_owner','billing_account':'test-account','configuration':'fixture-v1'}
-    owner_plan=provision(api,root/'bindings','owner-plan',plan_workflow('baseFixture','tableFixture','script',approval,policy,feishu_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
+    owner_plan=provision(api,root/'bindings','owner-plan',plan_workflow('baseFixture','tableFixture','script',approval,policy,feishu_origin=fixture_origin,script_origin=fixture_origin),{'httpCustomAuth':credentials['httpCustomAuth']})
     owner_flow=provision(api,root/'bindings','owner-confirm',confirmation_workflow('baseFixture','tableFixture','script',owner_execution,approval,policy,'owner-confirm',feishu_origin=fixture_origin,script_origin=fixture_origin),credentials)
     state['status']='申请脚本计划'
     execute(owner_plan['workflow'])

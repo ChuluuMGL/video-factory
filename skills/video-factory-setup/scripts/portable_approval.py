@@ -9,7 +9,7 @@ from uuid import uuid5, NAMESPACE_URL
 from pathlib import Path
 from portable_n8n import identifier, Fault
 from n8n_workflows import (code, http, start, compile_nodes, ledger_update,
-                           production_workflow, guard_workflow, persisted_fields_check)
+                           production_workflow, guard_workflow, persisted_fields_check, generation_profile)
 
 APPROVAL_FIELDS = {'生成计划': 1, '费用确认编号': 1}
 APPROVAL_STATUSES = ['申请脚本计划', '申请视频计划', '费用待确认']
@@ -42,17 +42,20 @@ def scheduled(workflow):
     return workflow
 
 
-def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn',verification_only=False):
+def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn',
+                  script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn',
+                  verification_only=False):
     """No model nodes. One pending plan per project; never replace it silently."""
     policy = policy_checked(policy)
     if flow not in ('script', 'video-submit'):
         raise Fault('APPROVAL_FLOW_INVALID')
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
     url, nodes = start(base, table, feishu_origin)
     state = '申请脚本计划' if flow == 'script' else '申请视频计划'
     search = {'filter': {'conjunction': 'and', 'conditions': [
         {'field_name': '状态', 'operator': 'is', 'value': [state]}]}}
     nodes += [http('Find plan request', url+'/search?page_size=1', 'POST', json.dumps(search, ensure_ascii=False), feishu=True),
-        code('Select task', "const verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+",base="+json.dumps(base)+",table="+json.dumps(table)+";"+r'''
+        code('Select task', "const model="+json.dumps(profile)+",verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+",base="+json.dumps(base)+",table="+json.dumps(table)+";"+r'''
 if($json.code!==0) throw new Error('PLAN_SEARCH_FAILED');
 const row=$json.data.items?.[0]; if(!row) return [];
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
@@ -63,9 +66,7 @@ if(flow==='video-submit' && text(fields['视频任务ID'])) throw new Error('EXI
 const snapshot={};
 for(const k of ['商品资料','脚本','审核意见','脚本历史','参考图链接','视频任务ID']) snapshot[k]=text(fields[k]);
 snapshot['参考图附件']=(fields['参考图附件']||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size}));
-const model=flow==='script'?{provider:'DeepSeek',model:'deepseek-flash',max_tokens:2048}:
-  {provider:'MiniMax China',model:'MiniMax-H3',duration:6,resolution:'768P',ratio:'9:16'};
-const plan={schema:1,id:'vf-'+policy.configuration+'-'+flow+'-'+String($execution.id),base,table,record:row.record_id,
+const plan={schema:2,id:'vf-'+policy.configuration+'-'+flow+'-'+String($execution.id),base,table,record:row.record_id,
   policy,flow,model,verification_only:verificationOnly,max_submissions:1,automatic_retry:false,snapshot,expires_at:Date.now()+86400000};
 const display=(verificationOnly?'【零费用身份验收：不调用模型，不生成内容】\n':'【确认后将调用模型并产生费用】\n')+JSON.stringify(plan,null,2)+
   (verificationOnly?'\n本次仅核验身份和一次性确认。':'\n费用确认：使用上列费用账户，最多调用一次，实际费用按供应商计费；不是人民币金额保证。')+
@@ -102,6 +103,7 @@ def confirmation_workflow(base, table, flow, execution, approval, policy, path, 
     it has no provider nodes. It cannot be toggled via a webhook request.
     """
     policy=policy_checked(policy); identifier(path)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
     workflow=guard_workflow(production_workflow(base,table,flow,feishu_origin=feishu_origin,
                           script_origin=script_origin,video_origin=video_origin),execution)
     old=workflow['nodes']; url=f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/records/'
@@ -119,8 +121,11 @@ if(e.event.operator_id?.open_id!==policy.billing_owner) throw new Error('BILLING
 if(typeof e.header.event_id!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(e.header.event_id) ||
  !Array.isArray(e.event.action_list) || e.event.action_list.length>100) throw new Error('APPROVAL_EVENT_INVALID');
 return [{json:{event:e}}];'''),read_approval(approval,'awaiting'),
-        code('Check protected plan',"const verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+";"+r'''
+        code('Check protected plan',"const expectedModel="+json.dumps(profile)+",verificationOnly="+json.dumps(verification_only)+",policy="+json.dumps(policy)+",flow="+json.dumps(flow)+";"+r'''
 const saved=JSON.parse($json.payload),p=saved.plan;
+const canonical=x=>Array.isArray(x)?x.map(canonical):x && typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonical(x[k])])):x;
+if(p.schema!==2 || JSON.stringify(canonical(p.model))!==JSON.stringify(canonical(expectedModel)))
+ throw new Error('APPROVAL_MODEL_PROFILE_CHANGED_REPLAN');
 if(JSON.stringify(p.policy)!==JSON.stringify(policy) || p.flow!==flow || p.max_submissions!==1 || p.automatic_retry!==false || p.verification_only!==verificationOnly)
  throw new Error('APPROVAL_POLICY_CHANGED');
 if(!Number.isFinite(p.expires_at) || p.expires_at<Date.now()) throw new Error('APPROVAL_EXPIRED');

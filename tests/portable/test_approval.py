@@ -97,6 +97,50 @@ class Approval(unittest.TestCase):
             for p in root.iterdir():self.assertNotIn('synthetic-app-secret',p.read_text())
             with self.assertRaisesRegex(Fault,'EXIST'):save_secrets(root,'new','new')
 
+    def test_confirmed_model_profile_is_bound_to_actual_request(self):
+        from n8n_workflows import generation_profile
+        for flow in ('script', 'video-submit'):
+            options={'script_origin':'https://script.example.invalid','video_origin':'https://video.example.invalid'}
+            profile=generation_profile(flow,**options)
+            plan=plan_workflow('baseFixture','tableFixture',flow,{'table':'plans','row':1},POLICY,**options)
+            confirm=confirmation_workflow('baseFixture','tableFixture',flow,{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'confirm',**options)
+            node=lambda w,name:next(n for n in w['nodes'] if n['name']==name)
+            generate=node(confirm,'Generate script' if flow=='script' else 'Submit video once')
+            self.assertEqual(generate['parameters']['url'],profile['endpoint'])
+            payload={'policy':POLICY,'flow':flow,'schema':2,'model':profile,'max_submissions':1,
+                     'automatic_retry':False,'verification_only':False,'expires_at':9999999999999}
+            cases=[{'plan':payload,'ok':True}]
+            reordered=copy.deepcopy(payload);reordered['model']=dict(reversed(list(profile.items())))
+            cases.append({'plan':reordered,'ok':True})
+            for key in profile:
+                changed=copy.deepcopy(payload);changed['model'][key]='changed'
+                cases.append({'plan':changed,'ok':False})
+            for version in (1,None):
+                changed=copy.deepcopy(payload);changed['schema']=version
+                cases.append({'plan':changed,'ok':False})
+            missing=copy.deepcopy(payload);missing.pop('model');cases.append({'plan':missing,'ok':False})
+            unknown=copy.deepcopy(payload);unknown['model']['unconfirmed']='extra';cases.append({'plan':unknown,'ok':False})
+            script="""const assert=require('node:assert/strict');
+const data=JSON.parse(process.argv[1]);
+const planFn=new Function('$json','$execution',data.planSource);
+const saved=planFn({code:0,data:{items:[{record_id:'recFixture',fields:{'商品资料':'fixture','脚本':'fixture','状态':data.flow==='script'?'申请脚本计划':'申请视频计划'}}]}},{id:'42'})[0].json.plan;
+assert.deepEqual(saved.model,data.profile);assert.equal(saved.schema,2);
+const check=new Function('$json',data.checkSource);
+for(const c of data.cases){const input={payload:JSON.stringify({plan:c.plan})};
+ if(c.ok)assert.equal(check(input)[0].json.plan.flow,data.flow);
+ else assert.throws(()=>check(input),/APPROVAL_MODEL_PROFILE_CHANGED_REPLAN/);}
+const build=new Function('$',data.buildSource);
+const refs=name=>({first:()=>({json:{product:'fixture',script:'fixture',feedback:'',model_references:['data:image/png;base64,YWJj']}})});
+const request=build(refs)[0].json;
+for(const [key,value] of Object.entries(data.profile))if(!['provider','endpoint'].includes(key))assert.deepEqual(request[key],value);
+"""
+            value={'flow':flow,'profile':profile,'cases':cases,
+                   'planSource':node(plan,'Select task')['parameters']['jsCode'],
+                   'checkSource':node(confirm,'Check protected plan')['parameters']['jsCode'],
+                   'buildSource':node(confirm,'Build script request' if flow=='script' else 'Build video request')['parameters']['jsCode']}
+            result=subprocess.run(['node','-e',script,json.dumps(value)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+
     def test_production_gate_has_no_manual_bypass_and_separate_relay_credential(self):
         w=confirmation_workflow('baseFixture','tableFixture','script',{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'confirm')
         self.assertNotIn('n8n-nodes-base.manualTrigger',[n['type'] for n in w['nodes']])
