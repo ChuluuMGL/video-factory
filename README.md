@@ -1,6 +1,6 @@
 # Video Factory
 
-> 通过 Agent Skill，把视频工作流部署到你自己的服务器。
+> 通过 Agent Skill，在自己的 n8n 上搭建视频工作流。
 >
 > 默认连接飞书 Base 与 n8n，同一客户可持续新增项目。
 
@@ -16,21 +16,50 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 - **多项目复用**：同一客户新增项目时复用基础服务，分别配置商品、飞书和模型。
 - **可续接维护**：同一 Skill 支持首次安装、新增项目、继续安装和故障排查。
 
-安装程序运行在客户服务器；Skill 是 AI 助手的操作指南。官网用于介绍与安装，不保存客户项目账户或模型密钥。
+Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为本机或服务器。官网用于介绍与安装，不保存客户项目账户或模型密钥。
 
 ## 当前版本与使用范围
 
 **MIT 开源测试版。固定版本与摘要以公开 Release 为准。**
 
-官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户自行提供服务器、飞书及模型账户。
+官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户提供运行环境、飞书及模型账户。
 
 云端回归覆盖空白 Ubuntu、固定包匿名安装、私密终端 Setup、飞书授权模拟、PostgreSQL、真实 n8n、冷恢复和两种 Docker 存储模式断网安装。各项结果以对应源码提交的 Actions 为准。
 
-开发版已在隔离测试 Base 完成单账号脚本退回、第二版复审、单次真实 H3 生成、成片回写和本人表内视频通过；认证事件与服务器同一修订回读为 `accepted`。**新固定包部署、真实脚本模型、第二项目、不同员工权限和非作者完整安装仍需分别验收。**历史案例和安装成功不代替这些检查。
+隔离测试已完成真实飞书连接、DeepSeek 脚本生成、本人表内审核和一次 MiniMax H3 视频回写。负责人在飞书确认费用后，首次自动生成、单次计划消费和原行写回均通过，脚本已由本人审核。第二账号权限、非作者安装及桌面实际退出/登录仍保留待验。
 
 详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) · [当前状态](docs/product/STATUS.md)。
 
-## 开始安装
+## 先看安装目标
+
+a36 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。公开下载版本以 Release 为准。
+
+把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
+
+| 你要做什么 | 怎么开始 | 与 Video Factory 的关系 |
+|---|---|---|
+| 只想在浏览器里使用 n8n | 注册 [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md)，本机无需安装 n8n 或 Docker | 这是独立的 n8n，**不是** Video Factory 安装 |
+| 只想在 Windows/Mac 本机试用 n8n | 按 [n8n 官方 Node.js 要求](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)安装 Node.js，运行 `npx n8n`，再打开 `http://localhost:5678`；官方已提示 npm 安装方式从 n8n 3.0 起弃用 | 适合单独试用 n8n，**不会**安装本产品 |
+| 在本机安装或接入已有 n8n | 使用完整 Skill 的 `portable_n8n.py welcome`，选择已有实例、Node.js 或 Docker | 配置飞书和模型工作流；无需另租 Ubuntu，安装后核对本项目的权限与任务 |
+| 安装服务器完整栈 | 在自己的 Ubuntu 24.04 x86_64 服务器运行下方 Setup；Windows/Mac 上的 Agent 可通过 SSH 操作服务器 | 安装产品服务、PostgreSQL、自带 n8n；按需部署私网执行器 |
+
+**按所选路线安装：**完整 Skill 提供本机 Node.js、Docker 和已有 n8n 接入，保留原工作流及凭据；服务器完整栈另要求 Ubuntu。Cloud 真实实例本轮未测。本机/已有实例按[便携安装指南](docs/product/PORTABLE_N8N.md)操作，服务器完整栈使用对应 bootstrap。
+
+便携路线提供[后台运行与自启](docs/product/PORTABLE_N8N.md#后台运行与自启)：Linux root 随开机启动，Mac/Windows 随用户登录启动；已有 n8n 保留原管理方式。
+
+便携路线的[负责人身份与费用确认](docs/product/PORTABLE_BILLING_APPROVAL.md)：先做真实飞书零费用确认，再显式启用按计划执行。尚非稳定版验收声明。
+
+## 模型支持到哪一步
+
+| 用途 | 固定发行包可选 | 开发候选或待接入 |
+|---|---|---|
+| 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的脚本适配在[开发候选 PR #38](https://github.com/ChuluuMGL/video-factory/pull/38)，尚未完成各自真实账户验收 |
+| 视频 | MiniMax H3 | 可灵、Seedance 和万相视频的接口适配在[开发候选 PR #42](https://github.com/ChuluuMGL/video-factory/pull/42)，尚未接入正式 Setup 或完成真实生成验收 |
+| 图片 | 暂无独立图片生成路线 | Seedream（即梦图片）列在[待办 Issue #45](https://github.com/ChuluuMGL/video-factory/issues/45)；它不是 Seedance 视频接口 |
+
+旧项目用过某个模型、合成测试通过，都不等于它已在本产品的固定发行包中可选。不同接口仍需用各自账户完成调用、结果回写和人工审核验收；安装本身不触发付费生成。
+
+## 安装完整 Video Factory
 
 推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作服务器的 Agent。
 
@@ -42,14 +71,15 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 
 ```text
 请使用本仓库 skills/video-factory-setup/ 中的完整 Skill，
-带我在自己的服务器上首次安装 Video Factory，并配置第一个测试项目。
-使用 GitHub 最新公开测试发行的固定标签与摘要；先检查服务器和发行包，再逐步引导 Setup。
+先问我已有 n8n、飞书应用/Base 和希望运行产品服务的位置，保留现有配置，
+再告诉我当前版本可完成哪条路线；可安装时配置第一个测试项目。
+使用 GitHub 最新公开测试发行的固定标签与摘要；先检查环境和发行包，再逐步引导 Setup。
 密码和 API Key 默认在客户服务器的私密终端隐藏输入，不放在聊天中。
 ```
 
-准备一台 Ubuntu 24.04 x86_64 服务器（至少 4 GiB 内存）、服务器访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
+**若选择当前固定包的完整自动部署**，准备 Ubuntu 24.04 x86_64 主机（至少 4 GiB 内存）、访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
 
-在 Windows 或 Mac 上使用 Agent 安装时，Agent **远程连接这台 Ubuntu 服务器**。n8n 本身可在 Windows/macOS 的 Docker Desktop 上运行，但当前 Video Factory 发行包不能原生部署整套服务；已有独立 n8n 也不能直接接管。先读[平台与模型支持矩阵](docs/product/PLATFORMS_AND_MODELS.md)，避免卡在 Docker 或误把原项目模型当作本产品已接入。
+Windows/Mac 用户可直接选择本机 Node.js、Docker 或已有 n8n。只有选择 Ubuntu 完整栈时，Agent 才通过 SSH 连接服务器。
 
 固定发行包可匿名下载。不要把开发分支或临时 Actions 附件当作正式安装包。
 
@@ -67,10 +97,10 @@ Video Factory 正在把商品资料、脚本生成、视频生成和人工审核
 | 部分 | 位置与用途 |
 |---|---|
 | Setup Skill | 管理员或实施人员的 Agent，负责安装和维护 |
-| 产品服务、PostgreSQL、n8n | 客户服务器，保存配置并执行任务 |
+| n8n 与项目工作流 | 所选本机或服务器，保存配置并执行任务；完整栈另含产品服务和 PostgreSQL |
 | 可选项目 runner | 客户服务器 Docker 私网，推进已批准任务，无网页入口 |
 | 飞书 Base | 项目资料、来源任务与员工日常查看 |
-| 当前测试用审核命令 | `stack-feishu-session` 在私有终端完成本人飞书授权，逐条核验导入和审核；尚非飞书 Base 内的日常审核入口 |
+| 负责人费用确认 | 在飞书核对并确认单次生成计划；审核通过不会自动授权下一次付费调用 |
 
 [原任务表审核](docs/product/FEISHU_NATIVE_REVIEW.md)把脚本、版本和成片写回同一任务，由员工在飞书表内退回或通过。可选 [Base 结果同步](docs/product/BASE_RESULTS.md)只追加另一张结果快照表。终端审核用于技术验收；首次安装不部署常驻员工网页，见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
 

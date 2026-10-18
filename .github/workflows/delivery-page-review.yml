@@ -85,6 +85,7 @@ jobs:
       - name: Assemble draft and verify reader interactions
         run: |
           python .github/scripts/validate-skill.py skills/video-factory-setup
+          python -m compileall -q skills/video-factory-setup
           python .github/scripts/build-delivery.py --out ci-page/site --receipt ci-page/release/release.json --repository "$GITHUB_REPOSITORY"
           if [ -f ci-page/release/video-factory-setup.zip ]; then
             cmp ci-page/release/video-factory-setup.zip ci-page/site/video-factory-setup.zip

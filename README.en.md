@@ -1,6 +1,6 @@
 # Video Factory
 
-> Deploy video workflows to your own server with an Agent Skill.
+> Build video workflows on your own n8n with an Agent Skill.
 >
 > Feishu Base and n8n by default, with reusable infrastructure for multiple projects.
 
@@ -16,21 +16,50 @@ Video Factory is being built to connect product information, script generation, 
 - **Multiple projects:** reuse infrastructure while configuring products, Feishu and models per project.
 - **Resumable operations:** one Skill supports installation, new projects, interrupted setup and diagnosis.
 
-The installer runs on the customer's server. The Skill guides the AI agent. The public website explains the product and installation; it does not store customer project accounts or model keys.
+The Skill guides the AI agent; the selected route determines whether installation runs locally or on a server. The public website explains the product and installation; it does not store customer project accounts or model keys.
 
 ## Version and availability
 
 **MIT-licensed public alpha. The public Release defines the pinned version and hashes.**
 
-Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their own server, Feishu and model accounts.
+Source, the complete Skill and pinned server packages are publicly readable without GitHub login. Customers provide their runtime environment, Feishu and model accounts.
 
 Cloud regression covers fresh Ubuntu preparation, anonymous pinned-package installation, private-terminal Setup, synthetic Feishu authorization, PostgreSQL, real n8n, cold restore, and disconnected installation with both Docker storage modes. Results apply to the exact source commit checked by Actions.
 
-A development candidate completed one real-account flow in an isolated Base: script return, revision-two approval, one real H3 generation, original-row video writeback and human video approval. The authenticated event and server ledger read back the same revision as `accepted`. **Fresh fixed-release deployment, live script-model generation, a second project, distinct employee permissions and nonauthor installation remain separate acceptance gates.** Historical examples and a successful installation do not replace them.
+Isolated real-account acceptance verified Feishu script revision and approval, one H3 generation and video writeback, and a fresh designated-owner-confirmed DeepSeek request without manual continuation. Human approval was read back in Feishu. Distinct-account authorization, independent installation and actual desktop logout/login remain separate acceptance gates.
 
 See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
 
-## Get started
+## Choose what you want to run
+
+The a36 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. Public downloads use the version shown in Releases.
+
+The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
+
+| Goal | How to start | Relation to Video Factory |
+|---|---|---|
+| Use n8n in a browser | Sign up for [n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md); no local n8n or Docker installation is needed | Standalone n8n, **not** a Video Factory installation |
+| Try n8n locally on Windows/Mac | Install Node.js as required by the [official n8n npm guide](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md), run `npx n8n`, then open `http://localhost:5678`. The upstream guide warns that npm installs are deprecated from n8n 3.0 | Standalone trial; it **does not** install this product |
+| Install locally or connect existing n8n | Run the complete Skill `portable_n8n.py welcome`; choose existing n8n, Node.js or Docker | Configures Feishu/model workflows without another Ubuntu server; verify permissions and tasks for the installed project |
+| Install the complete server stack | Use the Setup instructions below on your own Ubuntu 24.04 x86_64 server; an agent on Windows/Mac can operate it over SSH | Installs product services, PostgreSQL, and the included n8n; deploy a private runner when needed |
+
+**Choose the installation route:** the complete Skill supports local Node.js, Docker and an existing n8n instance, preserving workflows and credentials. The separate complete server stack requires Ubuntu. Cloud SaaS has not been tested. Follow the [portable guide](docs/product/PORTABLE_N8N.md) for local/existing instances.
+
+The portable route provides [background startup](docs/product/PORTABLE_N8N.md#后台运行与自启): boot-time services for Linux root and login-time jobs for macOS/Windows. Existing n8n retains its own management.
+
+The portable route includes [designated-owner billing approval](docs/product/PORTABLE_BILLING_APPROVAL.md): first validate a real Feishu event without model calls, then explicitly enable plan-bound execution. This is not a stable-release acceptance claim.
+
+## Model availability
+
+| Purpose | Selectable in the pinned release | Development candidate or planned |
+|---|---|---|
+| Scripts | DeepSeek Flash | GPT, Gemini, MiniMax text, Qwen, and Doubao script routes are in [draft PR #38](https://github.com/ChuluuMGL/video-factory/pull/38); each still needs live-account acceptance |
+| Video | MiniMax H3 | Kling, Seedance, and Wan video API adapters are in [draft PR #42](https://github.com/ChuluuMGL/video-factory/pull/42); they are not wired into released Setup or verified with live generations |
+| Images | No separate image-generation route | Seedream image generation is tracked in [issue #45](https://github.com/ChuluuMGL/video-factory/issues/45); it is distinct from Seedance video |
+
+Use in an earlier project or passing synthetic tests does not make a provider selectable in the pinned release. Each new route still needs its own account, output writeback, and human-review acceptance. Installation does not itself trigger paid generation.
+
+## Install the full Video Factory stack
 
 Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) to download the complete Skill and give it to an agent that can read files and operate your server.
 
@@ -41,16 +70,18 @@ Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) 
 3. Give it the prompt below. The Skill guides acquisition and verification of the pinned release, followed by interactive setup.
 
 ```text
-Use the complete Skill in skills/video-factory-setup/ to install
-Video Factory on my own server and configure the first test project.
-Pin the latest public alpha Release tag and hashes. Check the server and package first,
+Use the complete Skill in skills/video-factory-setup/. First ask where my n8n
+runs, whether my Feishu app and Base exist, and where product services should run.
+Preserve existing resources and tell me which route this release can complete.
+When supported, configure my first test project. Pin the latest public alpha
+Release tag and hashes. Check the environment and package first,
 then guide me through Setup. Hide passwords and API keys in a private
 terminal on my server; do not collect them in chat.
 ```
 
-Prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
+For the current pinned package's **full automated deployment**, prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
 
-An agent on Windows or macOS connects to that Ubuntu server over SSH. n8n itself can run with Docker Desktop on those systems, but the current Video Factory release does not deploy its full stack natively there or adopt an existing standalone n8n. See the [platform and provider matrix](docs/product/PLATFORMS_AND_MODELS.md) before installation.
+Windows and macOS users can choose local Node.js, Docker or an existing n8n instance. SSH access to Ubuntu is required only when selecting the complete server stack.
 
 Pinned packages support anonymous download. Development branches and temporary Actions artifacts are not supported release packages.
 

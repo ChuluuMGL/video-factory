@@ -62,7 +62,7 @@ def build(out, wheel_dirs, source, public_release=False):
     docs = json.loads(Path('distribution/customer-docs.json').read_text())
     (root / 'docs/product').mkdir(parents=True)
     for name in docs:
-        assert re.fullmatch(r'[A-Z_]+\.md', name)
+        assert re.fullmatch(r'[A-Z0-9_]+\.md', name)
         shutil.copyfile(Path('docs/product') / name, root / 'docs/product' / name)
     shutil.copyfile('distribution/INSTALL.md', root / 'INSTALL.md')
     (root / 'templates').mkdir()
