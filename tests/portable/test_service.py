@@ -59,6 +59,26 @@ class Service(unittest.TestCase):
                     wait_running(root,'n8n')
                 self.assertTrue((root/'local.json').exists())
 
+    def test_manual_start_waits_for_readiness_and_does_not_restart_owned_listener(self):
+        from portable_n8n import local_control
+        for mode in ('docker','node'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                root=Path(d)
+                private_write(root/'local.json',{'origin':'http://127.0.0.1:5678',
+                    'mode':mode,'project':'fixture','pid':123,'process_identity':'owned'})
+                with patch('portable_n8n.run_checked'),patch('portable_n8n.health',return_value=True), \
+                    patch('portable_n8n.process_identity',return_value='owned'), \
+                    patch('portable_n8n.ready',side_effect=[False,False,True]) as readiness, \
+                    patch('portable_n8n.subprocess.Popen') as start,patch('portable_n8n.time.sleep'):
+                    self.assertEqual(local_control(root,'start')['status'],'reachable')
+                    self.assertEqual(readiness.call_count,3);start.assert_not_called()
+                with patch('portable_n8n.run_checked'),patch('portable_n8n.health',return_value=True), \
+                    patch('portable_n8n.process_identity',return_value='owned'), \
+                    patch('portable_n8n.ready',return_value=False),patch('portable_n8n.time.sleep'):
+                    with self.assertRaisesRegex(Fault,'START_TIMEOUT'):
+                        local_control(root,'start')
+                    self.assertTrue((root/'local.json').exists())
+
     def test_commands_preserve_spaces_unicode_and_do_not_include_credentials(self):
         with tempfile.TemporaryDirectory(prefix='vf 空格 ') as d:
             command=[str(Path(d)/'python.exe'),str(Path(d)/'runner.py'),'--root',d]

@@ -19,7 +19,7 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, health, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
+from portable_n8n import Fault, API, environment, health, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
@@ -515,6 +515,12 @@ try:
         local_control(root,'start')
         assert health(api_origin)
         print('OS service install/reuse/restart/stop/uninstall and manual resume passed',flush=True)
+    for _ in range(30):
+        try:
+            assert isinstance(api.request('GET','/api/v1/data-tables?limit=1')['data'],list)
+            break
+        except Fault:time.sleep(1)
+    else:raise AssertionError('PUBLIC_DATA_TABLE_API_NOT_READY_AFTER_RESTART')
     phase='script provider profiles through actual n8n and Base writeback'
     from portable_models import SCRIPTS,selection,profile
     for provider in SCRIPTS:

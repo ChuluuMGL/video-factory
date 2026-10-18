@@ -423,7 +423,11 @@ def local_control(root, action):
         elif action == 'start':
             if health(saved['origin']):
                 if saved.get('pid') and saved.get('process_identity') == process_identity(saved['pid']):
-                    return {'status': 'reachable', 'origin': saved['origin']}
+                    for _ in range(120):
+                        if ready(saved['origin']):
+                            return {'status': 'reachable', 'origin': saved['origin']}
+                        time.sleep(1)
+                    raise Fault('START_TIMEOUT_INSPECT_OWNED_N8N_PROCESS')
                 raise Fault('PORT_IN_USE_NOT_STARTED_BY_THIS_INSTALLER')
             executable = root / 'node_modules/n8n/bin/n8n'
             if not executable.is_file():
@@ -464,7 +468,7 @@ def local_control(root, action):
             private_write(root / 'local.json', saved)
         if action == 'start':
             for _ in range(120):
-                if health(saved['origin']):
+                if ready(saved['origin']):
                     return {'status': 'reachable', 'origin': saved['origin'], 'owner_setup': 'complete_in_n8n_editor'}
                 if saved['mode']=='node' and not process_identity(saved['pid']):
                     raise Fault('START_FAILED_INSPECT_PRIVATE_N8N_LOG')
