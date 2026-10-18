@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import subprocess
 import threading
 import zipfile
 from playwright.sync_api import sync_playwright
@@ -17,6 +18,11 @@ for name, digest in manifest['files'].items():
     assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
 with zipfile.ZipFile(root / 'video-factory-setup.zip') as bundle:
     names = bundle.namelist()
+    tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', 'skills/video-factory-setup']).decode().split('\0')
+    expected = {name.removeprefix('skills/') for name in tracked if name}
+    assert set(names) == expected and len(names) == len(expected), 'SKILL_SOURCE_ALLOWLIST_MISMATCH'
+    actual = {p.relative_to(root / 'skill').as_posix() for p in (root / 'skill').rglob('*') if p.is_file()}
+    assert actual == {name.removeprefix('video-factory-setup/') for name in expected}
     assert 'video-factory-setup/SKILL.md' in names
     for required in ('operations.md', 'start.md', 'handoff.md'):
         assert f'video-factory-setup/references/{required}' in names
