@@ -181,6 +181,21 @@ try:
             {'id':'existing-manual','name':'Existing manual trigger','type':'n8n-nodes-base.manualTrigger','typeVersion':1,'position':[0,0],'parameters':{}}],
         'connections':{},'settings':{'executionOrder':'v1'}})
     unrelated_before=api.request('GET','/api/v1/workflows/'+unrelated['id'])
+    # Real public PUT/readback on every Node OS and Docker; never execute this flow.
+    from portable_n8n import private_write
+    from portable_upgrade import preview as upgrade_preview, apply as upgrade_apply
+    upgrade_root=root/'upgrade-fixture'
+    upgrade_root.mkdir()
+    private_write(upgrade_root/'project-upgrade.json',{'origin':api.url,'base':'baseFixture','table':'tableFixture','app':'cli_fixture'})
+    previous=probe_workflow('baseFixture','tableFixture')
+    previous['nodes'][0]['position']=[20,20]
+    owned=provision_disabled(api,upgrade_root,'upgrade-probe',previous,credentials)
+    plan=upgrade_preview(api,upgrade_root,'upgrade')
+    upgraded=upgrade_apply(api,upgrade_root,'upgrade',plan['plan'])
+    assert upgraded['updated']==1 and upgraded['active'] is False
+    assert upgrade_apply(api,upgrade_root,'upgrade',plan['plan'])['updated']==0
+    assert api.request('GET','/api/v1/workflows/'+owned['workflow'])['active'] is False
+    assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     phase='public api import'
     workflow=probe_workflow('baseFixture','tableFixture',feishu_origin=fixture_origin)
     saved=provision(api,root/'bindings','probe',workflow,credentials)
@@ -340,7 +355,8 @@ try:
         claims=list(pool.map(claim,range(6)))
     assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==7 and all(not w['active'] for w in all_workflows)
+    assert len(all_workflows)==8 and all(not w['active'] for w in all_workflows)
+    assert owned['workflow'] in {w['id'] for w in all_workflows},'UPGRADED_WORKFLOW_ID_MUST_SURVIVE'
     assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and key not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')
