@@ -267,3 +267,56 @@ class ResultsTests(unittest.TestCase):
         self.remote.rows['recResult0']['fields']['视频'][0]['file_token'] = 'boxcnOther'
         with self.assertRaisesRegex(RuntimeFault, 'REMOTE_MISMATCH'):
             self.results.recovery_plan(self.admin, 'brand')
+
+    def rejected_create_checkpoint(self):
+        self.remote.lose = 'table_forbidden'
+        with self.assertRaisesRegex(RuntimeFault, 'APP_DOCUMENT_EDIT_REQUIRED'):
+            self.enable()
+        self.remote.lose = None
+        with self.store.connect() as db:
+            self.store.invalidate_worker_approvals(db)
+            db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:brand',))
+            return meta(db, control_key('brand'))
+
+    def test_rejected_create_checkpoint_can_recover_without_remote_writes(self):
+        old = self.rejected_create_checkpoint()
+        plan = self.results.recovery_plan(self.admin, 'brand')
+        self.assertEqual(plan['plan']['verified_rows'], 0)
+        self.assertEqual(plan['plan']['feishu_writes'], 0)
+        self.results.recover(self.admin, 'brand', plan['plan_sha256'])
+        self.assertEqual(self.remote.calls, ['table_forbidden'])
+        status = self.results.status(self.admin, 'brand')
+        self.assertFalse(status['enabled']); self.assertFalse(status['recovery_required'])
+        self.assertEqual(self.sync()['status'], 'disabled')
+        self.enable()
+        self.assertEqual(self.remote.table_rows[0]['name'], old['table_name'])
+        self.assertEqual(self.remote.calls, ['table_forbidden', 'table'])
+
+    def test_empty_remote_read_never_clears_unknown_create_after_restore(self):
+        self.remote.lose = 'table'
+        with self.assertRaisesRegex(RuntimeFault, 'UNKNOWN'): self.enable()
+        self.remote.lose = None; self.remote.table_rows = []
+        with self.store.connect() as db:
+            self.store.invalidate_worker_approvals(db)
+            db.execute('DELETE FROM meta WHERE key=?', ('feishu:reconfirm:brand',))
+        with self.assertRaisesRegex(RuntimeFault, 'TABLE_UNKNOWN'):
+            self.results.recovery_plan(self.admin, 'brand')
+        self.assertTrue(self.results.status(self.admin, 'brand')['recovery_required'])
+        self.assertEqual(self.remote.calls, ['table'])
+
+    def test_precreate_recovery_rechecks_remote_before_clearing_fence(self):
+        old = self.rejected_create_checkpoint()
+        plan = self.results.recovery_plan(self.admin, 'brand')
+        self.remote.table_rows = [{'name': old['table_name'], 'table_id': 'tblCreatedAfterBackup'}]
+        with self.assertRaisesRegex(RuntimeFault, 'REMOTE_MISMATCH'):
+            self.results.recover(self.admin, 'brand', plan['plan_sha256'])
+        self.assertTrue(self.results.status(self.admin, 'brand')['recovery_required'])
+        self.assertEqual(self.remote.calls, ['table_forbidden'])
+
+    def test_precreate_recovery_rejects_inconsistent_journal(self):
+        self.rejected_create_checkpoint()
+        with self.store.connect() as db:
+            save(db, item_prefix('brand')+'synthetic', {'complete': True})
+        with self.assertRaisesRegex(RuntimeFault, 'TABLE_UNKNOWN'):
+            self.results.recovery_plan(self.admin, 'brand')
+        self.assertEqual(self.remote.calls, ['table_forbidden'])

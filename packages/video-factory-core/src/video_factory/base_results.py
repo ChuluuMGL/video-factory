@@ -250,7 +250,7 @@ class BaseResults:
         with self.store.connect() as db:
             self.store.authorize(db, token, 'admin'); context = self.context(db, project)
             config = meta(db, control_key(project)); prefix = item_prefix(project)
-            if not config or not config.get('recovery_required') or not config['table_id']:
+            if not config or not config.get('recovery_required'):
                 raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
             if config['context'] != context: raise RuntimeFault('BASE_RESULTS_CONFIGURATION_CHANGED')
             rows = journal_rows(db, project)
@@ -259,6 +259,23 @@ class BaseResults:
             if any(not item['complete'] for _, item in items):
                 raise RuntimeFault('BASE_RESULTS_RECOVERY_UNFINISHED_UPLOAD_OR_RECORD')
         client = self.client(context); base = context['target']['base_token']; table = config['table_id']
+        if not table:
+            # Restoring a checkpoint also fences a disabled, not-yet-created
+            # destination. Only a known-unsubmitted (or explicitly rejected)
+            # create with no journal is recoverable without a table receipt.
+            # An empty remote read alone never clears an uncertain POST.
+            if config.get('table_attempted') is not False or config.get('schema') is not None or items:
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
+            name = config.get('table_name')
+            if not isinstance(name, str) or not name:
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
+            self.bridge._schema(client, {'fields': context['target']['fields'], **context['target']})
+            if any(row.get('name') == name for row in client.tables(base)):
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_REMOTE_MISMATCH')
+            plan = {'project': project, 'config_sha256': fingerprint(config), 'journal_sha256': fingerprint(items),
+                    'verified_rows': 0, 'destination_state': 'never_created_or_explicitly_rejected',
+                    'enable_automatically': False, 'feishu_writes': 0}
+            return {'plan': plan, 'plan_sha256': fingerprint(plan)}
         if schema(client, base, table) != config['schema']: raise RuntimeFault('BASE_RESULTS_SCHEMA_CHANGED')
         for _, item in items:
             fields = dict(item['fields'])
@@ -328,6 +345,23 @@ class BaseResults:
                         item = candidate; save(db, key, item); break
                 if item is None: return {'status': 'idle', 'feishu_writes': 0}
         client = self.client(context); base = context['target']['base_token']; table = config['table_id']
+        if not table:
+            # Restoring a checkpoint also fences a disabled, not-yet-created
+            # destination. Only a known-unsubmitted (or explicitly rejected)
+            # create with no journal is recoverable without a table receipt.
+            # An empty remote read alone never clears an uncertain POST.
+            if config.get('table_attempted') is not False or config.get('schema') is not None or items:
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
+            name = config.get('table_name')
+            if not isinstance(name, str) or not name:
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_NOT_REQUIRED_OR_TABLE_UNKNOWN')
+            self.bridge._schema(client, {'fields': context['target']['fields'], **context['target']})
+            if any(row.get('name') == name for row in client.tables(base)):
+                raise RuntimeFault('BASE_RESULTS_RECOVERY_REMOTE_MISMATCH')
+            plan = {'project': project, 'config_sha256': fingerprint(config), 'journal_sha256': fingerprint(items),
+                    'verified_rows': 0, 'destination_state': 'never_created_or_explicitly_rejected',
+                    'enable_automatically': False, 'feishu_writes': 0}
+            return {'plan': plan, 'plan_sha256': fingerprint(plan)}
         if schema(client, base, table) != config['schema']: raise RuntimeFault('BASE_RESULTS_SCHEMA_CHANGED')
         fields = dict(item['fields'])
         upload = item['steps'].get('finish', {})
