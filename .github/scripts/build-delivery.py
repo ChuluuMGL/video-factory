@@ -18,7 +18,15 @@ def build(destination, receipt_file, repository, checked=False):
         assert re.fullmatch(r'[a-f0-9]{64}', receipt[key])
     assert not destination.exists(), 'DELIVERY_OUTPUT_MUST_BE_NEW'
     shutil.copytree('delivery/site', destination)
-    shutil.copytree('skills/video-factory-setup', destination / 'skill')
+    # Package only versioned source, never interpreter caches or local files.
+    skill_root = Path('skills/video-factory-setup')
+    tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', str(skill_root)]).decode().split('\0')
+    for name in filter(None, tracked):
+        source = Path(name)
+        assert source.is_file() and not source.is_symlink()
+        target = destination / 'skill' / source.relative_to(skill_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
     allowed = json.loads(Path('distribution/customer-docs.json').read_text())
     for name in ('CUSTOMER_GUIDE.md', 'SETUP_RUN_USAGE.md', 'INDEPENDENT_ACCEPTANCE.md', 'PRODUCT_SHAPE.md', 'BASE_RESULTS.md'):
         assert name in allowed
