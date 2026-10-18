@@ -6,9 +6,9 @@
 
 | 路线 | 准备与启动 |
 |---|---|
-| 便携候选：Mac / Windows / Linux 原生 | Python 3.11+、完整候选 Skill；运行 `portable_n8n.py welcome`，选择本机 Node.js；按引导检查缺少的构建工具 |
-| 便携候选：Docker | 可用的 Docker Desktop 或 Engine，选择 Docker；核对本机端口与独立数据卷 |
-| 便携候选：已有 n8n | 提供实例地址及私有输入的公共 API Key，选择已有实例；不重新安装或接管旧服务 |
+| a36 便携路线：Mac / Windows / Linux 原生 | Python 3.11+、a36 完整 Skill；运行 `portable_n8n.py welcome`，选择本机 Node.js；按引导检查缺少的构建工具 |
+| a36 便携路线：Docker | 可用的 Docker Desktop 或 Engine，选择 Docker；核对本机端口与独立数据卷 |
+| a36 便携路线：已有 n8n | 提供实例地址及私有输入的公共 API Key，选择已有实例；不重新安装或接管旧服务 |
 | 固定服务器包 | Ubuntu 24.04 x86_64、可信 SSH、固定发行包和完整 Skill；按固定包 Setup 操作 |
 
 便携步骤见[安装指南](PORTABLE_N8N.md)。Cloud SaaS 本轮跳过，不把自托管 API 测试算作 Cloud 通过。记录精确提交或发行版本、目录/实例、费用责任与结束处理。准备获授权的商品事实及参考图、测试用飞书应用和模型账户。Setup 新建独立测试 Base，不使用生产表。密钥只在私有终端隐藏输入，不发送给 Agent 聊天。

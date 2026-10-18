@@ -193,4 +193,4 @@ Cloud SaaS 实例测试按维护者决定跳过。真实脚本验证使用仅在
 
 2026-10-18，另建独立验收任务后，首次正常入口已通过：本人在飞书保存精确费用编号，官方 SDK 核验负责人身份，n8n 消费计划一次、调用 DeepSeek 一次，保存结果并写回原行。独立回读确认脚本内容相同、原四条记录不变、无视频调用且无自动重试；全过程没有人工重放或续接。完成后收费流程关闭，原接收器恢复。新脚本随后由本人在飞书保存为「脚本通过」，刷新原表确认审核状态与原执行编号一致。
 
-桌面实际退出/登录和非作者从头安装因暂无操作者及设备，按维护者决定暂缓并保留待验；第二个真实飞书账号仍放到最后。统一关闭条件见[剩余工作](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/COMPLETION_WORK.md#2026-10-18-便携路线收尾)。PR #49 已合并；a36 固定包与官网的发行结果以 Release 和发行回执为准。
+桌面实际退出/登录和非作者从头安装因暂无操作者及设备，按维护者决定暂缓并保留待验；第二个真实飞书账号仍放到最后。统一关闭条件见[剩余工作](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/COMPLETION_WORK.md#2026-10-18-便携路线收尾)。PR #49、#50、#51 已合并；a36 已发布并同步官网，公开下载与线上复测结果见[发行回执](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/DELIVERY_A36_RESULT.md)。
