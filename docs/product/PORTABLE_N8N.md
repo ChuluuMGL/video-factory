@@ -185,10 +185,12 @@ Cloud SaaS 实例测试按维护者决定跳过。真实脚本验证使用仅在
 
 ### 2026-10-18 最终技术收尾
 
-运行源码 `cb12448` 的[四平台实际 n8n 矩阵](https://github.com/ChuluuMGL/video-factory/actions/runs/39081199689)、[完整云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/39081199832)、[安装页检查](https://github.com/ChuluuMGL/video-factory/actions/runs/39081199698)及[隐私检查](https://github.com/ChuluuMGL/video-factory/actions/runs/39081199736)全部通过。接收器等待数据库 readiness，依赖延迟 75 秒时保持同一进程并恢复；未触发模型。
+运行源码 `21a0cc0` 的[四平台实际 n8n 矩阵](https://github.com/ChuluuMGL/video-factory/actions/runs/39098285164)、[完整云端回归](https://github.com/ChuluuMGL/video-factory/actions/runs/39098285167)、[安装页检查](https://github.com/ChuluuMGL/video-factory/actions/runs/39098285253)及[隐私检查](https://github.com/ChuluuMGL/video-factory/actions/runs/39098285224)全部通过。原生安装成功回执与事件接收器均等待数据库 readiness；额外隔离 Linux 服务回归通过 13 项（其中 1 项 Windows 专项跳过），等待超时保留数据。此前接收器依赖延迟 75 秒的恢复验收仍保留独立回执。
 
 同一隔离 ECS 的实际整机重启已取得完整自动通过回执：接收器自动启动，原容器恢复，数据库与认证 API 就绪，队列保持，模型工作流关闭。随后注销临时服务、恢复原接收器，并从独立进程回读清理和数据状态；模型请求为零。此前两次未通过的自动验收记录保留：一次启动等待不足，一次私有验收脚本在保存回执前删除自身 systemd 单元，导致回执不完整；修复后重新验收，不将旧失败追记为成功。
 
 2026-10-18，真实负责人确认到 DeepSeek 脚本生成和飞书写回，已在保留失败记录后经一次受控续接通过：首次停在任务/计划一致性检查，未到模型节点；重新回读匹配后复用同一已确认计划，仅调用一次模型，计划消费一次，保存结果与飞书相同，其他任务不变。全部流程关闭，原接收器正常，续接意图阻止再次执行。此项包含人工排查，不等于首次全自动通过；脚本随后由本人在飞书审核通过，页面状态已回读。详见[费用确认验收](PORTABLE_BILLING_APPROVAL.md#已验证范围)。
 
-尚未完成的是桌面实际退出/登录、非作者从头安装，以及第二个真实飞书账号；首次无需人工续接的完整入口体验也不能由本次恢复代签。统一关闭条件见[剩余工作](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/COMPLETION_WORK.md#2026-10-18-便携路线收尾)。此结论不代表候选已合并、固定包已发布或正式官网已更新。
+2026-10-18，另建独立验收任务后，首次正常入口已通过：本人在飞书保存精确费用编号，官方 SDK 核验负责人身份，n8n 消费计划一次、调用 DeepSeek 一次，保存结果并写回原行。独立回读确认脚本内容相同、原四条记录不变、无视频调用且无自动重试；全过程没有人工重放或续接。完成后收费流程关闭，原接收器恢复。新脚本处于「脚本待审核」，本次人工内容审核单独记录。
+
+桌面实际退出/登录和非作者从头安装因暂无操作者及设备，按维护者决定暂缓并保留待验；第二个真实飞书账号仍放到最后。统一关闭条件见[剩余工作](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/COMPLETION_WORK.md#2026-10-18-便携路线收尾)。此结论不代表候选已合并、固定包已发布或正式官网已更新。

@@ -1,6 +1,6 @@
 # 安装平台与模型接口
 
-首次进入先选择已有 n8n、本机 Node.js、Docker 或服务器。**便携开发候选已经能够实际安装和接入**：Windows、Mac、Linux 与 Linux Docker 的真实 n8n 合成流程均通过，详见[候选使用与验收记录](PORTABLE_N8N.md)。已有实例通过公共 API 接入，不接管原数据库、不覆盖旧工作流。真实飞书、模型、审核身份和费用确认仍需验收，Cloud SaaS 实测本轮跳过。
+首次进入先选择已有 n8n、本机 Node.js、Docker 或服务器。**便携开发候选已经能够实际安装和接入**：Windows、Mac、Linux 与 Linux Docker 的真实 n8n 合成流程均通过，详见[候选使用与验收记录](PORTABLE_N8N.md)。已有实例通过公共 API 接入，不接管原数据库、不覆盖旧工作流。隔离环境的真实飞书、DeepSeek、单次 MiniMax H3 及当前负责人费用确认已有回执；第二账号和独立安装仍待验，Cloud SaaS 实测本轮跳过。
 
 以下 Ubuntu 要求针对**旧的固定发行包完整服务栈**，不适用于上述便携候选。两条路线不能混用安装命令或回执。
 
