@@ -147,8 +147,11 @@ return [{json:p}];'''),
 if($json.code!==0) throw new Error('APPROVAL_TASK_UNREADABLE');
 const saved=$('Check protected plan').first().json,p=saved.plan,row=$json.data.record,f=row.fields;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
-if(row.record_id!==p.record || f['状态']!=='费用待确认' || text(f['费用确认编号'])!==p.id || text(f['生成计划'])!==saved.display)
- throw new Error('APPROVAL_TASK_OR_PLAN_CHANGED');
+if(row.record_id!==p.record) throw new Error('APPROVAL_RECORD_CHANGED');
+if(f['状态']!=='费用待确认') throw new Error('APPROVAL_STATUS_CHANGED');
+if(text(f['费用确认编号'])!==p.id) throw new Error('APPROVAL_CONFIRMATION_NOT_CURRENT');
+if(text(f['生成计划'])!==saved.display) throw new Error('APPROVAL_DISPLAY_CHANGED');
+if(!Number.isFinite(p.expires_at) || p.expires_at<Date.now()) throw new Error('APPROVAL_EXPIRED');
 for(const [k,v] of Object.entries(p.snapshot)) {
  const actual=k==='参考图附件'?(f[k]||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})):text(f[k]);
  if(JSON.stringify(actual)!==JSON.stringify(v)) throw new Error('APPROVED_INPUT_CHANGED');

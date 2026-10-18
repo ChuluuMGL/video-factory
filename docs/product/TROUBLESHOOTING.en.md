@@ -30,6 +30,12 @@ Use the [portable guide](PORTABLE_N8N.md) for local or existing n8n. The Ubuntu 
 
 `uninstall` cancels startup and preserves data. `stop` pauses the current process; a later login or boot may start it again.
 
+## Owner confirmation received, but generation did not start
+
+In the portable candidate, `APPROVAL_RECORD_CHANGED`, `APPROVAL_STATUS_CHANGED`, `APPROVAL_CONFIRMATION_NOT_CURRENT` and `APPROVAL_DISPLAY_CHANGED` distinguish the live record, status, confirmation ID and displayed plan checks. `APPROVED_INPUT_CHANGED` means the approved content differs. Earlier candidates report the combined `APPROVAL_TASK_OR_PLAN_CHANGED`; that code alone does not identify the field or prove a network failure.
+
+Read the current row, protected approval and execution ledgers, and n8n event-log node trace. Missing execution API data is not proof of zero model calls: full execution data is disabled by default. Preserve the failed event. Do not clear the queue or automatically replay it. Only consider an explicit continuation after proving the plan was not consumed, no provider node ran, and the same unexpired plan still matches the live row. Keep raw logs private. See [billing approval](PORTABLE_BILLING_APPROVAL.md).
+
 ## Exhausted Docker address pools
 
 Stopped containers can retain Compose networks. Repeated upgrades and restore drills can consume the available subnets even while the active stack is healthy. A new authorization worker or project runner may then fail to start; this does not indicate an incorrect password or model key.

@@ -80,10 +80,15 @@ python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component e
 ## 失败与停用
 
 - `BILLING_OWNER_DENIED`：事件操作人不属于指定负责人，不调用模型。
-- `APPROVED_INPUT_CHANGED` / `APPROVAL_TASK_OR_PLAN_CHANGED`：内容或计划改变，原确认无效。
+- `APPROVAL_RECORD_CHANGED` / `APPROVAL_STATUS_CHANGED`：读取到的任务或当前状态与待确认计划不符。
+- `APPROVAL_CONFIRMATION_NOT_CURRENT`：飞书当前「费用确认编号」不等于该计划。先核对是否已保存或被修改，不根据收到事件就直接生成。
+- `APPROVAL_DISPLAY_CHANGED` / `APPROVED_INPUT_CHANGED`：展示的计划或商品、脚本、参考图等内容改变。保留原计划，核对后重新申请。
+- 旧候选版的 `APPROVAL_TASK_OR_PLAN_CHANGED` 合并了上述任务、状态、确认编号和展示计划检查；不能单凭它确定是哪项改变，也不能直接认定是网络故障。
 - `APPROVAL_EXPIRED`：原计划过期；先核对并取消，再申请新计划。
 - `needs_reconciliation` / `dispatch_intent`：发送结果未知或进程中断。先查原 n8n 结果与供应商回执，不能清队列重发。
 - 已生成但飞书写回失败：沿用原 `recover` 流程补写，不重新生成。已消费的费用计划不能通过取消命令重置；恢复后仍需核对审批锁，不能直接删除数据表。
+
+工作流默认不保存完整执行数据。API 查不到历史执行，并不能证明未调用模型；还要核对 n8n 执行事件日志中的节点轨迹、审批账本和执行账本。只有证据明确停在消费计划之前、未到模型节点，且原计划仍有效、当前表内容一致，才可由负责人决定是否续接。保留原失败事件，不清队列、不自动重发。日志与任务内容仅留在受控环境，公开问题只填写错误码和脱敏复现。
 
 取消仅限尚未消费的确切计划：
 

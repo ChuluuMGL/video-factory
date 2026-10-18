@@ -109,6 +109,38 @@ class Approval(unittest.TestCase):
         w=confirmation_workflow('baseFixture','tableFixture','video-submit',{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'check',verification_only=True)
         self.assertFalse(any(n['name'] in ('Submit video once','Generate script','Reserve task') for n in w['nodes']))
 
+    def test_live_readback_reports_exact_guard_without_exposing_values(self):
+        w=confirmation_workflow('baseFixture','tableFixture','script',{'table':'exec','row':1},{'table':'plans','row':1},POLICY,'confirm')
+        source=next(n['parameters']['jsCode'] for n in w['nodes'] if n['name']=='Select task')
+        saved={'display':'private-display','plan':{'id':'vf-fixture','record':'recFixture',
+            'expires_at':9999999999999,'snapshot':{'商品资料':'private-product','参考图附件':[]}}}
+        row={'record_id':'recFixture','fields':{'状态':'费用待确认','费用确认编号':'vf-fixture',
+            '生成计划':'private-display','商品资料':'private-product'}}
+        cases=[]
+        for field,value,error in [('record_id','recOther','APPROVAL_RECORD_CHANGED'),
+                ('状态','脚本通过','APPROVAL_STATUS_CHANGED'),
+                ('费用确认编号','','APPROVAL_CONFIRMATION_NOT_CURRENT'),
+                ('生成计划','edited','APPROVAL_DISPLAY_CHANGED'),
+                ('商品资料','edited','APPROVED_INPUT_CHANGED')]:
+            changed=copy.deepcopy(row)
+            if field=='record_id':changed[field]=value
+            else:changed['fields'][field]=value
+            cases.append({'saved':saved,'row':changed,'error':error})
+        expired=copy.deepcopy(saved);expired['plan']['expires_at']=0
+        cases += [{'saved':expired,'row':row,'error':'APPROVAL_EXPIRED'},
+                  {'saved':saved,'row':row,'error':None}]
+        js="""const F=(async()=>{}).constructor,assert=require('node:assert/strict');
+const fn=new F('$json','$','$execution',process.argv[1]);
+(async()=>{for(const c of JSON.parse(process.argv[2])) {
+ let error=null,result;
+ try { result=await fn({code:0,data:{record:c.row}},()=>({first:()=>({json:c.saved})}),{id:'fixture'}); }
+ catch(e){error=e.message;}
+ assert.equal(error,c.error);
+ if(!error) assert.equal(result[0].json.id,'recFixture');
+}})().catch(e=>{console.error(e);process.exit(1)});"""
+        result=subprocess.run(['node','-e',js,source,json.dumps(cases)],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_parse_every_approval_code_node(self):
         workflows=[]
         for flow in ('script','video-submit'):

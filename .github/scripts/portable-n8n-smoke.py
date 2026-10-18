@@ -412,6 +412,15 @@ try:
     for bad in [confirmation_event('ou_other'),confirmation_event(token='vf-stale-plan')]:
         execute(owner_flow['workflow'],True,bad)
         assert state['model_calls']==4 and state['status']=='费用待确认'
+    # A real owner event is insufficient if the live row no longer confirms
+    # that plan. Preserve the pending plan and never auto-retry a paid step.
+    for key,value in [('confirmation',''),('confirmation','vf-another-plan'),('status','脚本通过')]:
+        previous=state[key];state[key]=value
+        execute(owner_flow['workflow'],True,confirmation_event())
+        assert state['model_calls']==4
+        assert api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data'][0]['status']=='awaiting'
+        assert api.request('GET','/api/v1/data-tables/'+owner_execution['table']+'/rows')['data'][0]['status']=='idle'
+        state[key]=previous
     original_script=state['script'];state['script']='Changed after plan'
     execute(owner_flow['workflow'],True,confirmation_event())
     assert state['model_calls']==4

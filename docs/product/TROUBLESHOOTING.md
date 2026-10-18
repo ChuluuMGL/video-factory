@@ -36,6 +36,12 @@
 
 取消自启使用 `uninstall`，保留数据；`stop` 只暂停当前进程，后续登录或开机可能再次启动。
 
+## 收到负责人确认，但没有开始生成
+
+便携候选的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。
+
+先回读当前行、受保护审批与执行账本，以及 n8n 事件日志的节点轨迹。默认不保存完整执行数据，执行 API 没有记录不等于模型未调用。保留失败事件，不清队列、不自动重发；仅在确认未消费计划、未到模型节点、原计划未过期且当前内容一致后，再由负责人决定续接。原始日志仅保留在受控环境。详见[费用确认排查](PORTABLE_BILLING_APPROVAL.md#失败与停用)。
+
 ## Docker 地址池用尽
 
 停止容器后，Compose 网络仍可能占用地址段。多次升级和恢复演练会累积旧网络；当前基础服务健康，也不能证明新的授权 worker 或项目 Runner 能启动。这不是密码或模型 Key 错误。
