@@ -1,6 +1,6 @@
 # 便携路线：负责人身份与费用确认
 
-这是 PR #49 的开发候选。代码、合成测试、真实飞书事件和第二账号隔离分别验收；本文不是稳定版已交付声明。
+a36 测试版包含本流程。真实负责人事件、首次单次付费脚本执行及本人审核已经验证；第二账号隔离仍待验，不能视为稳定版全面验收。
 
 ## 团队怎样操作
 
@@ -73,7 +73,7 @@ python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component e
 python portable_service.py --root /PRIVATE/bindings/PROJECT-events --component events restart
 ```
 
-首次在私有目录创建 Python 环境并安装固定依赖，随后复用已加密保存的凭据。Linux root 服务随开机启动；Mac、Windows 默认随当前用户登录启动；普通 Linux 用户见[后台运行说明](PORTABLE_N8N.md#后台运行与自启开发候选)。`status` 证明 OS 进程运行，不替代真实 SDK 身份回执。接收器等待 n8n 健康检查后才接收事件；未知派发仍保留为待核对，不因重启重发。
+首次在私有目录创建 Python 环境并安装固定依赖，随后复用已加密保存的凭据。Linux root 服务随开机启动；Mac、Windows 默认随当前用户登录启动；普通 Linux 用户见[后台运行说明](PORTABLE_N8N.md#后台运行与自启)。`status` 证明 OS 进程运行，不替代真实 SDK 身份回执。接收器等待 n8n 健康检查后才接收事件；未知派发仍保留为待核对，不因重启重发。
 
 `stop` 暂停接收，`uninstall` 停止并取消自启，均保留凭据、事件队列和历史回执。同一应用旧接收器的暂停与恢复必须单独核对。服务启动不会激活 n8n 流程；已启用的流程仍按原确认规则执行。独立 ECS 的 systemd 生命周期、实际整机重启及注销恢复已经通过；桌面服务生命周期通过四平台 CI，Mac / Windows 实际退出系统并重新登录尚待验收。详见[当前记录](PORTABLE_N8N.md#2026-10-18-最终技术收尾)。
 

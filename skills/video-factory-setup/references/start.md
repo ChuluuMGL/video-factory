@@ -23,9 +23,9 @@
 2. 飞书应用和 Base 都有、只有一部分、都没有，还是不确定？
 3. 产品执行服务希望运行在已有 Ubuntu 主机、本机 Windows/Mac、其他服务器，还是尚未决定？
 
-若没有 n8n 且已有受支持 Ubuntu 主机，现版固定包会自行安装 n8n，再接项目与飞书；不要求预先单独安装 n8n。若已经有 n8n，保留已有工作流和凭据，先核对 API 可用性、飞书 Base 和产品执行端点的连接方式。**现版尚未支持直接把完整业务流程接入独立 n8n**：固定发行包用户需报告当前缺口；本候选分支按下一段连续向导执行，参见[接入路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md)，不得为了绕过检查暗中创建第二套服务，也不得把“n8n 可用”记为“Video Factory 安装成功”。若尚无 n8n、希望在本机试用，先说明 Node.js、Docker 与 n8n Cloud 的选择，按下段便携候选继续安装与接入，并说明真实业务仍待验收。已安装 Video Factory 的客户走原部署续接，不再运行首次安装识别。
+a36 完整 Skill 提供本机 Node.js、Docker 和已有 n8n 接入。已有实例先核对公共 API、版本及网络，保留原工作流、数据和凭据；没有 n8n 时由用户选择安装方式。Cloud SaaS 本轮未实测，说明该范围后由有相应实例的操作者验证。
 
-本分支的便携开发候选优先通过 `scripts/portable_n8n.py welcome` 连续完成本机 n8n 安装或已有实例接入、飞书检查及关闭状态的业务流程导入，详见 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/codex/portable-n8n-runtime/docs/product/PORTABLE_N8N.md)。不要把下方固定服务器发行包用于这条路线，也不要将手动测试工作流当作已完成自动生产。
+本机或已有 n8n 路线运行 `scripts/portable_n8n.py welcome`：连接或安装 n8n，选择项目，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a36/docs/product/PORTABLE_N8N.md) 继续。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。选择 Ubuntu 完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
 
 ## 3. 取得服务器发行包
 
