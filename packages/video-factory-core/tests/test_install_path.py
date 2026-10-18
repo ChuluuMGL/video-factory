@@ -23,6 +23,7 @@ class InstallPathTests(unittest.TestCase):
         self.assertEqual(result["route"], "managed_ubuntu_current_release")
         self.assertTrue(result["current_release_can_complete"])
         self.assertFalse(result["software_installed"])
+        self.assertEqual(result["entry"], "start.py")
 
     def test_existing_n8n_routes_to_portable_without_modifying_instance(self):
         for mode in ("local-node", "local-docker", "self-hosted"):
@@ -49,6 +50,7 @@ class InstallPathTests(unittest.TestCase):
             self.assertFalse(result["production_accepted"])
             self.assertEqual(result["provider_requests"], 0)
         self.assertTrue(any("未实测" in step for step in self.assess("cloud")["next_steps"]))
+        self.assertIsNone(self.assess("unknown")["entry"])
 
     def test_malformed_answers_do_not_crash_or_accept_secrets(self):
         for answers in ({"n8n": [], "feishu": "ready", "runtime": "ubuntu"},

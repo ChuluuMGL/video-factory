@@ -79,7 +79,9 @@ def assess(answers, observed=None):
         next_steps.append("Cloud SaaS 实例本轮未实测；先核对当前套餐的公共 API 和执行端点权限，再由实例操作者验证，不能标记已验收。")
     return {"answers": answers, "observed_local": observed, "route": route,
             "current_release_can_complete": supported,
-            "entry": "scripts/portable_n8n.py welcome",
+            "entry": ("start.py" if route == "managed_ubuntu_current_release" else
+                      "scripts/portable_n8n.py welcome" if route in
+                      ("reuse_existing_n8n", "portable_n8n_install_method") else None),
             "candidate_entry": "scripts/portable_n8n.py welcome",  # legacy reader compatibility
             "instance_verified": False,
             "production_accepted": False,
