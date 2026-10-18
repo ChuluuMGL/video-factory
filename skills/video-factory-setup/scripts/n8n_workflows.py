@@ -124,7 +124,7 @@ STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过'
             '申请脚本计划', '申请视频计划', '费用待确认']
 
 
-def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None):
+def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None):
     """The same non-secret contract is displayed, confirmed and executed."""
     if flow == 'script' and script_selection is not None:
         from portable_models import profile as script_profile
@@ -136,6 +136,13 @@ def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_
         return {'provider': 'DeepSeek', 'model': 'deepseek-flash',
                 'endpoint': script_origin + '/chat/completions', 'max_tokens': 2048,
                 'stream': False, 'thinking': {'type': 'disabled'}}
+    if flow in ('video-submit', 'video-poll') and video_selection is not None:
+        from portable_video_models import profile as video_profile
+        result=video_profile(video_selection)
+        if video_origin!='https://api.minimax.cn':
+            from urllib.parse import urlsplit
+            result['endpoint']=video_origin+urlsplit(result['endpoint']).path
+        return result
     if flow in ('video-submit', 'video-poll'):
         return {'provider': 'MiniMax China', 'model': 'MiniMax-H3',
                 'endpoint': video_origin + '/v2/video_generation',
@@ -144,10 +151,10 @@ def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_
 
 
 def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu.cn',
-                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None):
+                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None):
     if flow not in ('script', 'video-submit', 'video-poll'):
         raise ValueError('FLOW_INVALID')
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection, video_selection=video_selection)
     url, nodes = start(base, table, feishu_origin)
     status = {'script': ['请求脚本'], 'video-submit': ['视频生成已确认'], 'video-poll': ['视频生成中']}[flow]
     # Server-side filter avoids silently ignoring matching rows beyond page 1.
@@ -216,6 +223,9 @@ if(fields['状态']!=='视频生成中' || text(fields['视频任务ID'])!==task
     throw new Error('VIDEO_TASK_CHANGED_NO_OVERWRITE');
 return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
+    if flow in ('video-submit','video-poll') and video_selection is not None:
+        from portable_video_models import apply as apply_video
+        apply_video(nodes,video_selection,profile,flow,video_origin if video_origin!='https://api.minimax.cn' else None)
     if flow == 'script' and script_selection is not None:
         for node in nodes:
             if node['name'] == 'Build script request':

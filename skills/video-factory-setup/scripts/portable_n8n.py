@@ -555,6 +555,10 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
         if state.get('pending'): raise Fault('CREDENTIAL_CREATE_UNKNOWN_RECONCILE_IN_N8N')
         from portable_models import load as load_models, SCRIPTS, selection
         script_choice=load_models(root,project,api.url)
+        from portable_video_models import load as load_video, selection as video_default, VIDEOS
+        video_choice=load_video(root,project,api.url)
+        if 'video' in state['roles'] and state.get('video_selection',video_default())!=video_choice:
+            raise Fault('VIDEO_CREDENTIAL_MODEL_MISMATCH')
         if 'script' in state['roles'] and state.get('script_selection',selection())!=script_choice:
             raise Fault('SCRIPT_CREDENTIAL_MODEL_MISMATCH')
         for role in roles:
@@ -564,13 +568,14 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
                 kind='httpCustomAuth'
                 data={'json':json.dumps({'body':{'app_id':app,'app_secret':ask_secret('飞书 App Secret（隐藏输入）: ')}})}
             else:
-                key=provider_secret((SCRIPTS[script_choice['provider']][0] if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
+                key=provider_secret((SCRIPTS[script_choice['provider']][0] if role=='script' else VIDEOS[video_choice['provider']][0])+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
                 kind='httpHeaderAuth'; data={'name':'Authorization','value':'Bearer '+key}
             name='Video Factory '+project+' '+role
             state['pending']={'role':role,'name':name}; private_write(path,state)
             created=api.request('POST','/api/v1/credentials',{'name':name,'type':kind,'data':data})
             state['roles'][role]={'type':kind,'existing':{'id':identifier(created.get('id')),'name':name}}
             if role=='script': state['script_selection']=script_choice
+            if role=='video': state['video_selection']=video_choice
             state.pop('pending'); private_write(path,state)
         return {role:state['roles'][role] for role in roles}
 
@@ -581,7 +586,8 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
     from n8n_workflows import production_workflow,guard_workflow,recovery_workflow
     from portable_models import load as load_models, selection
     selected=load_models(root,project,api.url)
-    model_options={} if selected==selection() else {'script_selection':selected}
+    from portable_models import options
+    model_options=options(root,project,api.url)
     ledger=ensure_ledger(api,root,project,base,table)
     result={}
     for flow,role in [('script','script'),('video-submit','video'),('video-poll','video'),('recover',None)]:
@@ -689,7 +695,18 @@ def welcome(root, dependency_timeout=1200):
             chosen=selection(provider,model)
         save_models(bindings,project,url,chosen)
         roles.append('script')
-    if ask_choice('配置 MiniMax H3 视频流程？y/N: ',('y','n'),'n')=='y': roles.append('video')
+    if ask_choice('配置视频流程？y/N: ',('y','n'),'n')=='y':
+        from portable_video_models import load as load_video,save as save_video,selection as video_selection,VIDEOS
+        if (bindings/('video-models-'+project+'.json')).exists() or 'video' in json.loads((bindings/('credentials-'+project+'.json')).read_text(encoding='utf-8')).get('roles',{}):
+            chosen=load_video(bindings,project,url)
+            print('沿用视频供应商与模型：'+chosen['provider']+' / '+chosen['model'])
+        else:
+            print('H3 已有真实验收；其他视频供应商为候选，使用一张 PNG/JPEG 飞书首帧附件，须单独验收。')
+            provider=ask_choice('视频供应商 ['+'/'.join(VIDEOS)+']，默认 minimax-cn: ',tuple(VIDEOS),'minimax-cn')
+            model=ask_choice('模型 ['+'/'.join(VIDEOS[provider][2])+']: ',VIDEOS[provider][2],VIDEOS[provider][2][0])
+            chosen=video_selection(provider,model)
+        save_video(bindings,project,url,chosen)
+        roles.append('video')
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
         receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
@@ -752,6 +769,8 @@ def main(argv=None):
     for target in (bind,export):
         target.add_argument('--script-provider',choices=tuple(SCRIPTS))
         target.add_argument('--script-model')
+        target.add_argument('--video-provider',choices=tuple(__import__('portable_video_models').VIDEOS))
+        target.add_argument('--video-model')
     export.add_argument('--ledger-table',help='手动创建的 n8n 执行锁数据表 ID')
     export.add_argument('--ledger-row',type=int,help='该数据表中项目执行锁行 ID')
     args = parser.parse_args(argv)
@@ -788,6 +807,9 @@ def main(argv=None):
             from portable_models import selection
             selected=selection(args.script_provider or 'deepseek',args.script_model)
             model_options={} if selected==selection() else {'script_selection':selected}
+            from portable_video_models import selection as video_selection
+            video=video_selection(args.video_provider or 'minimax-cn',args.video_model)
+            if video!=video_selection():model_options['video_selection']=video
             template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                         schema_workflow(args.base,args.table) if args.flow=='schema' else
                         production_workflow(args.base,args.table,args.flow,**model_options))
@@ -815,7 +837,12 @@ def main(argv=None):
                 selected=load_models(args.root,args.project,api.url)
                 if args.script_provider or args.script_model:
                     selected=save_models(args.root,args.project,api.url,selection(args.script_provider or selected['provider'],args.script_model))
-                model_options={} if selected==selection() else {'script_selection':selected}
+                from portable_video_models import load as load_video,save as save_video,selection as video_selection
+                video=load_video(args.root,args.project,api.url)
+                if args.video_provider or args.video_model:
+                    save_video(args.root,args.project,api.url,video_selection(args.video_provider or video['provider'],args.video_model))
+                from portable_models import options
+                model_options=options(args.root,args.project,api.url)
                 pool=project_credentials(api,args.root,args.project,app_id,['feishu']+([role] if role else []))
                 credentials={'httpCustomAuth':pool['feishu']}
                 if role: credentials['httpHeaderAuth']=pool[role]

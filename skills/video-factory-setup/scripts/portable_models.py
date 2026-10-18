@@ -78,3 +78,13 @@ def save(root, project, origin, value):
                     raise Fault('EXISTING_SCRIPT_KEY_CANNOT_CHANGE_PROVIDER')
             private_write(path, {'origin': origin, 'project': project, 'script': value})
     return value
+
+
+def options(root, project, origin):
+    """Only non-default profiles alter historical workflow templates."""
+    from portable_video_models import load as load_video, selection as video_default
+    script=load(root,project,origin);video=load_video(root,project,origin)
+    result={}
+    if script!=selection():result['script_selection']=script
+    if video!=video_default():result['video_selection']=video
+    return result

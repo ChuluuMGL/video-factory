@@ -60,6 +60,10 @@ def scope(api, root, project):
         files[event_file] = event
     from portable_models import load as load_models, selection
     models = load_models(root,project,api.url)
+    from portable_video_models import load as load_video,selection as video_default
+    video=load_video(root,project,api.url)
+    video_file='video-models-'+project+'.json'
+    if (root/video_file).exists():files[video_file]=read(root,video_file)
     model_file='models-'+project+'.json'
     if (root/model_file).exists(): files[model_file]=read(root,model_file)
     credential_file='credentials-'+project+'.json'
@@ -69,12 +73,16 @@ def scope(api, root, project):
             raise Fault('UPGRADE_CREDENTIAL_SCOPE_CHANGED')
         if 'script' in pool.get('roles',{}) and pool.get('script_selection',selection())!=models:
             raise Fault('UPGRADE_SCRIPT_CREDENTIAL_MODEL_MISMATCH')
+        if 'video' in pool.get('roles',{}) and pool.get('video_selection',video_default())!=video:
+            raise Fault('UPGRADE_VIDEO_CREDENTIAL_MODEL_MISMATCH')
         files[credential_file]=pool
-    elif models!=selection():
+    elif models!=selection() or video!=video_default():
         raise Fault('UPGRADE_MODEL_CREDENTIAL_EVIDENCE_REQUIRED')
     if event and event.get('script_selection',selection())!=models:
         raise Fault('UPGRADE_MODEL_SCOPE_CHANGED')
-    config={**config,'script_selection':models}
+    if event and event.get('video_selection',video_default())!=video:
+        raise Fault('UPGRADE_VIDEO_SCOPE_CHANGED')
+    config={**config,'script_selection':models,'video_selection':video}
     ledgers = {}
     for name in (project, project + '-approval'):
         relative = 'ledger-' + name + '.json'
@@ -104,6 +112,9 @@ def templates(project, config, event, ledgers, root):
     from portable_models import selection
     selected=config.get('script_selection',selection())
     model_options={} if selected==selection() else {'script_selection':selected}
+    from portable_video_models import selection as video_default
+    if config.get('video_selection',video_default())!=video_default():
+        model_options['video_selection']=config['video_selection']
     result = {}
     execution = ledgers.get(project)
     for flow in ('probe', 'schema', 'script', 'video-submit', 'video-poll', 'recover'):
@@ -124,7 +135,7 @@ def templates(project, config, event, ledgers, root):
             if not name.startswith(project + '-'):
                 raise Fault('UPGRADE_FOREIGN_WORKFLOW_REFERENCE')
             if logical == 'video-poll':
-                template = scheduled(production_workflow(base, table, 'video-poll'))
+                template = scheduled(production_workflow(base, table, 'video-poll',**model_options))
             elif logical.startswith('plan-'):
                 flow = logical[5:]
                 if flow not in ('script', 'video-submit'): raise Fault('UPGRADE_UNKNOWN_FLOW')

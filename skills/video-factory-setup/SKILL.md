@@ -64,3 +64,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 ## 便携多脚本模型候选
 
 仅当完整 Skill 中包含 `scripts/portable_models.py` 时，`welcome` 才提供脚本供应商选择。该源码候选不在 a37 / a38 固定包；按 `docs/product/PORTABLE_SCRIPT_MODELS.md` 核对范围。续接沿用原模型和凭据；不同供应商使用独立项目及凭据，不能猜测 Key、改接口后沿用旧费用确认。其他模型尚需本项目真实验收，不把历史项目或合成测试说成已通过。
+
+### 便携视频模型候选
+
+源码候选的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。只有 H3 有既有真实验收；其他路线先完成各自账户的单次计划验收，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
