@@ -102,3 +102,15 @@ class ScriptProviderTests(unittest.TestCase):
     def test_reasoning_is_not_written_as_script(self):
         with self.assertRaisesRegex(RuntimeFault,'UNCERTAIN_NO_RETRY'):
             self.call({'id':'receipt','choices':[{'finish_reason':'stop','message':{'content':'<think>private</think>script'}}]})
+
+    def test_bad_header_keys_fail_before_request_construction(self):
+        with patch('video_factory.script_provider.Request') as request:
+            for name in PROVIDERS:
+                for key in ('Bearer key', 'key\x00value', 'key\nvalue', 'key\x7fvalue', '密钥', None):
+                    with self.subTest(provider=name, key=repr(key)):
+                        client=ScriptProvider(name)
+                        with self.assertRaisesRegex(RuntimeFault, '^SCRIPT_KEY_INVALID$'):
+                            client.authenticate(key)
+                        with self.assertRaisesRegex(RuntimeFault, '^SCRIPT_KEY_INVALID$'):
+                            client.generate({}, 'brief', '', key)
+            request.assert_not_called()
