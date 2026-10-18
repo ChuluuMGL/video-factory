@@ -2,7 +2,7 @@
 
 ## 2026-10-18 便携路线收尾
 
-当前公开版本是 [0.1.0a36 测试版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a36)，已发布并同步官网。安装包、完整 Skill、匿名下载及正式网站复测均通过，见 [a36 发行回执](DELIVERY_A36_RESULT.md)。历史结果按版本保留在 [a35 回执](DELIVERY_A35_RESULT.md)等记录中，不再当作当前待办。
+当前公开版本是 [0.1.0a37 测试版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a37)。发布、官网及各项验收结果见 [a37 发行回执](DELIVERY_A37_RESULT.md)，历史 [a36 发行回执](DELIVERY_A36_RESULT.md) 保留。历史结果按版本保留在 [a35 回执](DELIVERY_A35_RESULT.md)等记录中，不再当作当前待办。
 
 ### 已完成并有回执
 
@@ -14,15 +14,18 @@
 - [x] 固定包完整云端回归、升级及冷恢复、断网空缓存安装、公开隐私审查、匿名安装。
 - [x] a36 发布，GitHub 修复合并，官网版本与复制指引同步，桌面/手机菜单、下载、案例及交付文件哈希核验。
 
+- [x] a37 维护版发行、匿名安装、公开隐私扫描及官网同步；正式网址 42 个交付文件和实际交互回读通过。
+
 ### 尚未完成，不能算作通过
 
 | 项目 | 当前状态 | 完成需要什么 |
 |---|---|---|
+| 便携原地升级 [PR #57](https://github.com/ChuluuMGL/video-factory/pull/57) | 四平台、完整冷恢复与断网检查通过，已合并；未包含在 a37 固定包 | 下一固定版发布；不能删除原绑定绕过检查 |
 | 第二个真实飞书账号权限 | 按维护者安排最后验收 | 本人登录、允许操作、非负责人费用拒绝、跨项目拒绝、撤权及旧会话失效；扫码本身不算通过 |
 | 非作者独立安装与接管 | 因暂无同事而暂缓 | 未参与开发的人按官网与完整 Skill 操作，记录耗时、卡点及开发者介入 |
 | Mac / Windows 实际退出系统并重新登录 | 因暂无实际操作者/设备而暂缓 | 各自系统的真实桌面会话恢复；CI 服务生命周期和 ECS 重启不能替代 |
 | 可选结果快照表 [#20](https://github.com/ChuluuMGL/video-factory/issues/20) / [#9](https://github.com/ChuluuMGL/video-factory/issues/9) | 实现和合成测试已有，真实权限、附件及未知提交恢复未关闭 | 现有测试项目的管理员授权、准确远端状态和原回执；不重新生成模型内容。它与已通过的原任务表回写是两个功能 |
-| 其他脚本与视频模型 [PR #38](https://github.com/ChuluuMGL/video-factory/pull/38) / [PR #42](https://github.com/ChuluuMGL/video-factory/pull/42) | 候选分支存在，不在 a36 的已验收模型范围 | 完整执行集成、各供应商官方账户/模型/区域、单次付费计划和真实结果回写；不能用其他历史项目代签 |
+| 其他脚本与视频模型 [PR #38](https://github.com/ChuluuMGL/video-factory/pull/38) / [PR #42](https://github.com/ChuluuMGL/video-factory/pull/42) | 候选分支存在，不在 a37 的已验收模型范围 | 完整执行集成、各供应商官方账户/模型/区域、单次付费计划和真实结果回写；不能用其他历史项目代签 |
 | Seedream 图片 [#45](https://github.com/ChuluuMGL/video-factory/issues/45) | 独立图片路线尚未实现 | 定义任务与审核字段、实现接口及恢复，再做授权的真实图片验收 |
 | 历史生成账单 | 回执已保留，精确账单金额未独立核对 | 供应商账单记录；token 上限不等于人民币金额 |
 | n8n Cloud SaaS | 维护者明确跳过真实实例测试 | 有公共 API 的实例与授权后再安排；不为此新开计费服务 |

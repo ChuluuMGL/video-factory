@@ -32,7 +32,7 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 先看安装目标
 
-a36 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。公开下载版本以 Release 为准。
+a37 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。公开下载版本以 Release 为准。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
 

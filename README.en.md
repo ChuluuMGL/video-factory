@@ -32,7 +32,7 @@ See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/
 
 ## Choose what you want to run
 
-The a36 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. Public downloads use the version shown in Releases.
+The a37 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. Public downloads use the version shown in Releases.
 
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
