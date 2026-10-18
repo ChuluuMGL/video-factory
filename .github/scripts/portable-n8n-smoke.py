@@ -355,7 +355,8 @@ try:
         claims=list(pool.map(claim,range(6)))
     assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==7 and all(not w['active'] for w in all_workflows)
+    assert len(all_workflows)==8 and all(not w['active'] for w in all_workflows)
+    assert owned['workflow'] in {w['id'] for w in all_workflows},'UPGRADED_WORKFLOW_ID_MUST_SURVIVE'
     assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
         assert 'synthetic-feishu-secret' not in receipt.read_text(encoding='utf-8') and key not in receipt.read_text(encoding='utf-8') and 'synthetic-model-key' not in receipt.read_text(encoding='utf-8')

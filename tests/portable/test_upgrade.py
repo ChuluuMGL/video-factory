@@ -45,7 +45,7 @@ class Upgrade(unittest.TestCase):
         plan=self.plan(); self.assertEqual(self.api.puts,[])
         result=apply(self.api,self.root,'fixture',plan)
         self.assertTrue(result['complete']); self.assertEqual(result['updated'],1)
-        updated=json.loads((self.root/'binding-fixture-probe.json').read_text())
+        updated=json.loads((self.root/'binding-fixture-probe.json').read_text(encoding='utf-8'))
         self.assertEqual(updated['credentials'],self.binding['credentials'])
         self.assertEqual(updated['workflow'],'wf1'); self.assertEqual(updated['template_sha256'],digest(self.template))
         self.assertEqual(self.api.workflows['wf1']['name'],'My preserved workflow')
@@ -80,7 +80,7 @@ class Upgrade(unittest.TestCase):
         self.api.workflows['wf1']['nodes'][0]['position']=[500,500]
         with self.assertRaisesRegex(Fault,'MODIFIED'):self.plan()
     def test_scope_and_plan_hash_are_checked(self):
-        plan=self.plan();p=self.root/('upgrade-'+plan+'.json');v=json.loads(p.read_text());v['origin']='https://other.invalid';private_write(p,v)
+        plan=self.plan();p=self.root/('upgrade-'+plan+'.json');v=json.loads(p.read_text(encoding='utf-8'));v['origin']='https://other.invalid';private_write(p,v)
         with self.assertRaisesRegex(Fault,'PLAN_CHANGED'):apply(self.api,self.root,'fixture',plan)
         self.assertEqual(self.api.puts,[])
     def test_ledger_busy_or_pending_approval_blocks(self):
@@ -132,10 +132,10 @@ class Upgrade(unittest.TestCase):
         private_write(self.root/'binding-fixture-confirm-script-paid.json',binding)
         self.api.workflows['wf2']={'name':'Owner script','active':False,**copy.deepcopy(binding['owned_template'])}
         plan=self.plan();apply(self.api,self.root,'fixture',plan)
-        updated=json.loads((self.root/'binding-fixture-confirm-script-paid.json').read_text())
+        updated=json.loads((self.root/'binding-fixture-confirm-script-paid.json').read_text(encoding='utf-8'))
         self.assertEqual(updated['owned_template'],bound(template,binding))
         self.assertEqual(updated['credentials'],binding['credentials'])
-        self.assertEqual(json.loads((event_root/'events.json').read_text()),event)
+        self.assertEqual(json.loads((event_root/'events.json').read_text(encoding='utf-8')),event)
     def test_running_receiver_blocks_preview(self):
         from portable_events import receiver_lock
         event_root=self.root/'fixture-events';event_root.mkdir()
