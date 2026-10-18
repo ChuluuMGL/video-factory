@@ -20,7 +20,8 @@ class CandidateVideoProviderTests(unittest.TestCase):
                              ('singapore', 'api-singapore.klingai.com')]:
             provider = CandidateVideoProvider('kling', region=region, model='kling-3.0-turbo')
             with patch('video_factory.video_provider_candidates.opener') as network:
-                response = network.return_value.open.return_value.__enter__.return_value
+                response = network.return_value.open.return_value
+                response.__enter__.return_value = response
                 response.status = 200
                 response.read.return_value = b'{"code":0,"data":{"id":"task-12345"}}'
                 self.assertEqual(provider.submit({}, 'synthetic-key'), 'task-12345')
@@ -45,7 +46,8 @@ class CandidateVideoProviderTests(unittest.TestCase):
     def test_kling_auth_failure_does_not_switch_region(self):
         provider = CandidateVideoProvider('kling', region='beijing')
         with patch('video_factory.video_provider_candidates.opener') as network:
-            response = network.return_value.open.return_value.__enter__.return_value
+            response = network.return_value.open.return_value
+            response.__enter__.return_value = response
             response.status = 401
             response.read.return_value = b'{}'
             with self.assertRaises(ProviderRejected):
