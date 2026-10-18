@@ -20,8 +20,8 @@ Cloud SaaS 本轮跳过。旧客户项目和历史服务器不自动成为本次
 
 ## 按路线安装
 
-- **便携候选**：取得完整 Skill 及其 `scripts`，按[便携指南](PORTABLE_N8N.md)运行 `portable_n8n.py welcome`。选择当前环境、已有实例或新安装；不要因使用 Mac / Windows 就要求租 Ubuntu 服务器。已有 n8n 保留原工作流和管理方式。
-- **固定服务器包**：按该固定包 `INSTALL.md` 与 Setup 在受支持的 Ubuntu 主机操作；不要把便携候选的能力记到 a35 固定包上。
+- **a36 便携路线**：取得完整 Skill 及其 `scripts`，按[便携指南](PORTABLE_N8N.md)运行 `portable_n8n.py welcome`。选择当前环境、已有实例或新安装；不要因使用 Mac / Windows 就要求租 Ubuntu 服务器。已有 n8n 保留原工作流和管理方式。
+- **固定服务器包**：按该固定包 `INSTALL.md` 与 Setup 在受支持的 Ubuntu 主机操作；a36 服务归档仍是 Ubuntu 完整栈；不要把便携路线当作原生桌面完整栈。
 
 在私有终端输入凭据。中途安全退出一次，按同一目录续接，核对已完成配置被保留；Base、凭据和工作流没有重复创建。让向导完成字段及连接检查，保存不含密钥的交接记录。模型工作流保持关闭，安装结束不自动收费。
 
