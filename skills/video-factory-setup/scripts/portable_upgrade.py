@@ -169,6 +169,9 @@ def preview(api, root, project):
         if path.exists() and read(root, path.name) != plan: raise Fault('UPGRADE_PLAN_CHANGED')
         if not path.exists(): private_write(path, plan)
         return {'plan': plan_id, 'workflows': len(targets),
+                'project': project, 'origin': api.url, 'base': config['base'], 'table': config['table'],
+                'changes': [{'workflow': t['workflow'], 'name': t['body']['name'],
+                             'changed': t['before'] != t['after']} for t in targets],
                 'changed': sum(t['before'] != t['after'] for t in targets), 'active': False, 'provider_requests': 0}
 
 
