@@ -1,3 +1,4 @@
+from urllib.error import HTTPError, URLError
 import copy
 import json
 from pathlib import Path
@@ -57,6 +58,24 @@ class Approval(unittest.TestCase):
             self.assertEqual(inbox.dispatch_one(CONFIG,'fake',unknown)['status'],'needs_reconciliation')
             self.assertEqual(Inbox(Path(d)/'events').dispatch_one(CONFIG,'fake',unknown)['status'],'idle')
             self.assertEqual(len(calls),1)
+
+    def test_delivery_failure_is_classified_without_exposing_or_retrying(self):
+        cases=[(HTTPError('https://secret.invalid/token',403,'secret-body',{},None),
+                {'error':'http_response','http_status':403}),
+               (URLError('secret-connection-details'),{'error':'transport_failure'}),
+               (json.JSONDecodeError('secret-response','secret',0),{'error':'invalid_json_response'}),
+               (Fault('secret-configuration'),{'error':'local_validation_failure'})]
+        for error,details in cases:
+            with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as d:
+                inbox=Inbox(Path(d)/'events');inbox.enqueue(*reduce_verified(event(),CONFIG))
+                calls=[]
+                def fail(*args):calls.append(1);raise error
+                result=inbox.dispatch_one(CONFIG,'synthetic',fail)
+                self.assertEqual(result,{'status':'needs_reconciliation',
+                    'receipt':{'delivery':'unknown_no_retry',**details}})
+                self.assertNotIn('secret',json.dumps(result))
+                self.assertEqual(inbox.dispatch_one(CONFIG,'synthetic',fail),{'status':'idle'})
+                self.assertEqual(calls,[1])
 
     def test_dispatch_intent_after_crash_never_replayed(self):
         with tempfile.TemporaryDirectory() as d:

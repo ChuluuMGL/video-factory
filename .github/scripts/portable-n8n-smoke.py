@@ -420,7 +420,20 @@ try:
     execute(owner_flow['workflow'],True,confirmation_event())
     assert state['model_calls']==4
     state['plan']=json.loads(protected['payload'])['display']
-    execute(owner_flow['workflow'],False,confirmation_event())
+    # Exercise the shipped relay and its original authenticated webhook, not
+    # only the additional synthetic CI trigger. The provider is still local.
+    from portable_events import Inbox
+    relay_inbox=Inbox(root/'real-relay-fixture')
+    relay_config={'origin':api_origin,'hooks':{'script':'owner-confirm'}}
+    api.request('POST','/api/v1/workflows/'+owner_flow['workflow']+'/activate',{})
+    try:
+        time.sleep(3)
+        relay_inbox.enqueue('script',confirmation_event())
+        relay_result=relay_inbox.dispatch_one(relay_config,'synthetic-distinct-relay-token')
+        assert relay_result=={'status':'done','receipt':{'authorization':'verified','writeback':'verified'}},relay_result
+        assert relay_inbox.dispatch_one(relay_config,'synthetic-distinct-relay-token')=={'status':'idle'}
+    finally:
+        api.request('POST','/api/v1/workflows/'+owner_flow['workflow']+'/deactivate',{})
     assert state['model_calls']==5 and state['status']=='脚本待审核'
     execute(owner_flow['workflow'],False,confirmation_event())
     assert state['model_calls']==5,'APPROVAL_REPLAY_MUST_NOT_CALL_MODEL'

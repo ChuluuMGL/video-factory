@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 from portable_n8n import Fault, NoRedirect, origin, identifier, private_write, secret
 from portable_approval import policy_checked
@@ -149,8 +150,20 @@ class Inbox:
             ok=isinstance(result,dict) and result.get('authorization')=='verified'
             receipt={k:result[k] for k in ('authorization','writeback','provider_requests','verification_only','plan_consumed') if isinstance(result,dict) and k in result}
             status='done' if ok else 'needs_reconciliation'
-        except Exception:
+        except Exception as error:
+            # Persist only a bounded error category/status, never a URL, header,
+            # response body or exception message (which can contain secrets).
             status='needs_reconciliation'; receipt={'delivery':'unknown_no_retry'}
+            if isinstance(error,HTTPError):
+                receipt.update(error='http_response',http_status=error.code)
+            elif isinstance(error,(TimeoutError,URLError)):
+                receipt['error']='transport_failure'
+            elif isinstance(error,json.JSONDecodeError):
+                receipt['error']='invalid_json_response'
+            elif isinstance(error,Fault):
+                receipt['error']='local_validation_failure'
+            else:
+                receipt['error']='unexpected_failure'
         with self.connect() as db:
             db.execute('UPDATE events SET status=?,receipt=? WHERE id=?',(status,json.dumps(receipt),row['id']))
         return {'status':status,'receipt':receipt}
