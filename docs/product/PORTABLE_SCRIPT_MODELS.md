@@ -22,6 +22,6 @@
 
 供应商默认模型只是配置起点，须确认自己账户已开通。当前候选只支持表列官方接口，不接受任意第三方地址、不猜测 Key 所属平台、不跨区域自动重试。百炼工作空间专属域名暂未纳入此候选；不能用北京 Key 接其他区域。思考内容不写入脚本，截断或格式不符停在待核对状态，不自动重发模型请求。
 
-视频仍使用原 MiniMax H3 路线；本次脚本接入不表示可灵、Seedance、万相或 Seedream 已完成便携接入。
+视频候选另见 [便携视频接入](PORTABLE_VIDEO_MODELS.md)；脚本接入不能代替视频或 Seedream 图片的真实验收。
 
 接口依据（2026-10-19 核对）：[Gemini OpenAI 兼容](https://ai.google.dev/gemini-api/docs/openai)、[MiniMax OpenAI 兼容](https://platform.minimax.cn/docs/api-reference/text-openai-api)、[百炼 OpenAI 兼容](https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope)、[火山方舟 Chat API](https://docs.volcengine.com/docs/ark/chat-api?lang=zh)。

@@ -53,6 +53,14 @@ class Fixture(BaseHTTPRequestHandler):
             state['polls']+=1
             if state.get('edit_during_poll'): state['status']='视频退回'
             self.reply({'task':{'id':state['job'],'model':'MiniMax-H3','status':'succeeded','content':{'url':'https://media.example.invalid/synthetic.mp4'}}})
+        elif self.path.startswith(('/api/v3/contents/generations/tasks/','/api/v1/tasks/','/tasks?task_ids=')):
+            assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            state['polls']+=1
+            if self.path.startswith('/api/v3'):
+                self.reply({'id':state['job'],'model':state['candidate_model'],'status':'succeeded','content':{'video_url':'https://media.example.invalid/candidate.mp4'}})
+            elif self.path.startswith('/api/v1'):
+                self.reply({'output':{'task_id':state['job'],'task_status':'SUCCEEDED','video_url':'https://media.example.invalid/candidate.mp4'}})
+            else:self.reply({'code':0,'data':[{'id':state['job'],'status':'succeeded','outputs':[{'type':'video','url':'https://media.example.invalid/candidate.mp4'}]}]})
         elif self.path.endswith('/recFixture'):
             self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':task_fields()}}})
         else:
@@ -73,6 +81,20 @@ class Fixture(BaseHTTPRequestHandler):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['video_calls']+=1
             self.reply({'task_id':'123456789012345'})
+        elif self.path.startswith(('/api/v3/contents/generations/tasks','/api/v1/services/aigc/video-generation/video-synthesis','/image-to-video/')):
+            assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            image='data:image/png;base64,'+base64.b64encode(image_bytes).decode()
+            if self.path.startswith('/api/v3'):
+                assert body['model']==state['candidate_model'] and body['duration']==5 and body['content'][1]['image_url']['url']==image
+                response={'id':'candidate-task-123'}
+            elif self.path.startswith('/api/v1'):
+                assert self.headers['X-DashScope-Async']=='enable'
+                assert body['model']==state['candidate_model'] and body['parameters']['duration']==5 and body['input']['media']==[{'type':'first_frame','url':image}]
+                response={'output':{'task_id':'candidate-task-123'}}
+            else:
+                assert self.path.endswith(state['candidate_model']) and body['settings']['duration']==5 and body['contents'][1]['url']==image.split(',')[1]
+                response={'code':0,'data':{'id':'candidate-task-123'}}
+            state['video_calls']+=1;self.reply(response)
         elif '/search?' in self.path:
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
@@ -398,7 +420,7 @@ try:
         return configure_flows(*args,**kwargs,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
     guided_prompts=[]
     with patch('portable_n8n.secret',side_effect=guided_secret), patch('portable_n8n.configure_flows',side_effect=guided_bundle), patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)), patch('n8n_workflows.schema_workflow',side_effect=lambda b,t:schema_workflow(b,t,feishu_origin=fixture_origin)):
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y','minimax-cn','']):
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
@@ -538,6 +560,27 @@ try:
         assert actual==expected,provider
         execute(selected_flow['workflow'])
         assert state['model_calls']==before+1,'PROFILE_REPLAY_MUST_NOT_CALL_MODEL'
+    phase='video candidate profiles through actual n8n with synthetic providers'
+    from portable_video_models import VIDEOS,selection as video_selection
+    state['references']='';state['attachments']=[{'file_token':'fileFixture','name':'first.png','size':len(image_bytes)}]
+    state['script']='A synthetic first frame scene';state['feedback']='';state['job']=''
+    for provider in VIDEOS:
+        if provider=='minimax-cn':continue
+        selected=video_selection(provider);state['candidate_model']=selected['model']
+        project='video-profile-'+provider
+        ledger=ensure_ledger(api,root/'bindings',project,'baseFixture','tableFixture')
+        submit=guard_workflow(production_workflow('baseFixture','tableFixture','video-submit',
+            feishu_origin=fixture_origin,video_origin=fixture_origin,video_selection=selected),ledger)
+        saved_submit=provision(api,root/'bindings',project,submit,credentials)
+        state['status']='视频生成已确认';state['job']='';before=state['video_calls']
+        execute(saved_submit['workflow'])
+        assert state['video_calls']==before+1 and state['status']=='视频生成中' and state['job']=='candidate-task-123',provider
+        execute(saved_submit['workflow']);assert state['video_calls']==before+1
+        poll=production_workflow('baseFixture','tableFixture','video-poll',feishu_origin=fixture_origin,video_origin=fixture_origin,video_selection=selected)
+        saved_poll=provision(api,root/'bindings',project+'-poll',poll,credentials)
+        execute(saved_poll['workflow'])
+        assert state['status']=='视频待审核' and state['video_link']['link']=='https://media.example.invalid/candidate.mp4',provider
+        assert state['video_calls']==before+1
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
