@@ -102,7 +102,7 @@ Windows/Mac 用户可直接选择本机 Node.js、Docker 或已有 n8n。只有�
 | 飞书 Base | 项目资料、来源任务与员工日常查看 |
 | 负责人费用确认 | 在飞书核对并确认单次生成计划；审核通过不会自动授权下一次付费调用 |
 
-[原任务表审核](docs/product/FEISHU_NATIVE_REVIEW.md)把脚本、版本和成片写回同一任务，由员工在飞书表内退回或通过。可选 [Base 结果同步](docs/product/BASE_RESULTS.md)只追加另一张结果快照表。终端审核用于技术验收；首次安装不部署常驻员工网页，见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
+[原任务表审核](docs/product/FEISHU_NATIVE_REVIEW.md)把脚本、版本和成片写回同一任务，由员工在飞书表内退回或通过。可选 [Base 结果同步](docs/product/BASE_RESULTS.md)只追加另一张结果快照表。首次安装不部署常驻员工网页，见[产品形态与验收边界](docs/product/PRODUCT_SHAPE.md)。
 
 ## 文档与仓库范围
 

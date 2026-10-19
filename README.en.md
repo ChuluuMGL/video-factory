@@ -106,7 +106,7 @@ The operational guides and installer interactions are currently primarily in Chi
 | Feishu Base | Project information, source tasks and employees' daily view |
 | Designated-owner fee confirmation | Review and confirm each generation plan in Feishu; approving content never authorizes the next paid call |
 
-[Original task-row review](docs/product/FEISHU_NATIVE_REVIEW.md) writes the script, revision and video back to the same task for employee decisions in Feishu Base. Optional [Base result synchronization](docs/product/BASE_RESULTS.md) appends a separate snapshot table. Terminal review is technical acceptance. The default installation does not deploy a persistent employee web interface; see the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+[Original task-row review](docs/product/FEISHU_NATIVE_REVIEW.md) writes the script, revision and video back to the same task for employee decisions in Feishu Base. Optional [Base result synchronization](docs/product/BASE_RESULTS.md) appends a separate snapshot table. The default installation does not deploy a persistent employee web interface; see the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
