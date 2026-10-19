@@ -746,7 +746,7 @@ def main(argv=None):
     for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
         owner.add_argument('--'+name,required=True)
     owner.add_argument('--paid-workflows',action='store_true',help='导入有模型节点的关闭流程；不会激活')
-    for name in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
+    for name in ('approval-enable','approval-disable','approval-promote','approval-cancel','approval-reconcile'):
         command=commands.add_parser(name)
         command.add_argument('--url',required=True)
         command.add_argument('--project',required=True)
@@ -797,10 +797,11 @@ def main(argv=None):
                 {'app':args.app,'tenant':args.tenant,'billing_owner':args.billing_owner,
                  'billing_account':args.billing_account,'configuration':args.configuration},
                 verification_only=not args.paid_workflows)
-        elif args.command in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
-            from portable_approval import set_approval_active,promote_approval,cancel_plan
+        elif args.command in ('approval-enable','approval-disable','approval-promote','approval-cancel','approval-reconcile'):
+            from portable_approval import set_approval_active,promote_approval,cancel_plan,reconcile_completed_approval
             api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()
             if args.command=='approval-promote':value=promote_approval(api,args.root,args.project)
+            elif args.command=='approval-reconcile':value=reconcile_completed_approval(api,args.root,args.project)
             elif args.command=='approval-cancel':value=cancel_plan(api,args.root,args.project,args.expect_plan)
             else:
                 if args.command=='approval-enable' and input('启用本项目计划与确认入口？负责人确认有效计划后才执行，输入 yes: ').strip()!='yes':

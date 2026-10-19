@@ -431,3 +431,56 @@ def cancel_plan(api, root, project, expected):
         current=api.request('GET','/api/v1/data-tables/'+approval['table']+'/rows')['data']
         if len(current)!=1 or current[0]['status']!='idle':raise Fault('PLAN_CANCEL_READBACK_FAILED')
     return {'cancelled':expected,'provider_requests':0,'next':'旧确认编号无效；在飞书重新选择申请计划后，核对新计划。'}
+
+
+def reconcile_completed_approval(api, root, project, *, feishu_origin='https://open.feishu.cn'):
+    """Close only a consumed plan whose exact saved result is already restored.
+
+    This never restores a record, submits a model, retries an upload, or clears
+    an unknown execution. It frees the plan slot after zero-model recovery.
+    """
+    from portable_n8n import locked, verify_setup
+    root=Path(root);identifier(project)
+    with locked(root/(project+'-events')):
+        config=json.loads((root/(project+'-events')/'events.json').read_text(encoding='utf-8'))
+        if config['origin']!=api.url or config['verification_only']: raise Fault('RECONCILE_PAID_PROJECT_REQUIRED')
+        policy=policy_checked(config['policy'])
+        rows=[];ledgers=[]
+        for name in (project,project+'-approval'):
+            saved=json.loads((root/('ledger-'+name+'.json')).read_text(encoding='utf-8'))
+            if saved.get('pending') or any(saved.get(k)!=v for k,v in {'origin':api.url,'project':name,'base':config['base'],'task_table':config['table']}.items()):
+                raise Fault('RECONCILE_LEDGER_SCOPE_CHANGED')
+            identifier(saved['table'])
+            data=api.request('GET','/api/v1/data-tables/'+saved['table']+'/rows')['data']
+            if len(data)!=1 or data[0]['id']!=saved['row']: raise Fault('RECONCILE_LEDGER_ROW_CHANGED')
+            rows.append(data[0]);ledgers.append(saved)
+        execution,approval=rows
+        if execution['status']!='idle' or approval['status']!='consumed': raise Fault('RECOVER_RESULT_FIRST_UNKNOWN_EXECUTION_NOT_RELEASED')
+        task=json.loads(execution['payload']);result=json.loads(execution['result']);plan=json.loads(approval['payload'])['plan'];decision=json.loads(approval['result'])
+        if (task.get('approval')!=plan or plan['policy']!=policy or plan['base']!=config['base'] or plan['table']!=config['table']
+            or task['id']!=plan['record'] or execution['owner']!=task['execution'] or approval['owner']!=task['execution']
+            or decision['plan']!=plan['id'] or decision['actor']!=policy['billing_owner'] or plan['verification_only']):
+            raise Fault('RECOVERY_APPROVAL_RECEIPT_MISMATCH')
+        if result.get('fields',{}).get('状态') not in ('脚本待审核','视频生成中','图片待审核'): raise Fault('RECOVERY_RESULT_INVALID')
+        identifier(task['id']);identifier(config['base']);identifier(config['table'])
+        pool=json.loads((root/('credentials-'+project+'.json')).read_text(encoding='utf-8'))
+        if pool['origin']!=api.url or pool['project']!=project or pool['app']!=policy['app']: raise Fault('RECONCILE_CREDENTIAL_SCOPE_CHANGED')
+        url,nodes=start(config['base'],config['table'],feishu_origin)
+        nodes += [code('Saved restored fields','return [{json:'+json.dumps(result,ensure_ascii=False)+'}];'),
+                  http('Read restored original row',url+'/'+task['id'],feishu=True),
+                  persisted_fields_check('Verify restored original row','Saved restored fields'),
+                  code('Reconciliation readback',"return [{json:{base_read:'verified',provider_requests:0}}];")]
+        verify_setup(api,root,project+'-reconcile',compile_nodes(nodes),{'httpCustomAuth':pool['roles']['feishu']})
+        # Do not release if either receipt changed while Base was being read.
+        for saved,expected in zip(ledgers,rows):
+            current=api.request('GET','/api/v1/data-tables/'+saved['table']+'/rows')['data']
+            if current!=[expected]: raise Fault('RECONCILE_RECEIPT_CHANGED')
+        updated=api.request('PATCH','/api/v1/data-tables/'+ledgers[1]['table']+'/rows/update',{
+            'filter':{'type':'and','filters':[{'columnName':'id','condition':'eq','value':approval['id']},
+                *[{'columnName':key,'condition':'eq','value':approval[key]} for key in ('status','owner','payload','result')]]},
+            'data':{'status':'idle'},'returnData':True})
+        if len(updated)!=1:raise Fault('RECONCILE_APPROVAL_CHANGED')
+        current=api.request('GET','/api/v1/data-tables/'+ledgers[1]['table']+'/rows')['data']
+        if len(current)!=1 or current[0]['status']!='idle' or current[0]['result']!=approval['result']:
+            raise Fault('RECONCILE_READBACK_REQUIRED_NO_RETRY')
+        return {'reconciled':True,'provider_requests':0,'old_plan_reusable':False,'next':'可在飞书申请新的费用计划；旧编号保持失效。'}

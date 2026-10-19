@@ -69,3 +69,41 @@ assert.throws(()=>verify({code:0,data:{record:{fields:{'生成图片':[{file_tok
 """
         result=subprocess.run(['node','-e',js,json.dumps(data)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_completed_plan_reconciliation_rejects_unknown_and_mismatched_receipts(self):
+        from unittest.mock import patch
+        from portable_n8n import private_write
+        from portable_approval import reconcile_completed_approval
+        class API:
+            url='http://127.0.0.1:5678'
+            def __init__(self):self.rows={};self.writes=[]
+            def request(self,method,path,body=None):
+                table=path.split('/')[4]
+                if method=='GET':return {'data':[json.loads(json.dumps(self.rows[table]))]}
+                self.writes.append(body);self.rows[table]['status']='idle';return [self.rows[table]]
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);api=API()
+            private_write(root/'p-events/events.json',{'origin':api.url,'verification_only':False,'base':'baseFixture','table':'tableFixture','policy':POLICY})
+            for project,table in [('p','exec'),('p-approval','approval')]:
+                private_write(root/('ledger-'+project+'.json'),{'origin':api.url,'project':project,'base':'baseFixture','task_table':'tableFixture','table':table,'row':1})
+            private_write(root/'credentials-p.json',{'origin':api.url,'project':'p','app':POLICY['app'],'roles':{'feishu':{}}})
+            plan={'id':'vf-fixture-image-42','record':'recFixture','base':'baseFixture','table':'tableFixture','policy':POLICY,'verification_only':False}
+            task={'id':'recFixture','execution':'42','approval':plan}
+            result={'fields':{'状态':'图片待审核','生成图片':[{'file_token':'saved'}]}}
+            api.rows={'exec':{'id':1,'owner':'42','status':'idle','payload':json.dumps(task),'result':json.dumps(result)},
+                      'approval':{'id':1,'owner':'42','status':'consumed','payload':json.dumps({'plan':plan}),'result':json.dumps({'plan':plan['id'],'actor':POLICY['billing_owner']})}}
+            with patch('portable_n8n.verify_setup') as readback:
+                for status in ('busy','image_ready','image_uploading','result_ready'):
+                    api.rows['exec']['status']=status
+                    with self.assertRaisesRegex(Fault,'RECOVER_RESULT_FIRST'):reconcile_completed_approval(api,root,'p')
+                readback.assert_not_called();self.assertEqual(api.writes,[])
+                api.rows['exec']['status']='idle';api.rows['approval']['owner']='other'
+                with self.assertRaisesRegex(Fault,'MISMATCH'):reconcile_completed_approval(api,root,'p')
+                api.rows['approval']['owner']='42'
+                readback.side_effect=Fault('readback failed')
+                with self.assertRaisesRegex(Fault,'readback'):reconcile_completed_approval(api,root,'p')
+                self.assertEqual(api.writes,[])
+                readback.side_effect=None
+                self.assertTrue(reconcile_completed_approval(api,root,'p')['reconciled'])
+                self.assertEqual(len(api.writes),1)
+                self.assertEqual(api.rows['approval']['status'],'idle')

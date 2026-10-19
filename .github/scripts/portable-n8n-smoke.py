@@ -446,11 +446,11 @@ try:
         return configure_flows(*args,**kwargs,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
     guided_prompts=[]
     with patch('portable_n8n.secret',side_effect=guided_secret), patch('portable_n8n.configure_flows',side_effect=guided_bundle), patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)), patch('n8n_workflows.schema_workflow',side_effect=lambda b,t:schema_workflow(b,t,feishu_origin=fixture_origin)):
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y','minimax-cn','']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y','minimax-cn','','n']):
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y','n']):
             resumed=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
@@ -655,6 +655,35 @@ try:
     assert state['image_calls']==before and state['image_uploads']==uploads
     saved=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]
     assert saved['status']=='image_uploading' and json.loads(saved['result'])['artifact']['b64']
+    phase='owner-confirmed image and restored fee-plan reconciliation'
+    from portable_n8n import private_write
+    from portable_approval import reconcile_completed_approval
+    image_project='image-owner'
+    image_execution=ensure_ledger(api,root/'bindings',image_project,'baseFixture','tableFixture')
+    image_approval=ensure_ledger(api,root/'bindings',image_project+'-approval','baseFixture','tableFixture')
+    project_credentials(api,root/'bindings',image_project,'cli_fixture',['feishu'],fixture_secret)
+    private_write(root/'bindings'/ (image_project+'-events')/'events.json',{'origin':api.url,'project':image_project,'base':'baseFixture','table':'tableFixture','policy':policy,'verification_only':False})
+    image_plan=provision(api,root/'bindings','image-owner-plan',plan_workflow('baseFixture','tableFixture','image',image_approval,policy,feishu_origin=fixture_origin,image_selection=image_selection()),credentials)
+    owner_image=confirmation_workflow('baseFixture','tableFixture','image',image_execution,image_approval,policy,'image-owner-confirm',feishu_origin=fixture_origin,image_selection=image_selection())
+    next(n for n in owner_image['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    owner_image=provision(api,root/'bindings','image-owner-confirm',owner_image,credentials)
+    state.update(status='申请图片计划',image_candidates=[],image_receipt='',unknown_image_upload=False,fail_image_writeback=True)
+    before=state['image_calls'];uploads=state['image_uploads']
+    execute(image_plan['workflow'])
+    protected=api.request('GET','/api/v1/data-tables/'+image_approval['table']+'/rows')['data'][0]
+    plan=json.loads(protected['payload'])['plan'];state['confirmation']=plan['id']
+    execute(owner_image['workflow'],True,confirmation_event('ou_other'))
+    assert state['image_calls']==before
+    execute(owner_image['workflow'],True,confirmation_event())
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    state['fail_image_writeback']=False
+    owner_image_recovery=provision(api,root/'bindings','image-owner-recover',recovery_workflow('baseFixture','tableFixture',image_execution,feishu_origin=fixture_origin),credentials)
+    execute(owner_image_recovery['workflow'])
+    receipt=reconcile_completed_approval(api,root/'bindings',image_project,feishu_origin=fixture_origin)
+    assert receipt['reconciled'] and receipt['provider_requests']==0
+    execute(owner_image['workflow'],False,confirmation_event())
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    assert api.request('GET','/api/v1/data-tables/'+image_approval['table']+'/rows')['data'][0]['status']=='idle'
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
