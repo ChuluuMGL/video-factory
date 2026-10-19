@@ -28,11 +28,11 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 隔离测试已完成真实飞书连接、DeepSeek 脚本生成、本人表内审核和一次 MiniMax H3 视频回写。负责人在飞书确认费用后，首次自动生成、单次计划消费和原行写回均通过，脚本已由本人审核。第二账号权限、非作者安装及桌面实际退出/登录仍保留待验。
 
-详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) · [当前状态](docs/product/STATUS.md)。
+详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/39175731136) · [当前状态](docs/product/STATUS.md)。
 
 ## 先看安装目标
 
-a37 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。公开下载版本以 Release 为准。
+a38 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。新增[保留原项目的升级指引](docs/product/PORTABLE_UPGRADE.md)。发布与检查见 [a38 回执](docs/product/DELIVERY_A38_RESULT.md)。公开下载版本以 Release 为准。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
 
@@ -53,15 +53,15 @@ a37 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Do
 
 | 用途 | 固定发行包可选 | 开发候选或待接入 |
 |---|---|---|
-| 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的脚本适配在[开发候选 PR #38](https://github.com/ChuluuMGL/video-factory/pull/38)，尚未完成各自真实账户验收 |
-| 视频 | MiniMax H3 | 可灵、Seedance 和万相视频的接口适配在[开发候选 PR #42](https://github.com/ChuluuMGL/video-factory/pull/42)，尚未接入正式 Setup 或完成真实生成验收 |
+| 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的安装、费用计划和执行接入见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)；四平台合成测试通过，未包含在 a38，真实账户验收待完成 |
+| 视频 | MiniMax H3 | 可灵、Seedance 和万相视频的安装、费用确认、提交和轮询接入见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)；未包含在 a38，真实生成验收待完成 |
 | 图片 | 暂无独立图片生成路线 | Seedream（即梦图片）列在[待办 Issue #45](https://github.com/ChuluuMGL/video-factory/issues/45)；它不是 Seedance 视频接口 |
 
 旧项目用过某个模型、合成测试通过，都不等于它已在本产品的固定发行包中可选。不同接口仍需用各自账户完成调用、结果回写和人工审核验收；安装本身不触发付费生成。
 
 ## 安装完整 Video Factory
 
-推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作服务器的 Agent。
+推荐从[官网安装指南](https://www.yueyu.tech/zh/products/video-factory/)下载完整 Skill，再交给能读取文件并操作目标电脑或服务器的 Agent。
 
 **也可以直接从 GitHub 开始：**
 
@@ -74,7 +74,7 @@ a37 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Do
 先问我已有 n8n、飞书应用/Base 和希望运行产品服务的位置，保留现有配置，
 再告诉我当前版本可完成哪条路线；可安装时配置第一个测试项目。
 使用 GitHub 最新公开测试发行的固定标签与摘要；先检查环境和发行包，再逐步引导 Setup。
-密码和 API Key 默认在客户服务器的私密终端隐藏输入，不放在聊天中。
+密码和 API Key 在所选电脑或服务器的私密终端隐藏输入，不放在聊天中。
 ```
 
 **若选择当前固定包的完整自动部署**，准备 Ubuntu 24.04 x86_64 主机（至少 4 GiB 内存）、访问方式、项目资料、飞书应用与模型账户。Agent 检查并准备 Python 3.12、Docker 与 Compose。默认 CLI 安装不要求业务子域名。
