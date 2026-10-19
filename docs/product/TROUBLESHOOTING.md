@@ -51,6 +51,8 @@
 
 ## 收到负责人确认，但没有开始生成
 
+候选源码的 `TASK_VERSION_CHANGED_BEFORE_PROVIDER` 表示调用前发现脚本历史或视频任务 ID 改变，尚未进入模型节点。`TASK_VERSION_CHANGED_RESULT_SAVED` / `TASK_VERSION_CHANGED_NO_WRITEBACK` 表示已有结果保留在原执行账本，因后续编辑而停止回写；`VIDEO_INPUT_CHANGED_NO_OVERWRITE` 表示轮询期间任务资料改变。先核对原行、原执行和保存结果，不要清空账本、覆盖人工修改或重新生成。恢复只能接受原值或该次执行已保存的精确结果；此修复尚不在 a38 固定包。
+
 a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。
 
 先回读当前行、受保护审批与执行账本，以及 n8n 事件日志的节点轨迹。默认不保存完整执行数据，执行 API 没有记录不等于模型未调用。保留失败事件，不清队列、不自动重发；仅在确认未消费计划、未到模型节点、原计划未过期且当前内容一致后，再由负责人决定续接。原始日志仅保留在受控环境。详见[费用确认排查](PORTABLE_BILLING_APPROVAL.md#失败与停用)。

@@ -189,6 +189,7 @@ const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
 if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references)) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
+if(text(fields['脚本历史'])!==task.history || text(fields['视频任务ID'])!==task.job) throw new Error('TASK_VERSION_CHANGED_BEFORE_PROVIDER');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_BEFORE_PROVIDER');
 return [{json:{ok:true}}];""")]
     if flow == 'script':
@@ -221,6 +222,10 @@ const task=$('Select task').first().json, fields=$json.data.record.fields;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if(fields['状态']!=='视频生成中' || text(fields['视频任务ID'])!==task.job || text(fields['脚本'])!==task.script)
     throw new Error('VIDEO_TASK_CHANGED_NO_OVERWRITE');
+if(text(fields['商品资料'])!==task.product || text(fields['审核意见'])!==task.feedback || text(fields['脚本历史'])!==task.history ||
+   JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references) ||
+   JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments))
+    throw new Error('VIDEO_INPUT_CHANGED_NO_OVERWRITE');
 return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
     if flow in ('video-submit','video-poll') and video_selection is not None:
@@ -369,6 +374,7 @@ if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected 
    JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references))
     throw new Error('TASK_CHANGED_RESULT_SAVED_NO_OVERWRITE');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_RESULT_SAVED');
+if(text(fields['脚本历史'])!==task.history || text(fields['视频任务ID'])!==task.job) throw new Error('TASK_VERSION_CHANGED_RESULT_SAVED');
 return [{json:result}];""")
     nodes[before:before]=[save,restore,fresh,unchanged]
     nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
@@ -399,6 +405,13 @@ if(fields['状态']!==expected && fields['状态']!==saved.result.fields['状态
 if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(saved.references)) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(saved.attachments || [])) throw new Error('ATTACHMENTS_CHANGED_NO_WRITEBACK');
 if(text(fields['脚本'])!==saved.script && text(fields['脚本'])!==saved.result.fields['脚本']) throw new Error('SCRIPT_CHANGED_NO_WRITEBACK');
+// Accept the original value or our exact saved value after an uncertain PUT.
+// Never restore over a later edit, even when status/execution still match.
+for(const [field,original] of [['脚本历史',saved.history],['视频任务ID',saved.job]]) {
+ const current=text(fields[field]);
+ if(current!==original && (!Object.hasOwn(saved.result.fields,field) || current!==text(saved.result.fields[field])))
+   throw new Error('TASK_VERSION_CHANGED_NO_WRITEBACK');
+}
 return [{json:saved.result}];"""),
         http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),
         code('Verify recovery writeback',"if ($json.code!==0) throw new Error('WRITEBACK_STILL_UNAVAILABLE_NO_MODEL_RETRY'); return $input.all();"),
