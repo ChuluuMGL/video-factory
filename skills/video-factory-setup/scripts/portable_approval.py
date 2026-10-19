@@ -66,6 +66,13 @@ if(flow==='video-submit' && text(fields['视频任务ID'])) throw new Error('EXI
 const snapshot={};
 for(const k of ['商品资料','脚本','审核意见','脚本历史','参考图链接','视频任务ID']) snapshot[k]=text(fields[k]);
 snapshot['参考图附件']=(fields['参考图附件']||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size}));
+// Reject unusable candidate inputs before claiming or publishing a paid plan.
+if(flow==='video-submit' && model.first_frame_count===1) {
+ if(snapshot['脚本'].length>2500) throw new Error('VIDEO_PROMPT_INVALID');
+ const frames=snapshot['参考图附件'];
+ if(snapshot['参考图链接'].trim() || frames.length!==1) throw new Error('VIDEO_ONE_FEISHU_FIRST_FRAME_REQUIRED');
+ if(frames.some(a=>! /^[A-Za-z0-9_-]+$/.test(a.file_token || '') || !Number.isInteger(a.size) || a.size<1 || a.size>20*1024*1024 || !/\.(jpe?g|png)$/i.test(a.name || ''))) throw new Error('VIDEO_FIRST_FRAME_INVALID');
+}
 const plan={schema:2,id:'vf-'+policy.configuration+'-'+flow+'-'+String($execution.id),base,table,record:row.record_id,
   policy,flow,model,verification_only:verificationOnly,max_submissions:1,automatic_retry:false,snapshot,expires_at:Date.now()+86400000};
 const display=(verificationOnly?'【零费用身份验收：不调用模型，不生成内容】\n':'【确认后将调用模型并产生费用】\n')+JSON.stringify(plan,null,2)+

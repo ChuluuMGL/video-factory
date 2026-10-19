@@ -52,7 +52,15 @@ class VideoModels(unittest.TestCase):
                       'receipt':node(confirm,'Validate video receipt')['parameters']['jsCode'],
                       'poll':node(poll,'Check video completion')['parameters']['jsCode']}
                 js=r"""const assert=require('node:assert/strict'),d=JSON.parse(process.argv[1]);
-const plan=new Function('$json','$execution',d.plan)({code:0,data:{items:[{record_id:'recFixture',fields:{'商品资料':'fixture','脚本':'approved scene','状态':'申请视频计划'}}]}},{id:'42'})[0].json.plan;
+const fields={'商品资料':'fixture','脚本':'approved scene','状态':'申请视频计划','参考图附件':[{file_token:'fixtureToken',name:'first.png',size:42}]};
+const prepare=f=>new Function('$json','$execution',d.plan)({code:0,data:{items:[{record_id:'recFixture',fields:f}]}},{id:'42'});
+const plan=prepare(fields)[0].json.plan;
+for(const patch of [
+ {'参考图附件':[]}, {'参考图附件':[...fields['参考图附件'],...fields['参考图附件']]},
+ {'参考图链接':'https://media.example.invalid/image.png'}, {'脚本':'x'.repeat(2501)},
+ ...[{name:'first.svg'}, {size:0}, {size:20*1024*1024+1}, {file_token:'bad/token'}].map(change=>({'参考图附件':[{...fields['参考图附件'][0],...change}]}))
+])assert.throws(()=>prepare({...fields,...patch}),/VIDEO_/);
+assert.equal(prepare({...fields,'脚本':'x'.repeat(2500)})[0].json.plan.max_submissions,1);
 assert.deepEqual(plan.model,d.profile);const check=new Function('$json',d.check);
 for(const key of Object.keys(d.profile)){const v=structuredClone(plan);v.model[key]='changed';assert.throws(()=>check({payload:JSON.stringify({plan:v})}),/PROFILE_CHANGED/);}
 const refs=name=>({first:()=>({json:name==='Resolve video references'?{model_references:['data:image/png;base64,aGVsbG8=']}:{script:'approved scene',job:'candidate-task-123'}})});
