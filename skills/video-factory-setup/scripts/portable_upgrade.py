@@ -82,7 +82,14 @@ def scope(api, root, project):
         raise Fault('UPGRADE_MODEL_SCOPE_CHANGED')
     if event and event.get('video_selection',video_default())!=video:
         raise Fault('UPGRADE_VIDEO_SCOPE_CHANGED')
-    config={**config,'script_selection':models,'video_selection':video}
+    from portable_images import load as load_image
+    image=load_image(root,project,api.url)
+    if image is not None:
+        files['image-models-'+project+'.json']=read(root,'image-models-'+project+'.json')
+        pool=files.get(credential_file,{})
+        if pool.get('image_selection')!=image or 'image' not in pool.get('roles',{}): raise Fault('UPGRADE_IMAGE_CREDENTIAL_MODEL_MISMATCH')
+    if event and event.get('image_selection')!=image: raise Fault('UPGRADE_IMAGE_SCOPE_CHANGED')
+    config={**config,'script_selection':models,'video_selection':video,'image_selection':image}
     ledgers = {}
     for name in (project, project + '-approval'):
         relative = 'ledger-' + name + '.json'
@@ -108,6 +115,7 @@ def scope(api, root, project):
 def templates(project, config, event, ledgers, root):
     from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow, recovery_workflow
     from portable_approval import scheduled, plan_workflow, confirmation_workflow
+    from portable_images import recover_image_workflow
     base, table = config['base'], config['table']
     from portable_models import selection
     selected=config.get('script_selection',selection())
@@ -115,18 +123,20 @@ def templates(project, config, event, ledgers, root):
     from portable_video_models import selection as video_default
     if config.get('video_selection',video_default())!=video_default():
         model_options['video_selection']=config['video_selection']
+    if config.get('image_selection') is not None: model_options['image_selection']=config['image_selection']
     result = {}
     execution = ledgers.get(project)
-    for flow in ('probe', 'schema', 'script', 'video-submit', 'video-poll', 'recover'):
+    for flow in ('probe', 'schema', 'script', 'video-submit', 'video-poll', 'image', 'recover-image', 'recover'):
         name = project + '-' + flow
         if not (root / ('binding-' + name + '.json')).exists(): continue
-        if flow in ('script', 'video-submit', 'recover') and not execution:
+        if flow in ('script', 'video-submit', 'image', 'recover-image', 'recover') and not execution:
             raise Fault('UPGRADE_EXISTING_LEDGER_REQUIRED')
-        template = (probe_workflow(base, table) if flow == 'probe' else
+        template = (recover_image_workflow(base,table,execution) if flow=='recover-image' else
+                    probe_workflow(base, table) if flow == 'probe' else
                     schema_workflow(base, table) if flow == 'schema' else
                     recovery_workflow(base, table, execution) if flow == 'recover' else
                     production_workflow(base, table, flow,**model_options))
-        if flow in ('script', 'video-submit'): template = guard_workflow(template, execution)
+        if flow in ('script', 'video-submit', 'image'): template = guard_workflow(template, execution)
         result[name] = template
     if event:
         approval = ledgers[project + '-approval']
@@ -138,12 +148,12 @@ def templates(project, config, event, ledgers, root):
                 template = scheduled(production_workflow(base, table, 'video-poll',**model_options))
             elif logical.startswith('plan-'):
                 flow = logical[5:]
-                if flow not in ('script', 'video-submit'): raise Fault('UPGRADE_UNKNOWN_FLOW')
+                if flow not in ('script', 'video-submit', 'image'): raise Fault('UPGRADE_UNKNOWN_FLOW')
                 template = scheduled(plan_workflow(base, table, flow, approval, event['policy'],
                                                   verification_only=event['verification_only'],**model_options))
             elif logical.startswith('confirm-'):
                 flow = logical[8:]
-                if flow not in ('script', 'video-submit'): raise Fault('UPGRADE_UNKNOWN_FLOW')
+                if flow not in ('script', 'video-submit', 'image'): raise Fault('UPGRADE_UNKNOWN_FLOW')
                 template = confirmation_workflow(base, table, flow, execution, approval, event['policy'],
                     event['hooks'][flow], verification_only=event['verification_only'],**model_options)
             else: raise Fault('UPGRADE_UNKNOWN_FLOW')

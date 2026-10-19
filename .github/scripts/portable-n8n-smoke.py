@@ -13,6 +13,8 @@ import threading
 import time
 import uuid
 import base64
+import struct
+import zlib
 from urllib.parse import urlsplit, parse_qs
 from urllib.error import HTTPError
 from urllib.request import build_opener, HTTPCookieProcessor, Request
@@ -24,12 +26,15 @@ from n8n_workflows import probe_workflow, production_workflow, schema_workflow, 
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
 image_bytes=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7V0AAAAASUVORK5CYII=')
+def png_chunk(kind,body):
+    return struct.pack('!I',len(body))+kind+body+struct.pack('!I',zlib.crc32(kind+body))
+generated_image_bytes=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('!IIBBBBB',2048,2048,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(bytes(2048*(2048*3+1))))+png_chunk(b'IEND',b'')
 def task_fields():
     return {'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
             '审核意见':state['feedback'],'视频任务ID':state['job'],
             '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
-            '参考图附件':state.get('attachments',[]),'生成计划':state.get('plan',''),'费用确认编号':state.get('confirmation','')}
+            '参考图附件':state.get('attachments',[]),'生成计划':state.get('plan',''),'费用确认编号':state.get('confirmation',''),'图片要求':state.get('image_prompt',''),'生成图片':state.get('image_candidates',[]),'图片回执':state.get('image_receipt','')}
 class Fixture(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
@@ -66,7 +71,14 @@ class Fixture(BaseHTTPRequestHandler):
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
-        body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
+        raw=self.rfile.read(int(self.headers.get('Content-Length','0')))
+        if self.path.endswith('/medias/upload_all'):
+            assert self.headers['Authorization']=='Bearer synthetic-token'
+            assert 'multipart/form-data' in self.headers['Content-Type']
+            assert b'bitable_image' in raw and b'baseFixture' in raw and generated_image_bytes in raw
+            state['image_uploads']=state.get('image_uploads',0)+1
+            self.reply({'code':999} if state.get('unknown_image_upload') else {'code':0,'data':{'file_token':'generatedFixture'}});return
+        body=json.loads(raw)
         if self.path.endswith('/tenant_access_token/internal'):
             assert body == {'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}, body.keys()
             state['token_calls']+=1; self.reply({'code':0,'tenant_access_token':'synthetic-token'})
@@ -95,6 +107,12 @@ class Fixture(BaseHTTPRequestHandler):
                 assert self.path.endswith(state['candidate_model']) and body['settings']['duration']==5 and body['contents'][1]['url']==image.split(',')[1]
                 response={'code':0,'data':{'id':'candidate-task-123'}}
             state['video_calls']+=1;self.reply(response)
+        elif self.path.endswith('/images/generations'):
+            assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            assert body['response_format']=='b64_json' and body['sequential_image_generation']=='disabled' and body['stream'] is False
+            assert body['image']=='data:image/png;base64,'+base64.b64encode(image_bytes).decode()
+            state['image_calls']=state.get('image_calls',0)+1
+            self.reply({'model':body['model'],'data':[{'b64_json':base64.b64encode(generated_image_bytes).decode(),'size':'2048x2048'}],'usage':{'generated_images':1}})
         elif '/search?' in self.path:
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
@@ -121,6 +139,10 @@ class Fixture(BaseHTTPRequestHandler):
             self.reply({'code':999,'msg':'synthetic writeback failure'}); return
         if state.get('ack_without_record_write') and '脚本' in fields:
             self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}}); return
+        if state.get('fail_image_writeback') and '生成图片' in fields:
+            self.reply({'code':999,'msg':'synthetic image writeback failure'});return
+        if '生成图片' in fields: state['image_candidates']=fields['生成图片']
+        if '图片回执' in fields: state['image_receipt']=fields['图片回执']
         if '生成计划' in fields: state['plan']=fields['生成计划']
         if '费用确认编号' in fields: state['confirmation']=fields['费用确认编号']
         if '状态' in fields: state['status']=fields['状态']
@@ -429,11 +451,11 @@ try:
         return configure_flows(*args,**kwargs,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
     guided_prompts=[]
     with patch('portable_n8n.secret',side_effect=guided_secret), patch('portable_n8n.configure_flows',side_effect=guided_bundle), patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)), patch('n8n_workflows.schema_workflow',side_effect=lambda b,t:schema_workflow(b,t,feishu_origin=fixture_origin)):
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y','minimax-cn','']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y','minimax-cn','','n']):
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y','n']):
             resumed=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
@@ -590,6 +612,84 @@ try:
         execute(saved_poll['workflow'])
         assert state['status']=='视频待审核' and state['video_link']['link']=='https://media.example.invalid/candidate.mp4',provider
         assert state['video_calls']==before+1
+    phase='Seedream image bytes, attachment upload and zero-model recovery'
+    from portable_images import selection as image_selection
+    ledger=ensure_ledger(api,root/'bindings','image-fixture','baseFixture','tableFixture')
+    image_flow=guard_workflow(production_workflow('baseFixture','tableFixture','image',feishu_origin=fixture_origin,image_selection=image_selection()),ledger)
+    next(n for n in image_flow['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    imported=provision(api,root/'bindings','image-fixture',image_flow,credentials)
+    state.update(status='请求图片',image_prompt='One reference first frame',image_candidates=[],image_receipt='',fail_image_writeback=True)
+    before=state.get('image_calls',0);uploads=state.get('image_uploads',0)
+    execute(imported['workflow'],expect_failure=True)
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    saved=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]
+    assert saved['status']=='result_ready'
+    execute(imported['workflow']);assert state['image_calls']==before+1
+    state['fail_image_writeback']=False
+    image_recovery=provision(api,root/'bindings','image-recovery',recovery_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),credentials)
+    execute(image_recovery['workflow'])
+    assert state['status']=='图片待审核' and state['image_candidates']==[{'file_token':'generatedFixture'}]
+    assert state['attachments']==[{'file_token':'fileFixture','name':'first.png','size':len(image_bytes)}]
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    execute(image_recovery['workflow']);assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    phase='saved image upload continuation and unknown-upload fence'
+    from portable_images import recover_image_workflow
+    staged_ledger=ensure_ledger(api,root/'bindings','image-staged','baseFixture','tableFixture')
+    staged=guard_workflow(production_workflow('baseFixture','tableFixture','image',feishu_origin=fixture_origin,image_selection=image_selection()),staged_ledger)
+    next(n for n in staged['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    # Interrupt after the persisted image, before the first upload attempt.
+    from n8n_workflows import code,compile_nodes
+    at=next(i for i,n in enumerate(staged['nodes']) if n['name']=='Claim image upload')
+    staged=compile_nodes(staged['nodes'][:at]+[code('Synthetic interruption',"throw new Error('FIXTURE_AFTER_IMAGE_SAVE');")])
+    paused=provision(api,root/'bindings','image-staged',staged,credentials)
+    state.update(status='请求图片',image_candidates=[],image_receipt='')
+    before=state['image_calls'];uploads=state['image_uploads']
+    execute(paused['workflow'],expect_failure=True)
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads
+    restored=provision(api,root/'bindings','image-staged-upload',recover_image_workflow('baseFixture','tableFixture',staged_ledger,feishu_origin=fixture_origin),credentials)
+    execute(restored['workflow'])
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    written=provision(api,root/'bindings','image-staged-write',recovery_workflow('baseFixture','tableFixture',staged_ledger,feishu_origin=fixture_origin),credentials)
+    execute(written['workflow']);assert state['status']=='图片待审核'
+    # A later unknown upload must never be automatically repeated.
+    state.update(status='请求图片',image_candidates=[],image_receipt='',unknown_image_upload=True)
+    execute(imported['workflow'],expect_failure=True)
+    before=state['image_calls'];uploads=state['image_uploads']
+    uncertain=provision(api,root/'bindings','image-unknown-upload',recover_image_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),credentials)
+    execute(uncertain['workflow']);execute(image_recovery['workflow'])
+    assert state['image_calls']==before and state['image_uploads']==uploads
+    saved=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]
+    assert saved['status']=='image_uploading' and json.loads(saved['result'])['artifact']['b64']
+    phase='owner-confirmed image and restored fee-plan reconciliation'
+    from portable_n8n import private_write
+    from portable_approval import reconcile_completed_approval
+    image_project='image-owner'
+    image_execution=ensure_ledger(api,root/'bindings',image_project,'baseFixture','tableFixture')
+    image_approval=ensure_ledger(api,root/'bindings',image_project+'-approval','baseFixture','tableFixture')
+    project_credentials(api,root/'bindings',image_project,'cli_fixture',['feishu'],fixture_secret)
+    (root/'bindings'/(image_project+'-events')).mkdir()
+    private_write(root/'bindings'/ (image_project+'-events')/'events.json',{'origin':api.url,'project':image_project,'base':'baseFixture','table':'tableFixture','policy':policy,'verification_only':False})
+    image_plan=provision(api,root/'bindings','image-owner-plan',plan_workflow('baseFixture','tableFixture','image',image_approval,policy,feishu_origin=fixture_origin,image_selection=image_selection()),credentials)
+    owner_image=confirmation_workflow('baseFixture','tableFixture','image',image_execution,image_approval,policy,'image-owner-confirm',feishu_origin=fixture_origin,image_selection=image_selection())
+    next(n for n in owner_image['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    owner_image=provision(api,root/'bindings','image-owner-confirm',owner_image,credentials)
+    state.update(status='申请图片计划',image_candidates=[],image_receipt='',unknown_image_upload=False,fail_image_writeback=True)
+    before=state['image_calls'];uploads=state['image_uploads']
+    execute(image_plan['workflow'])
+    protected=api.request('GET','/api/v1/data-tables/'+image_approval['table']+'/rows')['data'][0]
+    plan=json.loads(protected['payload'])['plan'];state['confirmation']=plan['id']
+    execute(owner_image['workflow'],True,confirmation_event('ou_other'))
+    assert state['image_calls']==before
+    execute(owner_image['workflow'],True,confirmation_event())
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    state['fail_image_writeback']=False
+    owner_image_recovery=provision(api,root/'bindings','image-owner-recover',recovery_workflow('baseFixture','tableFixture',image_execution,feishu_origin=fixture_origin),credentials)
+    execute(owner_image_recovery['workflow'])
+    receipt=reconcile_completed_approval(api,root/'bindings',image_project,feishu_origin=fixture_origin)
+    assert receipt['reconciled'] and receipt['provider_requests']==0
+    execute(owner_image['workflow'],False,confirmation_event())
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    assert api.request('GET','/api/v1/data-tables/'+image_approval['table']+'/rows')['data'][0]['status']=='idle'
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):

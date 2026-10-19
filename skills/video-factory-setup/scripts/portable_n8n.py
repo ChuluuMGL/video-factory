@@ -561,14 +561,18 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
             raise Fault('VIDEO_CREDENTIAL_MODEL_MISMATCH')
         if 'script' in state['roles'] and state.get('script_selection',selection())!=script_choice:
             raise Fault('SCRIPT_CREDENTIAL_MODEL_MISMATCH')
+        from portable_images import load as load_image
+        image_choice=load_image(root,project,api.url)
+        if 'image' in state['roles'] and state.get('image_selection')!=image_choice: raise Fault('IMAGE_CREDENTIAL_MODEL_MISMATCH')
+        if 'image' in roles and image_choice is None: raise Fault('IMAGE_MODEL_SELECTION_REQUIRED')
         for role in roles:
-            if role not in ('feishu','script','video'): raise Fault('CREDENTIAL_ROLE_INVALID')
+            if role not in ('feishu','script','video','image'): raise Fault('CREDENTIAL_ROLE_INVALID')
             if role in state['roles']: continue
             if role=='feishu':
                 kind='httpCustomAuth'
                 data={'json':json.dumps({'body':{'app_id':app,'app_secret':ask_secret('飞书 App Secret（隐藏输入）: ')}})}
             else:
-                key=provider_secret((SCRIPTS[script_choice['provider']][0] if role=='script' else VIDEOS[video_choice['provider']][0])+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
+                key=provider_secret((SCRIPTS[script_choice['provider']][0] if role=='script' else 'Seedream Beijing' if role=='image' else VIDEOS[video_choice['provider']][0])+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
                 kind='httpHeaderAuth'; data={'name':'Authorization','value':'Bearer '+key}
             name='Video Factory '+project+' '+role
             state['pending']={'role':role,'name':name}; private_write(path,state)
@@ -576,6 +580,7 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
             state['roles'][role]={'type':kind,'existing':{'id':identifier(created.get('id')),'name':name}}
             if role=='script': state['script_selection']=script_choice
             if role=='video': state['video_selection']=video_choice
+            if role=='image': state['image_selection']=image_choice
             state.pop('pending'); private_write(path,state)
         return {role:state['roles'][role] for role in roles}
 
@@ -584,18 +589,21 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
                     script_origin='https://api.deepseek.com',video_origin='https://api.minimax.cn'):
     """Import a complete disabled bundle, with one shared project execution row."""
     from n8n_workflows import production_workflow,guard_workflow,recovery_workflow
+    from portable_images import recover_image_workflow
     from portable_models import load as load_models, selection
     selected=load_models(root,project,api.url)
     from portable_models import options
     model_options=options(root,project,api.url)
     ledger=ensure_ledger(api,root,project,base,table)
     result={}
-    for flow,role in [('script','script'),('video-submit','video'),('video-poll','video'),('recover',None)]:
+    for flow,role in [('script','script'),('video-submit','video'),('video-poll','video'),('image','image'),('recover-image',None),('recover',None)]:
         if role and role not in credentials: continue
-        template=(recovery_workflow(base,table,ledger,feishu_origin=feishu_origin) if flow=='recover' else
+        if flow=='recover-image' and 'image' not in credentials: continue
+        template=(recover_image_workflow(base,table,ledger,feishu_origin=feishu_origin) if flow=='recover-image' else
+                  recovery_workflow(base,table,ledger,feishu_origin=feishu_origin) if flow=='recover' else
                   production_workflow(base,table,flow,feishu_origin=feishu_origin,
                                       script_origin=script_origin,video_origin=video_origin,**model_options))
-        if flow in ('script','video-submit'): template=guard_workflow(template,ledger)
+        if flow in ('script','video-submit','image'): template=guard_workflow(template,ledger)
         selected={'httpCustomAuth':credentials['feishu']}
         if role: selected['httpHeaderAuth']=credentials[role]
         result[flow]=provision(api,root,project+'-'+flow,template,selected)
@@ -707,6 +715,10 @@ def welcome(root, dependency_timeout=1200):
             chosen=video_selection(provider,model)
         save_video(bindings,project,url,chosen)
         roles.append('video')
+    if ask_choice('配置 Seedream 视频参考图流程？生成后在飞书审核，默认不启用。y/N: ',('y','n'),'n')=='y':
+        from portable_images import save as save_image, load as load_image, selection as image_default
+        save_image(bindings,project,url,load_image(bindings,project,url) or image_default())
+        roles.append('image')
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
         receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
@@ -734,7 +746,7 @@ def main(argv=None):
     for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
         owner.add_argument('--'+name,required=True)
     owner.add_argument('--paid-workflows',action='store_true',help='导入有模型节点的关闭流程；不会激活')
-    for name in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
+    for name in ('approval-enable','approval-disable','approval-promote','approval-cancel','approval-reconcile'):
         command=commands.add_parser(name)
         command.add_argument('--url',required=True)
         command.add_argument('--project',required=True)
@@ -757,12 +769,12 @@ def main(argv=None):
     bind.add_argument('--project', required=True)
     bind.add_argument('--base', required=True)
     bind.add_argument('--table', required=True)
-    bind.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll','recover'], default='probe')
+    bind.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll','image','recover-image','recover'], default='probe')
     bind.add_argument('--experimental-manual', action='store_true', help='允许导入人工逐条测试工作流；不表示支持并发/自动生产')
     export = commands.add_parser('export')
     export.add_argument('--base', required=True)
     export.add_argument('--table', required=True)
-    export.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], required=True)
+    export.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll','image'], required=True)
     export.add_argument('--out', type=Path, required=True)
     export.add_argument('--experimental-manual',action='store_true')
     from portable_models import SCRIPTS
@@ -771,6 +783,7 @@ def main(argv=None):
         target.add_argument('--script-model')
         target.add_argument('--video-provider',choices=tuple(__import__('portable_video_models').VIDEOS))
         target.add_argument('--video-model')
+        target.add_argument('--image-model',choices=__import__('portable_images').MODELS)
     export.add_argument('--ledger-table',help='手动创建的 n8n 执行锁数据表 ID')
     export.add_argument('--ledger-row',type=int,help='该数据表中项目执行锁行 ID')
     args = parser.parse_args(argv)
@@ -784,10 +797,11 @@ def main(argv=None):
                 {'app':args.app,'tenant':args.tenant,'billing_owner':args.billing_owner,
                  'billing_account':args.billing_account,'configuration':args.configuration},
                 verification_only=not args.paid_workflows)
-        elif args.command in ('approval-enable','approval-disable','approval-promote','approval-cancel'):
-            from portable_approval import set_approval_active,promote_approval,cancel_plan
+        elif args.command in ('approval-enable','approval-disable','approval-promote','approval-cancel','approval-reconcile'):
+            from portable_approval import set_approval_active,promote_approval,cancel_plan,reconcile_completed_approval
             api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()
             if args.command=='approval-promote':value=promote_approval(api,args.root,args.project)
+            elif args.command=='approval-reconcile':value=reconcile_completed_approval(api,args.root,args.project)
             elif args.command=='approval-cancel':value=cancel_plan(api,args.root,args.project,args.expect_plan)
             else:
                 if args.command=='approval-enable' and input('启用本项目计划与确认入口？负责人确认有效计划后才执行，输入 yes: ').strip()!='yes':
@@ -802,7 +816,7 @@ def main(argv=None):
             from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow
             if args.flow not in ('probe','schema') and not args.experimental_manual:
                 raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
-            if args.flow in ('script','video-submit') and (not args.ledger_table or not args.ledger_row or args.ledger_row<1):
+            if args.flow in ('script','video-submit','image') and (not args.ledger_table or not args.ledger_row or args.ledger_row<1):
                 raise Fault('EXPORT_REQUIRES_EXISTING_N8N_LEDGER_TABLE_AND_ROW')
             from portable_models import selection
             selected=selection(args.script_provider or 'deepseek',args.script_model)
@@ -810,10 +824,13 @@ def main(argv=None):
             from portable_video_models import selection as video_selection
             video=video_selection(args.video_provider or 'minimax-cn',args.video_model)
             if video!=video_selection():model_options['video_selection']=video
+            if args.flow=='image' or args.image_model:
+                from portable_images import selection as image_selection
+                model_options['image_selection']=image_selection(args.image_model)
             template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                         schema_workflow(args.base,args.table) if args.flow=='schema' else
                         production_workflow(args.base,args.table,args.flow,**model_options))
-            if args.flow in ('script','video-submit'):
+            if args.flow in ('script','video-submit','image'):
                 template=guard_workflow(template,{'table':identifier(args.ledger_table),'row':args.ledger_row})
             if args.out.exists(): raise Fault('EXPORT_EXISTS_CHOOSE_NEW_PATH')
             private_write(args.out,template)
@@ -828,11 +845,11 @@ def main(argv=None):
                 value = api.preflight()
             else:
                 from n8n_workflows import probe_workflow, schema_workflow, production_workflow, guard_workflow, recovery_workflow
-                if args.flow not in ('probe','schema','recover') and not args.experimental_manual:
+                if args.flow not in ('probe','schema','recover','recover-image') and not args.experimental_manual:
                     raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
                 app_id = input('飞书 App ID: ').strip()
                 identifier(app_id)
-                role='script' if args.flow=='script' else 'video' if args.flow in ('video-submit','video-poll') else None
+                role='script' if args.flow=='script' else 'video' if args.flow in ('video-submit','video-poll') else 'image' if args.flow=='image' else None
                 from portable_models import load as load_models, save as save_models, selection
                 selected=load_models(args.root,args.project,api.url)
                 if args.script_provider or args.script_model:
@@ -841,16 +858,21 @@ def main(argv=None):
                 video=load_video(args.root,args.project,api.url)
                 if args.video_provider or args.video_model:
                     save_video(args.root,args.project,api.url,video_selection(args.video_provider or video['provider'],args.video_model))
+                if args.flow=='image' or args.image_model:
+                    from portable_images import load as load_image,save as save_image,selection as image_selection
+                    save_image(args.root,args.project,api.url,image_selection(args.image_model) if args.image_model else load_image(args.root,args.project,api.url) or image_selection())
                 from portable_models import options
                 model_options=options(args.root,args.project,api.url)
                 pool=project_credentials(api,args.root,args.project,app_id,['feishu']+([role] if role else []))
                 credentials={'httpCustomAuth':pool['feishu']}
                 if role: credentials['httpHeaderAuth']=pool[role]
-                template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
+                from portable_images import recover_image_workflow
+                template = (recover_image_workflow(args.base,args.table,ensure_ledger(api,args.root,args.project,args.base,args.table)) if args.flow=='recover-image' else
+                            probe_workflow(args.base,args.table) if args.flow=='probe' else
                             schema_workflow(args.base,args.table) if args.flow=='schema' else
                             recovery_workflow(args.base,args.table,ensure_ledger(api,args.root,args.project,args.base,args.table)) if args.flow=='recover' else
                             production_workflow(args.base,args.table,args.flow,**model_options))
-                if args.flow in ('script','video-submit'):
+                if args.flow in ('script','video-submit','image'):
                     template=guard_workflow(template,ensure_ledger(api,args.root,args.project,args.base,args.table))
                 value = provision(api, args.root, args.project + '-' + args.flow,template,credentials)
                 value['next'] = '在 n8n 查看并逐条运行测试；未激活定时执行。人工审核在飞书 Base。'

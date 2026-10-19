@@ -68,3 +68,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 ### 便携视频模型候选
 
 源码候选的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。只有 H3 有既有真实验收；其他路线先完成各自账户的单次计划验收，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
+
+### Seedream 视频参考图（源码候选）
+
+仅当完整 Skill 包含 `scripts/portable_images.py` 时，welcome 才可配置独立图片凭据与关闭状态的图片流程。使用一张 PNG/JPEG 飞书参考附件，在「图片要求」填写场景；指定负责人确认图片费用计划后仅生成一张，写入「生成图片」等待飞书人工审核。原图保留；审核通过后，由操作者把选定图片放到视频任务参考附件，再另行确认视频费用。未知生成/上传结果不重发。详见 `docs/product/PORTABLE_IMAGES.md`；不属于 a38 固定包，真实供应商验收未通过前不得宣称已投产。

@@ -29,7 +29,7 @@
 | Mac / Windows 实际退出系统并重新登录 | 因暂无实际操作者/设备而暂缓 | 各自系统的真实桌面会话恢复；CI 服务生命周期和 ECS 重启不能替代 |
 | 可选结果快照表 [#20](https://github.com/ChuluuMGL/video-factory/issues/20) / [#9](https://github.com/ChuluuMGL/video-factory/issues/9) | 实现和合成测试已有，真实权限、附件及未知提交恢复未关闭 | 现有测试项目的管理员授权、准确远端状态和原回执；不重新生成模型内容。它与已通过的原任务表回写是两个功能 |
 | 其他脚本与视频模型 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61) / [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62) | 候选已接通安装选择、凭据、费用计划、执行和回写，四平台合成集成通过；不在 a38 固定包 | 各供应商账户/区域及单次付费计划、真实结果回写，再决定候选发行；不能用历史项目代签 |
-| Seedream 图片 [#45](https://github.com/ChuluuMGL/video-factory/issues/45) | 独立图片路线尚未实现 | 先确定用于视频首帧/参考图还是独立商品图任务，再实现字段、接口、恢复和真实图片验收 |
+| Seedream 图片 [#45](https://github.com/ChuluuMGL/video-factory/issues/45) | 视频参考图源码候选已实现，单独凭据、费用计划、附件和恢复；不在 a38 | 云端合成检查与真实图片验收分别记录，不能用候选代码代替实际结果 |
 | 独立财务核对：历史生成账单 | 回执已保留，精确账单金额未独立核对 | 供应商账单记录；token 上限不等于人民币金额 |
 | n8n Cloud SaaS | 维护者明确跳过真实实例测试 | 有公共 API 的实例与授权后再安排；不为此新开计费服务 |
 

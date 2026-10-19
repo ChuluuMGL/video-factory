@@ -191,7 +191,7 @@ class Service(unittest.TestCase):
     def test_existing_n8n_welcome_never_installs_service_and_writes_handoff(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);(root/'bindings').mkdir()
-            answers=['1','http://127.0.0.1:5678','fixture','baseFixture','tableFixture','cli_fixture','n','n','n']
+            answers=['1','http://127.0.0.1:5678','fixture','baseFixture','tableFixture','cli_fixture','n','n','n','n']
             with patch('builtins.input',side_effect=answers),patch('portable_n8n.secret',return_value='synthetic'),\
                 patch('portable_n8n.API') as api,patch('portable_n8n.project_credentials',return_value={'feishu':{}}),\
                 patch('portable_n8n.verify_setup',return_value={'ok':True}),patch('portable_service.install') as background:
