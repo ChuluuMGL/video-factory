@@ -36,6 +36,12 @@ In the portable candidate, `APPROVAL_RECORD_CHANGED`, `APPROVAL_STATUS_CHANGED`,
 
 Read the current row, protected approval and execution ledgers, and n8n event-log node trace. Missing execution API data is not proof of zero model calls: full execution data is disabled by default. Preserve the failed event. Do not clear the queue or automatically replay it. Only consider an explicit continuation after proving the plan was not consumed, no provider node ran, and the same unexpired plan still matches the live row. Keep raw logs private. See [billing approval](PORTABLE_BILLING_APPROVAL.md).
 
+## Image and fee-plan recovery (source candidate, not in a38)
+
+Inspect the original project's execution ledger before retrying. `image_ready` permits `recover-image` to continue an upload that has not been attempted, followed by `recover` for Base writeback. `result_ready` permits only `recover` using the saved attachment receipt. Preserve and reconcile `busy` or `image_uploading`; never clear them and resubmit.
+
+If writeback recovery succeeded but the fee plan remains `consumed`, run `approval-reconcile --url <instance> --project <original-project>`. It reads the original result and verifies the execution, plan and designated owner before releasing the plan slot. It makes no model request or image upload and does not reuse the old confirmation ID. `RECOVER_RESULT_FIRST_UNKNOWN_EXECUTION_NOT_RELEASED` means the execution is unfinished; `RECOVERY_APPROVAL_RECEIPT_MISMATCH` or `RECONCILE_RECEIPT_CHANGED` requires reconciliation of preserved receipts. See the [image workflow guide](PORTABLE_IMAGES.md).
+
 ## Exhausted Docker address pools
 
 Stopped containers can retain Compose networks. Repeated upgrades and restore drills can consume the available subnets even while the active stack is healthy. A new authorization worker or project runner may then fail to start; this does not indicate an incorrect password or model key.

@@ -63,6 +63,12 @@ a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APP
 
 维护者打包遇到 `TRACKED_SKILL_REQUIRED`、`SKILL_SOURCE_MUST_BE_REGULAR` 或 `SKILL_SOURCE_LINK_REJECTED`，应在干净 Git checkout 中核对 Skill 文件是否已跟踪、是否为普通文件，以及路径是否经过符号链接。不要通过把 `.env`、本地安装目录或客户配置加入 Git 来通过检查。客户直接使用固定 Release；无须自己打包。
 
+## 图片或费用计划恢复（源码候选，尚不在 a38）
+
+图片已生成但没有出现在飞书时，先核对原项目执行账本。`image_ready` 可通过 `recover-image` 续接尚未尝试的上传，再用 `recover` 回写；`result_ready` 直接用 `recover` 恢复已保存的附件回执。`busy` 和 `image_uploading` 都是未知提交，必须保留并对账，不能清空后重跑。
+
+若回写恢复成功但费用计划仍为 `consumed`，使用 `approval-reconcile --url <实例地址> --project <原项目>`。它会回读原结果，并核对原执行、计划和负责人后释放计划位置；不调用模型、不重传图片、不复用旧确认编号。`RECOVER_RESULT_FIRST_UNKNOWN_EXECUTION_NOT_RELEASED` 表示执行尚未结束；`RECOVERY_APPROVAL_RECEIPT_MISMATCH` 或 `RECONCILE_RECEIPT_CHANGED` 表示回执不一致，停止修复并保留记录。详见[图片配置与恢复](PORTABLE_IMAGES.md)。
+
 ## Docker 地址池用尽
 
 停止容器后，Compose 网络仍可能占用地址段。多次升级和恢复演练会累积旧网络；当前基础服务健康，也不能证明新的授权 worker 或项目 Runner 能启动。这不是密码或模型 Key 错误。
