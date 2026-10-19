@@ -85,6 +85,24 @@ class ResultsTests(unittest.TestCase):
         self.assertEqual(next(iter(self.remote.rows.values()))['fields']['状态'], '脚本待审核')
         self.assertEqual(self.results.status(self.admin, 'brand')['synced'], 2)
 
+    def test_sync_missing_destination_stops_before_journal_or_remote_access(self):
+        self.enable()
+        with self.store.connect() as db:
+            ready = meta(db, control_key('brand'))
+        for changes in ({'table_id': None, 'schema': None, 'table_attempted': False},
+                        {'table_id': None}, {'schema': None}):
+            with self.subTest(changes=changes):
+                with self.store.connect() as db:
+                    save(db, control_key('brand'), {**ready, **changes})
+                with patch.object(self.results, 'client', side_effect=AssertionError('remote access')):
+                    with self.assertRaisesRegex(RuntimeFault, 'BASE_RESULTS_DESTINATION_NOT_READY'):
+                        self.sync()
+                with self.store.connect() as db:
+                    count = db.execute('SELECT COUNT(*) AS n FROM meta WHERE key LIKE ?',
+                                       (item_prefix('brand')+'%',)).fetchone()['n']
+                self.assertEqual(count, 0)
+                self.assertEqual(self.remote.calls, ['table'])
+
     def test_lost_create_reconciles_exact_named_table_without_duplicate(self):
         self.remote.lose = 'table'
         with self.assertRaisesRegex(RuntimeFault, 'UNKNOWN'): self.enable()
