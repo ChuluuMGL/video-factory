@@ -6,7 +6,7 @@
 
 先区分**操作电脑**和**运行服务器**。安装人员可以在 Windows、macOS 或 Linux 上使用 Agent，通过 SSH 管理客户服务器；这不会把服务安装到操作电脑。当前固定发行包只在客户自己的 **Ubuntu 24.04 x86_64** 主机上提供自动准备与完整栈部署。安装预检要求至少 4 GiB 内存、4 GiB **剩余**磁盘、Python 3.12、root、systemd、本地 Docker Engine 与 Compose 2.24+；4 GiB 剩余磁盘只是预检门槛，不是视频生产的容量建议。实际磁盘还要计入镜像、数据库、素材、成片和备份留存，按项目量规划并在上线前实测。安装器会核对本机 Unix Docker socket；不能指向远程 Docker daemon。
 
-| 位置 | n8n 本身 | a36 可用路线 | 使用方式 |
+| 位置 | n8n 本身 | 当前发行可用路线 | 使用方式 |
 |---|---|---|---|
 | Ubuntu 24.04 x86_64 服务器 | 可用 Docker Compose | 自动准备与完整部署路径 | 一客户一套服务，项目复用同一套 n8n |
 | Windows 电脑或服务器 | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | 便携 Node.js 或 Docker；完整栈另需 Ubuntu | 用完整 Skill 的 welcome 向导安装或接入 |
@@ -23,18 +23,20 @@ n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明�
 
 ## 模型接口与验收状态
 
-模型账户按客户、项目分别配置；密钥只在客户私有终端录入并加密存于客户服务器。安装本身不发起付费生成。选中模型后仍需单条任务计划确认、提交回执、超时不自动重发，以及飞书人工审核。
+模型账户按客户、项目分别配置；密钥只在客户私有终端录入，由所选实例的 n8n 加密保存。安装本身不发起付费生成。选中模型后仍需单条任务计划确认、提交回执、超时不自动重发，以及飞书人工审核。
 
 | 用途 | 接口 | 当前固定发行包 | 接入前仍需验证 |
 |---|---|---|---|
 | 脚本 | DeepSeek Flash | 已接入 | 客户自己的 Key、区域、余额、真实脚本和 Base 回写 |
-| 脚本 | OpenAI GPT、Google Gemini、MiniMax 文本、阿里云千问、火山方舟豆包 | **当前固定发行包未包含**；开发候选提供固定域名的 Chat Completions 适配，但尚无真实 Key/付费验收 | 供应商账户和模型 ID、生成回执、飞书回写及费用；非 DeepSeek 当前无零费用只读鉴权 |
+| 脚本 | OpenAI GPT、Google Gemini、MiniMax 文本、阿里云千问、火山方舟豆包 | **当前固定发行包未包含**；便携候选已接通安装、固定域名的模型请求、费用计划和回写，但尚无各供应商真实付费验收 | 供应商账户和模型 ID、生成回执、飞书回写及费用；非 DeepSeek 当前无零费用只读鉴权 |
 | 视频 | MiniMax H3 | 已接入单次授权、轮询和媒体回收 | 客户素材、实际 Key、费用和真人审核 |
-| 视频 | 可灵 Kling、字节 Seedance、阿里云万相视频 | **未进入固定发行包**；开发候选有隔离的接口适配与合成测试，不能在正式 Setup 中选择 | 各自的上传格式、任务 ID、状态轮询、下载来源、内容限制、费用与未知提交恢复 |
+| 视频 | 可灵 Kling、字节 Seedance、阿里云万相视频 | **未进入固定发行包**；便携候选已接通选择、费用计划、提交、轮询与回写；a38 的正式 Setup 仍只选 H3 | 各自的上传格式、任务 ID、状态轮询、下载来源、内容限制、费用与未知提交恢复 |
 | 图片 | 字节 Seedream（即梦图片） | **未接入固定发行包**；它是图片生成路线，不是 Seedance 视频接口 | 明确图片在任务流程中的用途，再验证模型、输出格式、费用与素材授权 |
 
 “豆包”在此表指脚本大模型，“Seedance”指视频生成，“Seedream”指图片生成；千问脚本与万相视频也是不同接口。既有项目用过某个模型，只能作为适配需求来源。新接口必须在隔离云端通过合成合同测试，再用客户授权的真实 Key 逐条付费验收；没有回执和成片回写前，不能写成开箱即用。模型列表随官方 API 变化，客户输入的模型 ID、接口区域和 Key 必须来自同一账户；不能从历史项目搬运密钥。
 
-开发候选中的脚本接口只接受内置供应商：`deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn`、`doubao-cn`。管理员在 `production-setup` 中选择供应商与模型 ID，再在私有终端输入该供应商 Key。默认模型仅是可编辑建议值，选择、保存或通过合成测试都不代表该账户具有模型权限。非 DeepSeek 接口目前不发起付费“测试请求”，因此会明确显示“Key 尚未验证”；不要将此状态报告为认证成功。已确认的脚本请求仍经原任务版本、单次付费计划、提交回执和飞书人工审核。视频仍只开放 H3，不能将文案中的其他供应商填进 H3 Key 字段。
+便携脚本候选见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)：`welcome` 选择 `deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn` 或 `doubao-cn`。便携视频候选见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)：H3、北京 Seedance、北京万相、北京/新加坡可灵。两者都连接 n8n 加密凭据、精确费用计划和原行回写；a38 固定包没有这些新增模型选项。旧完整服务栈的 `production-setup` 适配另在 PR #38/#42，不能混用命令。
+
+候选中的默认模型只是配置起点，不代表该账户已有权限；保存 Key 不等于认证成功。已有项目续接沿用原供应商，不把旧 Key 自动发送到新平台。各供应商真实验收另行安排，费用计划变化必须重新确认。
 
 官方参考：[OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat/create)、[Gemini OpenAI 兼容接口](https://ai.google.dev/gemini-api/docs/openai)、[MiniMax OpenAI SDK](https://platform.minimax.io/docs/api-reference/text-openai-api)、[阿里云百炼兼容接口](https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope)、[火山方舟兼容接口](https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=zh)。这些说明供应商提供接口，不代表 Video Factory 已接入或验收。

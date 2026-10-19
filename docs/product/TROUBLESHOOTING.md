@@ -36,6 +36,19 @@
 
 取消自启使用 `uninstall`，保留数据；`stop` 只暂停当前进程，后续登录或开机可能再次启动。
 
+## a38 便携升级
+
+完整 Skill 从 a38 开始包含 `upgrade-plan` / `upgrade-apply`。若命令不存在，先核对下载版本及完整 `scripts` 目录；更新 Skill 后仍使用原绑定目录，不重新安装 n8n。
+
+| 错误 | 处理方式 |
+|---|---|
+| `UPGRADE_REQUIRES_PAUSED_UNARCHIVED_WORKFLOWS` | 暂停本项目对应工作流，停止事件接收器，再重新预览。不要停用其他项目。 |
+| `UPGRADE_RECONCILE_EXECUTION_AND_CANCEL_PENDING_PLAN_FIRST` | 先核对原执行回执和待确认费用计划。未知模型请求必须对账；不能把执行账本直接改成 idle。 |
+| `UPGRADE_OWNED_WORKFLOW_MODIFIED` | 远端工作流与原绑定不同。保留现状，比较差异；不要删除绑定文件、强制接管或覆盖客户修改。 |
+| `UPGRADE_RESUME_EXISTING_PLAN_BEFORE_NEW_PREVIEW` | 使用已保存的原计划与摘要续接。发生未知 PUT 时先只读核对，不创建第二份升级计划。 |
+
+详细步骤和停止条件见[便携原地升级](PORTABLE_UPGRADE.md)。升级成功仍保持工作流关闭，需要按原费用确认与启用流程检查后再启用。
+
 ## 收到负责人确认，但没有开始生成
 
 a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APPROVAL_CONFIRMATION_NOT_CURRENT`、`APPROVAL_DISPLAY_CHANGED` 分别表示当前任务、状态、确认编号、展示计划不匹配；`APPROVED_INPUT_CHANGED` 表示已审核内容改变。旧候选合并报 `APPROVAL_TASK_OR_PLAN_CHANGED`，不能据此确定是哪项改变或认定为网络故障。

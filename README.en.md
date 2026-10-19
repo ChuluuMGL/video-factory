@@ -28,11 +28,11 @@ Cloud regression covers fresh Ubuntu preparation, anonymous pinned-package insta
 
 Isolated real-account acceptance verified Feishu script revision and approval, one H3 generation and video writeback, and a fresh designated-owner-confirmed DeepSeek request without manual continuation. Human approval was read back in Feishu. Distinct-account authorization, independent installation and actual desktop logout/login remain separate acceptance gates.
 
-See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/37562989085) and [current status](docs/product/STATUS.md).
+See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/runs/39175731136) and [current status](docs/product/STATUS.md).
 
 ## Choose what you want to run
 
-The a37 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. Public downloads use the version shown in Releases.
+The a38 alpha includes local installation and existing-n8n integration. Actual n8n integration passed on Windows, macOS, Linux and Docker. Separate isolated acceptance verified real Feishu, DeepSeek, one H3 shot and an uninterrupted owner-confirmed script with human approval. See the [portable guide and evidence](docs/product/PORTABLE_N8N.md). Distinct-account authorization, independent installation and actual desktop logout/login remain open. See the [in-place upgrade guide](docs/product/PORTABLE_UPGRADE.md) and [a38 release receipt](docs/product/DELIVERY_A38_RESULT.md). Public downloads use the version shown in Releases.
 
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
@@ -53,15 +53,15 @@ The portable route includes [designated-owner billing approval](docs/product/POR
 
 | Purpose | Selectable in the pinned release | Development candidate or planned |
 |---|---|---|
-| Scripts | DeepSeek Flash | GPT, Gemini, MiniMax text, Qwen, and Doubao script routes are in [draft PR #38](https://github.com/ChuluuMGL/video-factory/pull/38); each still needs live-account acceptance |
-| Video | MiniMax H3 | Kling, Seedance, and Wan video API adapters are in [draft PR #42](https://github.com/ChuluuMGL/video-factory/pull/42); they are not wired into released Setup or verified with live generations |
+| Scripts | DeepSeek Flash | GPT, Gemini, MiniMax text, Qwen, and Doubao setup, fee-plan and execution integration is in [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61); four-platform synthetic checks passed, but a38 excludes these routes and live-account acceptance remains open |
+| Video | MiniMax H3 | Kling, Seedance, and Wan setup, fee approval, submission and polling integration is in [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62); a38 excludes these routes and live generations remain unverified |
 | Images | No separate image-generation route | Seedream image generation is tracked in [issue #45](https://github.com/ChuluuMGL/video-factory/issues/45); it is distinct from Seedance video |
 
 Use in an earlier project or passing synthetic tests does not make a provider selectable in the pinned release. Each new route still needs its own account, output writeback, and human-review acceptance. Installation does not itself trigger paid generation.
 
 ## Install the full Video Factory stack
 
-Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) to download the complete Skill and give it to an agent that can read files and operate your server.
+Use the [installation guide](https://www.yueyu.tech/zh/products/video-factory/) to download the complete Skill and give it to an agent that can read files and operate the selected computer or server.
 
 **You can also start directly from GitHub:**
 
@@ -76,7 +76,7 @@ Preserve existing resources and tell me which route this release can complete.
 When supported, configure my first test project. Pin the latest public alpha
 Release tag and hashes. Check the environment and package first,
 then guide me through Setup. Hide passwords and API keys in a private
-terminal on my server; do not collect them in chat.
+terminal on the selected computer or server; do not collect them in chat.
 ```
 
 For the current pinned package's **full automated deployment**, prepare an Ubuntu 24.04 x86_64 server with at least 4 GiB RAM, server access, project information, a Feishu application and model accounts. The default CLI installation does not require a business subdomain. The agent checks and prepares Python 3.12, Docker and Compose.
@@ -101,12 +101,12 @@ The operational guides and installer interactions are currently primarily in Chi
 | Component | Location and purpose |
 |---|---|
 | Setup Skill | Administrator's or installer's agent; installation and maintenance |
-| Product services, PostgreSQL, n8n | Customer server; configuration and task execution |
+| n8n and project workflows | Selected local computer or server; configuration and execution. The full server stack additionally includes product services and PostgreSQL |
 | Optional project runner | Customer Docker private network; dispatches approved tasks without a web UI |
 | Feishu Base | Project information, source tasks and employees' daily view |
-| Interim technical review commands | `stack-feishu-session` authorizes the operator in a private terminal, then imports or reviews one task in the server ledger; this is not employee review in Base |
+| Designated-owner fee confirmation | Review and confirm each generation plan in Feishu; approving content never authorizes the next paid call |
 
-[Original task-row review](docs/product/FEISHU_NATIVE_REVIEW.md) writes the script, revision and video back to the same task for employee decisions in Feishu Base. Optional [Base result synchronization](docs/product/BASE_RESULTS.md) appends a separate snapshot table. Terminal review is technical acceptance. The default installation does not deploy a persistent employee web interface; see the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
+[Original task-row review](docs/product/FEISHU_NATIVE_REVIEW.md) writes the script, revision and video back to the same task for employee decisions in Feishu Base. Optional [Base result synchronization](docs/product/BASE_RESULTS.md) appends a separate snapshot table. The default installation does not deploy a persistent employee web interface; see the [product shape and acceptance boundary](docs/product/PRODUCT_SHAPE.md).
 
 ## Documentation and repository scope
 
