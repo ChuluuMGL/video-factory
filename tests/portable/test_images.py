@@ -1,4 +1,7 @@
 import json
+import base64
+import struct
+import zlib
 from pathlib import Path
 import subprocess
 import sys
@@ -50,6 +53,10 @@ class Images(unittest.TestCase):
         w=confirmation_workflow('baseFixture','tableFixture','image',LEDGER,LEDGER,POLICY,'fixture',image_selection=selection())
         data={name:node(flow,name)['parameters']['jsCode'] for flow,names in [(plan,['Select task']),(w,['Check protected plan','Build image request','Validate image bytes','Verify persisted result'])] for name in names}
         data['profile']=profile(selection())
+        def chunk(kind,body):
+            return struct.pack('!I',len(body))+kind+body+struct.pack('!I',zlib.crc32(kind+body))
+        png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!IIBBBBB',2048,2048,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(bytes(2048*(2048*3+1))))+chunk(b'IEND',b'')
+        data['image']=base64.b64encode(png).decode()
         js=r"""const assert=require('node:assert/strict'),d=JSON.parse(process.argv[1]);
 const fields={'状态':'申请图片计划','商品资料':'fixture product','图片要求':'single product first frame','参考图附件':[{file_token:'fixtureFile',name:'source.png',size:99}]};
 const plan=f=>new Function('$json','$execution',d['Select task'])({code:0,data:{items:[{record_id:'recFixture',fields:f}]}},{id:'42'});
@@ -59,9 +66,12 @@ const check=new Function('$json',d['Check protected plan']);for(const key of Obj
 const task={id:'recFixture',execution:'42',product:'fixture',image_prompt:'first frame',feedback:''};
 const refs=name=>({first:()=>({json:name==='Resolve video references'?{model_references:['data:image/png;base64,aGVsbG8=']}:task})});
 const body=new Function('$',d['Build image request'])(refs)[0].json;assert.equal(body.sequential_image_generation,'disabled');assert.equal(body.response_format,'b64_json');assert.equal(body.stream,false);
-const validate=new Function('$json','$',d['Validate image bytes']);const bytes=Buffer.from('89504e470d0a1a0a0000000049454e44','hex').toString('base64');
+const validate=new Function('$json','$',d['Validate image bytes']);const bytes=d.image;
 const valid={model:d.profile.model,data:[{b64_json:bytes,size:'2048x2048'}]};assert.equal(validate(valid,refs)[0].json.artifact.mime,'image/png');
 for(const changed of [{model:'other'}, {data:[]}, {data:[...valid.data,...valid.data]}, {data:[{b64_json:'<secret>',size:'2048x2048'}]}, {data:[{b64_json:bytes,size:'1x1'}]}])assert.throws(()=>validate({...valid,...changed},refs));
+assert.throws(()=>validate({...valid,data:[{b64_json:bytes,size:'1024x1024'}]},refs),/ACTUAL_DIMENSIONS/);
+const raw=Buffer.from(bytes,'base64'),corrupt=Buffer.from(raw);corrupt[40]^=1;
+for(const bad of [raw.subarray(0,8),raw.subarray(0,raw.length-12),Buffer.concat([raw,Buffer.from('trailing')]),corrupt,Buffer.from('ffd8ffffd9','hex')])assert.throws(()=>validate({...valid,data:[{b64_json:bad.toString('base64'),size:'2048x2048'}]},refs));
 const expected={fields:{'生成图片':[{file_token:'saved'}],'状态':'图片待审核'}};
 const verify=new Function('$json','$',d['Verify persisted result']);const get=()=>({first:()=>({json:expected})});
 verify({code:0,data:{record:{fields:{'生成图片':[{file_token:'saved',name:'image.png'}],'状态':'图片待审核'}}}},get);

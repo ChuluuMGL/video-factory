@@ -101,6 +101,42 @@ const jpeg=bytes.subarray(0,3).toString('hex')==='ffd8ff' && bytes.subarray(-2).
 if(!png && !jpeg || !/^\d{2,5}x\d{2,5}$/.test(image.size||'')) throw new Error('IMAGE_FORMAT_INVALID_NO_RETRY');
 const [w,h]=image.size.split('x').map(Number);
 if(w<14 || h<14 || w*h>36000000 || w/h>16 || h/w>16) throw new Error('IMAGE_DIMENSIONS_INVALID_NO_RETRY');
+const invalid=()=>{throw new Error('IMAGE_STRUCTURE_INVALID_NO_RETRY');};
+let actualW=0,actualH=0;
+if(png) {
+ let offset=8,header=false,end=false,dataSize=0;
+ const crcTable=Array.from({length:256},(_,n)=>{let c=n;for(let j=0;j<8;j++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;return c>>>0;});
+ while(offset+12<=bytes.length) {
+  const length=bytes.readUInt32BE(offset),type=bytes.subarray(offset+4,offset+8).toString('ascii');
+  if(length>bytes.length-offset-12 || !/^[A-Za-z]{4}$/.test(type)) invalid();
+  let crc=0xffffffff;for(let j=offset+4;j<offset+8+length;j++)crc=crcTable[(crc^bytes[j])&255]^(crc>>>8);
+  if(((crc^0xffffffff)>>>0)!==bytes.readUInt32BE(offset+8+length)) invalid();
+  if(!header && type!=='IHDR') invalid();
+  if(type==='IHDR') {
+   if(header || length!==13 || offset!==8) invalid();header=true;
+   actualW=bytes.readUInt32BE(offset+8);actualH=bytes.readUInt32BE(offset+12);
+  }
+  if(type==='IDAT') dataSize+=length;
+  offset+=length+12;
+  if(type==='IEND') {if(length || offset!==bytes.length)invalid();end=true;break;}
+ }
+ if(!header || !end || !dataSize) invalid();
+} else {
+ let offset=2,scan=false;
+ while(offset<bytes.length-2) {
+  if(bytes[offset++]!==255) invalid();while(bytes[offset]===255)offset++;
+  const marker=bytes[offset++];
+  if(!marker || marker===216 || marker===217 || offset+2>bytes.length) invalid();
+  const length=bytes.readUInt16BE(offset);if(length<2 || offset+length>bytes.length-2)invalid();
+  if([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker)) {
+   if(length<8 || actualW)invalid();actualH=bytes.readUInt16BE(offset+3);actualW=bytes.readUInt16BE(offset+5);
+  }
+  if(marker===218) {if(length<6 || !actualW || offset+length>=bytes.length-2)invalid();scan=true;break;}
+  offset+=length;
+ }
+ if(!scan)invalid();
+}
+if(actualW!==w || actualH!==h) throw new Error('IMAGE_ACTUAL_DIMENSIONS_MISMATCH_NO_RETRY');
 const task=$('Select task').first().json;
 const usage=$json.usage;
 if(usage && (typeof usage!=='object' || JSON.stringify(usage).length>1000)) throw new Error('IMAGE_USAGE_INVALID_RECONCILE');

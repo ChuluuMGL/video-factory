@@ -13,6 +13,8 @@ import threading
 import time
 import uuid
 import base64
+import struct
+import zlib
 from urllib.parse import urlsplit, parse_qs
 from urllib.error import HTTPError
 from urllib.request import build_opener, HTTPCookieProcessor, Request
@@ -24,6 +26,9 @@ from n8n_workflows import probe_workflow, production_workflow, schema_workflow, 
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
 image_bytes=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7V0AAAAASUVORK5CYII=')
+def png_chunk(kind,body):
+    return struct.pack('!I',len(body))+kind+body+struct.pack('!I',zlib.crc32(kind+body))
+generated_image_bytes=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('!IIBBBBB',2048,2048,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(bytes(2048*(2048*3+1))))+png_chunk(b'IEND',b'')
 def task_fields():
     return {'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
@@ -70,7 +75,7 @@ class Fixture(BaseHTTPRequestHandler):
         if self.path.endswith('/medias/upload_all'):
             assert self.headers['Authorization']=='Bearer synthetic-token'
             assert 'multipart/form-data' in self.headers['Content-Type']
-            assert b'bitable_image' in raw and b'baseFixture' in raw and image_bytes in raw
+            assert b'bitable_image' in raw and b'baseFixture' in raw and generated_image_bytes in raw
             state['image_uploads']=state.get('image_uploads',0)+1
             self.reply({'code':999} if state.get('unknown_image_upload') else {'code':0,'data':{'file_token':'generatedFixture'}});return
         body=json.loads(raw)
@@ -107,7 +112,7 @@ class Fixture(BaseHTTPRequestHandler):
             assert body['response_format']=='b64_json' and body['sequential_image_generation']=='disabled' and body['stream'] is False
             assert body['image']=='data:image/png;base64,'+base64.b64encode(image_bytes).decode()
             state['image_calls']=state.get('image_calls',0)+1
-            self.reply({'model':body['model'],'data':[{'b64_json':base64.b64encode(image_bytes).decode(),'size':'2048x2048'}],'usage':{'generated_images':1}})
+            self.reply({'model':body['model'],'data':[{'b64_json':base64.b64encode(generated_image_bytes).decode(),'size':'2048x2048'}],'usage':{'generated_images':1}})
         elif '/search?' in self.path:
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
