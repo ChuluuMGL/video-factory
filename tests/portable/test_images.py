@@ -83,6 +83,7 @@ assert.throws(()=>verify({code:0,data:{record:{fields:{'生成图片':[{file_tok
                 self.writes.append(body);self.rows[table]['status']='idle';return [self.rows[table]]
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);api=API()
+            (root/'p-events').mkdir()
             private_write(root/'p-events/events.json',{'origin':api.url,'verification_only':False,'base':'baseFixture','table':'tableFixture','policy':POLICY})
             for project,table in [('p','exec'),('p-approval','approval')]:
                 private_write(root/('ledger-'+project+'.json'),{'origin':api.url,'project':project,'base':'baseFixture','task_table':'tableFixture','table':table,'row':1})

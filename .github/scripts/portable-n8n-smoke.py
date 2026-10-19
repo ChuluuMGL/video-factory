@@ -662,6 +662,7 @@ try:
     image_execution=ensure_ledger(api,root/'bindings',image_project,'baseFixture','tableFixture')
     image_approval=ensure_ledger(api,root/'bindings',image_project+'-approval','baseFixture','tableFixture')
     project_credentials(api,root/'bindings',image_project,'cli_fixture',['feishu'],fixture_secret)
+    (root/'bindings'/(image_project+'-events')).mkdir()
     private_write(root/'bindings'/ (image_project+'-events')/'events.json',{'origin':api.url,'project':image_project,'base':'baseFixture','table':'tableFixture','policy':policy,'verification_only':False})
     image_plan=provision(api,root/'bindings','image-owner-plan',plan_workflow('baseFixture','tableFixture','image',image_approval,policy,feishu_origin=fixture_origin,image_selection=image_selection()),credentials)
     owner_image=confirmation_workflow('baseFixture','tableFixture','image',image_execution,image_approval,policy,'image-owner-confirm',feishu_origin=fixture_origin,image_selection=image_selection())
