@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify privacy gate decisions
-        run: python3 -m unittest discover -s .github/tests -p 'test_audit_policy.py' -v
+        run: python3 -m unittest discover -s .github/tests -p 'test_*.py' -v
       - name: Verify repository scope and install pinned scanner
         env:
           GH_TOKEN: ${{ github.token }}

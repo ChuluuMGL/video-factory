@@ -12,7 +12,12 @@ receipt={'stage':label,'status':'PASS' if result.returncode==0 else 'FAIL',
          'unit_test_counts':[int(n) for n in re.findall(r'Ran (\d+) tests in',raw)]}
 if result.returncode:
     # Codes only: no command text, payloads, credential values or exception messages.
-    receipt['exception_types']=sorted(set(re.findall(r'^([A-Za-z]+(?:Error|Exception)):',raw,re.M)))
+    # Python libraries may qualify exception names (for example Playwright's
+    # module.TimeoutError). Keep only the final bounded type, never its module
+    # path or message, which may contain a private URL or customer content.
+    receipt['exception_types']=sorted(set(re.findall(
+        r'^(?:[A-Za-z_][A-Za-z0-9_]*\.)*([A-Za-z_][A-Za-z0-9_]{0,79}(?:Error|Exception|Fault)|Error|Exception|Fault):',
+        raw,re.M)))
     receipt['frames']=[{'file':Path(file).name,'line':int(line)} for file,line in re.findall(r'File "([^"]+)", line (\d+)',raw)][-8:]
 print(json.dumps(receipt),flush=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('```json\n'+json.dumps(receipt)+'\n```\n')
