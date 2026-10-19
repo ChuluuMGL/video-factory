@@ -343,6 +343,15 @@ try:
     execute(saved['workflow'])
     assert state['model_calls']==2, 'LOCKED_RESULT_MUST_NOT_RESUBMIT'
     state['status']='脚本生成中'; state['fail_writeback']=False
+    # Preserve later edits while retaining the result for no-charge recovery.
+    for field in ('history','job'):
+        old_value=state.get(field,''); old_writes=state['writes']
+        state[field]='concurrent-human-edit'
+        execute(recovery['workflow'],expect_failure=True)
+        assert state[field]=='concurrent-human-edit' and state['writes']==old_writes
+        assert state['model_calls']==2,'RECOVERY_MUST_NOT_REPEAT_PROVIDER'
+        assert api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]['status']=='result_ready'
+        state[field]=old_value
     execute(recovery['workflow'])
     assert state['model_calls']==2 and state['status']=='脚本待审核'
     phase='preserve concurrent human edit'

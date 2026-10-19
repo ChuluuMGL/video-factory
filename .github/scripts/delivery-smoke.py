@@ -108,7 +108,12 @@ try:
         assert page.locator('#cases video').count() == 4
         assert '不是当前安装版的验收样片' in page.locator('#cases').inner_text()
         official = context.new_page()
-        assert official.goto('https://www.yueyu.tech/zh/solutions/ai-workflow-models').ok
+        # The official page contains remote media. DOM readiness is sufficient
+        # for source discovery; playback is checked explicitly below. Waiting
+        # for every load event here can time out before those real checks run.
+        response = official.goto('https://www.yueyu.tech/zh/solutions/ai-workflow-models',
+                                 wait_until='domcontentloaded', timeout=60000)
+        assert response is not None and response.ok
         official.locator('.ai-workflow-page video').first.wait_for()
         official_sources = official.locator('video source').evaluate_all('(els) => els.map(e => e.src)')
         official_posters = official.locator('video').evaluate_all('(els) => els.map(e => e.poster)')
