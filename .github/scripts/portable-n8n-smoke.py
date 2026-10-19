@@ -29,7 +29,7 @@ def task_fields():
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
             '审核意见':state['feedback'],'视频任务ID':state['job'],
             '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
-            '参考图附件':state.get('attachments',[]),'生成计划':state.get('plan',''),'费用确认编号':state.get('confirmation','')}
+            '参考图附件':state.get('attachments',[]),'生成计划':state.get('plan',''),'费用确认编号':state.get('confirmation',''),'图片要求':state.get('image_prompt',''),'生成图片':state.get('image_candidates',[]),'图片回执':state.get('image_receipt','')}
 class Fixture(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
@@ -66,7 +66,14 @@ class Fixture(BaseHTTPRequestHandler):
         else:
             self.reply({'code':0,'data':{'items':[]}})
     def do_POST(self):
-        body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
+        raw=self.rfile.read(int(self.headers.get('Content-Length','0')))
+        if self.path.endswith('/medias/upload_all'):
+            assert self.headers['Authorization']=='Bearer synthetic-token'
+            assert 'multipart/form-data' in self.headers['Content-Type']
+            assert b'bitable_image' in raw and b'baseFixture' in raw and image_bytes in raw
+            state['image_uploads']=state.get('image_uploads',0)+1
+            self.reply({'code':0,'data':{'file_token':'generatedFixture'}});return
+        body=json.loads(raw)
         if self.path.endswith('/tenant_access_token/internal'):
             assert body == {'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}, body.keys()
             state['token_calls']+=1; self.reply({'code':0,'tenant_access_token':'synthetic-token'})
@@ -95,6 +102,12 @@ class Fixture(BaseHTTPRequestHandler):
                 assert self.path.endswith(state['candidate_model']) and body['settings']['duration']==5 and body['contents'][1]['url']==image.split(',')[1]
                 response={'code':0,'data':{'id':'candidate-task-123'}}
             state['video_calls']+=1;self.reply(response)
+        elif self.path.endswith('/images/generations'):
+            assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            assert body['response_format']=='b64_json' and body['sequential_image_generation']=='disabled' and body['stream'] is False
+            assert body['image']=='data:image/png;base64,'+base64.b64encode(image_bytes).decode()
+            state['image_calls']=state.get('image_calls',0)+1
+            self.reply({'model':body['model'],'data':[{'b64_json':base64.b64encode(image_bytes).decode(),'size':'2048x2048'}],'usage':{'generated_images':1}})
         elif '/search?' in self.path:
             assert self.headers['Authorization']=='Bearer synthetic-token'
             items=[]
@@ -121,6 +134,10 @@ class Fixture(BaseHTTPRequestHandler):
             self.reply({'code':999,'msg':'synthetic writeback failure'}); return
         if state.get('ack_without_record_write') and '脚本' in fields:
             self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':fields}}}); return
+        if state.get('fail_image_writeback') and '生成图片' in fields:
+            self.reply({'code':999,'msg':'synthetic image writeback failure'});return
+        if '生成图片' in fields: state['image_candidates']=fields['生成图片']
+        if '图片回执' in fields: state['image_receipt']=fields['图片回执']
         if '生成计划' in fields: state['plan']=fields['生成计划']
         if '费用确认编号' in fields: state['confirmation']=fields['费用确认编号']
         if '状态' in fields: state['status']=fields['状态']
@@ -590,6 +607,26 @@ try:
         execute(saved_poll['workflow'])
         assert state['status']=='视频待审核' and state['video_link']['link']=='https://media.example.invalid/candidate.mp4',provider
         assert state['video_calls']==before+1
+    phase='Seedream image bytes, attachment upload and zero-model recovery'
+    from portable_images import selection as image_selection
+    ledger=ensure_ledger(api,root/'bindings','image-fixture','baseFixture','tableFixture')
+    image_flow=guard_workflow(production_workflow('baseFixture','tableFixture','image',feishu_origin=fixture_origin,image_selection=image_selection()),ledger)
+    next(n for n in image_flow['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    imported=provision(api,root/'bindings','image-fixture',image_flow,credentials)
+    state.update(status='请求图片',image_prompt='One reference first frame',image_candidates=[],image_receipt='',fail_image_writeback=True)
+    before=state.get('image_calls',0);uploads=state.get('image_uploads',0)
+    execute(imported['workflow'],expect_failure=True)
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    saved=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]
+    assert saved['status']=='result_ready'
+    execute(imported['workflow']);assert state['image_calls']==before+1
+    state['fail_image_writeback']=False
+    image_recovery=provision(api,root/'bindings','image-recovery',recovery_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),credentials)
+    execute(image_recovery['workflow'])
+    assert state['status']=='图片待审核' and state['image_candidates']==[{'file_token':'generatedFixture'}]
+    assert state['attachments']==[{'file_token':'fileFixture','name':'first.png','size':len(image_bytes)}]
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    execute(image_recovery['workflow']);assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):

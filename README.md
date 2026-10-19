@@ -55,7 +55,7 @@ a38 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Do
 |---|---|---|
 | 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的安装、费用计划和执行接入见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)；四平台合成测试通过，未包含在 a38，真实账户验收待完成 |
 | 视频 | MiniMax H3 | 可灵、Seedance 和万相视频的安装、费用确认、提交和轮询接入见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)；未包含在 a38，真实生成验收待完成 |
-| 图片 | 暂无独立图片生成路线 | Seedream（即梦图片）列在[待办 Issue #45](https://github.com/ChuluuMGL/video-factory/issues/45)；它不是 Seedance 视频接口 |
+| 图片 | 源码候选支持 Seedream 视频参考图 | [配置与恢复说明](docs/product/PORTABLE_IMAGES.md)；独立图片费用确认、飞书附件及人工审核；不在 a38，真实调用待验收 |
 
 旧项目用过某个模型、合成测试通过，都不等于它已在本产品的固定发行包中可选。不同接口仍需用各自账户完成调用、结果回写和人工审核验收；安装本身不触发付费生成。
 

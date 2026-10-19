@@ -90,7 +90,9 @@ if($json.code!==0 || !$json.data?.record?.fields) throw new Error('RESULT_READBA
 const actual=$json.data.record.fields;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 for(const [key,value] of Object.entries(expected)) {
-  const equal=value && typeof value==='object' && !Array.isArray(value)
+  const equal=Array.isArray(value)
+    ? Array.isArray(actual[key]) && JSON.stringify(actual[key].map(a=>a.file_token))===JSON.stringify(value.map(a=>a.file_token))
+    : value && typeof value==='object'
     ? actual[key]?.link===value.link && actual[key]?.text===value.text
     : text(actual[key])===String(value);
   if(!equal) throw new Error('RESULT_NOT_PERSISTED_RECONCILE_WITHOUT_MODEL_RETRY');
@@ -119,13 +121,18 @@ def probe_workflow(base, table, *, feishu_origin='https://open.feishu.cn'):
 FIELDS = {'状态': 3, '商品资料': 1, '脚本': 1, '审核意见': 1, '脚本历史': 1, '参考图附件': 17,
           '执行编号': 1, '视频任务ID': 1, '视频链接': 15, '参考图链接': 1,
           '生成计划': 1, '费用确认编号': 1}
+from portable_images import IMAGE_FIELDS, IMAGE_STATUSES
+FIELDS.update(IMAGE_FIELDS)
 STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过', '脚本退回',
             '视频生成已确认', '视频提交中', '视频生成中', '视频待审核', '视频通过', '视频退回',
-            '申请脚本计划', '申请视频计划', '费用待确认']
+            '申请脚本计划', '申请视频计划', '费用待确认'] + IMAGE_STATUSES
 
 
-def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None):
+def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None, image_selection=None):
     """The same non-secret contract is displayed, confirmed and executed."""
+    if flow == 'image':
+        from portable_images import profile as image_profile
+        return image_profile(image_selection)
     if flow == 'script' and script_selection is not None:
         from portable_models import profile as script_profile
         result = script_profile(script_selection)
@@ -151,12 +158,12 @@ def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_
 
 
 def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu.cn',
-                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None):
-    if flow not in ('script', 'video-submit', 'video-poll'):
+                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None, video_selection=None, image_selection=None):
+    if flow not in ('script', 'video-submit', 'video-poll', 'image'):
         raise ValueError('FLOW_INVALID')
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection, video_selection=video_selection)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection, video_selection=video_selection, image_selection=image_selection)
     url, nodes = start(base, table, feishu_origin)
-    status = {'script': ['请求脚本'], 'video-submit': ['视频生成已确认'], 'video-poll': ['视频生成中']}[flow]
+    status = {'script': ['请求脚本'], 'video-submit': ['视频生成已确认'], 'video-poll': ['视频生成中'], 'image': ['请求图片']}[flow]
     # Server-side filter avoids silently ignoring matching rows beyond page 1.
     search = {'filter': {'conjunction': 'or', 'conditions': [
         {'field_name': '状态', 'operator': 'is', 'value': [s]} for s in status]}}
@@ -173,13 +180,13 @@ job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
     def write(name, fields):
         return http(name, target, 'PUT', fields, feishu=True)
     if flow != 'video-poll':
-        required = 'product' if flow == 'script' else 'script'
-        if flow == 'video-submit':
+        required = 'product' if flow in ('script','image') else 'script'
+        if flow in ('video-submit','image'):
             nodes.append(code('Validate references', "if ($json.script.length>7000) throw new Error('H3_SCRIPT_TOO_LONG'); const count=$json.references.length+$json.attachments.length; if (count<1 || count>9 || $json.references.some(url=>!url.startsWith('https://'))) throw new Error('H3_REFERENCE_IMAGES_REQUIRED'); if($json.attachments.some(a=>! /^[A-Za-z0-9_-]+$/.test(a.file_token || '') || !Number.isInteger(a.size) || a.size<1 || !/\\.(jpe?g|png|webp)$/i.test(a.name || '')) || $json.attachments.reduce((n,a)=>n+a.size,0)>20*1024*1024) throw new Error('REFERENCE_ATTACHMENT_INVALID_OR_TOO_LARGE'); return $input.all();"))
             nodes += attachment_nodes(base,table,feishu_origin)
         nodes.append(code('Validate request', f"if (!$json.{required}.trim()) throw new Error('TASK_CONTENT_REQUIRED');" +
                           "if (($json.history+'\\n'+JSON.stringify({execution:$json.execution,script:$json.script,feedback:$json.feedback})).trim().length>18000) throw new Error('HISTORY_FULL_BEFORE_PROVIDER'); return $input.all();"))
-        state = '脚本生成中' if flow == 'script' else '视频提交中'
+        state = {'script':'脚本生成中','video-submit':'视频提交中','image':'图片生成中'}[flow]
         nodes += [code('Build reservation', 'return [{json:{fields:{"状态":' + json.dumps(state) + ',"执行编号":$("Select task").first().json.execution}}}];'),
                   write('Reserve task', '={{ $json }}'),
                   code('Check reservation', "if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_FAILED'); return [{json:{ok:true}}];"),
@@ -187,7 +194,7 @@ job:text(row.fields['视频任务ID']), execution:String($execution.id)}}];""")]
                   code('Verify reservation', r"""if ($json.code !== 0) throw new Error('FEISHU_RESERVATION_READ_FAILED');
 const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
-if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
+if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频提交中','图片生成中'].includes(fields['状态'])) throw new Error('TASK_CLAIM_CHANGED');
 if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references)) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
 if(text(fields['脚本历史'])!==task.history || text(fields['视频任务ID'])!==task.job) throw new Error('TASK_VERSION_CHANGED_BEFORE_PROVIDER');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_BEFORE_PROVIDER');
@@ -202,7 +209,7 @@ const history=(row.history+'\n'+JSON.stringify({execution:row.execution,script:r
 if (history.length>18000) throw new Error('HISTORY_FULL_RECONCILE_BEFORE_RETRY');
 return [{json:{fields:{'脚本':script,'脚本历史':history,'状态':'脚本待审核'}}}];"""),
                   write('Write script for human review', '={{ $json }}')]
-    elif flow == 'video-submit':
+    elif flow in ('video-submit','image'):
         nodes += [code('Build video request', 'const profile='+json.dumps(profile)+';'+"""return [{json:{model:profile.model,content:[{type:'text',text:$('Select task').first().json.script},...$('Resolve video references').first().json.model_references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))],duration:profile.duration,resolution:profile.resolution,ratio:profile.ratio}}];"""),
                   http('Submit video once', profile['endpoint'], 'POST', '={{ $json }}', 'httpHeaderAuth'),
                   code('Validate video receipt', "if (!/^[0-9]{10,24}$/.test($json.task_id || '')) throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION'); return [{json:{fields:{'视频任务ID':String($json.task_id),'状态':'视频生成中'}}}];"),
@@ -228,6 +235,15 @@ if(text(fields['商品资料'])!==task.product || text(fields['审核意见'])!=
     throw new Error('VIDEO_INPUT_CHANGED_NO_OVERWRITE');
 return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
+    if flow=='image':
+        # Shared reservation skeleton; image-specific request/upload are explicit.
+        names={'Build video request':'Build image request','Submit video once':'Generate image once',
+               'Validate video receipt':'Validate image bytes','Save video job receipt':'Write image for human review'}
+        for node in nodes: node['name']=names.get(node['name'],node['name'])
+        from portable_images import apply as apply_image
+        apply_image(nodes,profile)
+        validation=next(n for n in nodes if n['name']=='Validate request')
+        next(n for n in nodes if n['name']=='Validate references')['parameters']['jsCode']=validation['parameters']['jsCode']
     if flow in ('video-submit','video-poll') and video_selection is not None:
         from portable_video_models import apply as apply_video
         apply_video(nodes,video_selection,profile,flow,video_origin if video_origin!='https://api.minimax.cn' else None)
@@ -243,7 +259,7 @@ return [{json:$('Check video completion').first().json}];"""),
                     "if ($json.choices?.[0]?.finish_reason",
                     "if (typeof script==='string' && /<[/]?think>/i.test(script)) throw new Error('SCRIPT_REASONING_NOT_SEPARATED');\nif ($json.choices?.[0]?.finish_reason")
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
-    result_node={'script':'Validate script','video-submit':'Validate video receipt','video-poll':'Check video completion'}[flow]
+    result_node={'script':'Validate script','video-submit':'Validate video receipt','video-poll':'Check video completion','image':'Validate image upload receipt'}[flow]
     nodes += [http('Read persisted result',target,feishu=True),
               persisted_fields_check('Verify persisted result',result_node)]
     return compile_nodes(nodes)
@@ -313,7 +329,7 @@ return [{json:{schema_change:'accepted',schema_readback:'verified',provider_requ
 def setup_hook(workflow, path):
     """Temporary authenticated entry for zero-model setup checks only."""
     identifier(path)
-    if any(n['name'] in ('Generate script','Submit video once','Poll existing video') for n in workflow['nodes']):
+    if any(n['name'] in ('Generate script','Submit video once','Poll existing video','Generate image once') for n in workflow['nodes']):
         raise ValueError('SETUP_HOOK_MUST_NOT_CALL_MODELS')
     workflow=json.loads(json.dumps(workflow))
     start=workflow['nodes'][0]['name']
@@ -358,9 +374,15 @@ def guard_workflow(workflow, ledger):
     # make paid requests and return no items before writeback. Leave polling
     # unguarded for now; only mutation/submission flows need exclusivity.
     names=[n['name'] for n in nodes]
-    write_name='Write script for human review' if 'Write script for human review' in names else 'Save video job receipt'
+    is_image='Generate image once' in names
+    if is_image:
+        from portable_images import guard_image_nodes
+        endpoint=next(n for n in nodes if n['name']=='Find requested task')['parameters']['url']
+        origin,scope=endpoint.split('/open-apis/bitable/v1/apps/',1)
+        guard_image_nodes(nodes,ledger,scope.split('/')[0],origin)
+    write_name='Write image for human review' if is_image else 'Write script for human review' if 'Write script for human review' in names else 'Save video job receipt'
     before=next(i for i,n in enumerate(nodes) if n['name']==write_name)
-    save=ledger_update('Persist model result',ledger,'busy',{'status':'result_ready','result':'={{ JSON.stringify($json) }}'},owner=True)
+    save=ledger_update('Persist model result',ledger,'image_uploading' if is_image else 'busy',{'status':'result_ready','result':'={{ JSON.stringify($json) }}'},owner=True)
     restore=code('Restore saved result',"if ($json.owner !== $('Select task').first().json.execution) throw new Error('RESULT_NOT_OWNED'); return [{json:JSON.parse($json.result)}];")
     readback=next(n for n in nodes if n['name']=='Read reservation')
     fresh=http('Read task before result writeback',readback['parameters']['url'],feishu=True)
@@ -368,7 +390,7 @@ def guard_workflow(workflow, ledger):
 const fields=$json.data.record.fields, task=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 const result=$('Restore saved result').first().json;
-const expected=result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
+const expected={'脚本待审核':'脚本生成中','视频生成中':'视频提交中','图片待审核':'图片生成中'}[result.fields['状态']];
 if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected ||
    text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback ||
    JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references))
@@ -376,6 +398,9 @@ if(text(fields['执行编号'])!==task.execution || fields['状态']!==expected 
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_RESULT_SAVED');
 if(text(fields['脚本历史'])!==task.history || text(fields['视频任务ID'])!==task.job) throw new Error('TASK_VERSION_CHANGED_RESULT_SAVED');
 return [{json:result}];""")
+    if is_image:
+        from portable_images import GUARD_EXTRA
+        unchanged['parameters']['jsCode']=unchanged['parameters']['jsCode'].replace('return [{json:result}];',GUARD_EXTRA+'return [{json:result}];')
     nodes[before:before]=[save,restore,fresh,unchanged]
     nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
               code('Execution receipt',"return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false,result_saved:true}}];")]
@@ -393,14 +418,14 @@ def recovery_workflow(base, table, ledger, *, feishu_origin='https://open.feishu
          'returnAll':False,'limit':1}},
         code('Select task',"""const task=JSON.parse($json.payload), result=JSON.parse($json.result);
 if (!task.id || !/^[A-Za-z0-9_-]+$/.test(task.id) || task.execution!==$json.owner || !result.fields ||
-    !['脚本待审核','视频生成中'].includes(result.fields['状态'])) throw new Error('SAVED_RESULT_INVALID');
+    !['脚本待审核','视频生成中','图片待审核'].includes(result.fields['状态'])) throw new Error('SAVED_RESULT_INVALID');
 return [{json:{...task,result}}];"""),
         http('Read original task', '={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",feishu=True),
         code('Verify unchanged task',r"""if ($json.code!==0) throw new Error('ORIGINAL_TASK_UNREADABLE');
 const fields=$json.data.record.fields, saved=$('Select task').first().json;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if(text(fields['执行编号'])!==saved.execution) throw new Error('TASK_CHANGED_NO_WRITEBACK');
-const expected=saved.result.fields['状态']==='脚本待审核'?'脚本生成中':'视频提交中';
+const expected={'脚本待审核':'脚本生成中','视频生成中':'视频提交中','图片待审核':'图片生成中'}[saved.result.fields['状态']];
 if(fields['状态']!==expected && fields['状态']!==saved.result.fields['状态']) throw new Error('REVIEW_STATE_CHANGED_NO_WRITEBACK');
 if(text(fields['商品资料'])!==saved.product || text(fields['审核意见'])!==saved.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(saved.references)) throw new Error('INPUT_CHANGED_NO_WRITEBACK');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(saved.attachments || [])) throw new Error('ATTACHMENTS_CHANGED_NO_WRITEBACK');
@@ -411,6 +436,14 @@ for(const [field,original] of [['脚本历史',saved.history],['视频任务ID',
  const current=text(fields[field]);
  if(current!==original && (!Object.hasOwn(saved.result.fields,field) || current!==text(saved.result.fields[field])))
    throw new Error('TASK_VERSION_CHANGED_NO_WRITEBACK');
+}
+if(saved.result.fields['状态']==='图片待审核') {
+ if(text(fields['图片要求'])!==saved.image_prompt) throw new Error('IMAGE_INPUT_CHANGED_NO_WRITEBACK');
+ const current=(fields['生成图片']||[]).map(a=>a.file_token);
+ const original=(saved.image_candidates||[]).map(a=>a.file_token);
+ const output=saved.result.fields['生成图片'].map(a=>a.file_token);
+ if(JSON.stringify(current)!==JSON.stringify(original) && JSON.stringify(current)!==JSON.stringify(output)) throw new Error('IMAGE_CHANGED_NO_WRITEBACK');
+ if(text(fields['图片回执'])!==saved.image_receipt && text(fields['图片回执'])!==saved.result.fields['图片回执']) throw new Error('IMAGE_RECEIPT_CHANGED_NO_WRITEBACK');
 }
 return [{json:saved.result}];"""),
         http('Restore result to Base','={{ '+json.dumps(url+'/')+" + $('Select task').first().json.id }}",'PUT','={{ $json }}',feishu=True),

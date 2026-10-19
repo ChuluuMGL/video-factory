@@ -12,7 +12,7 @@ from n8n_workflows import (code, http, start, compile_nodes, ledger_update,
                            production_workflow, guard_workflow, persisted_fields_check, generation_profile)
 
 APPROVAL_FIELDS = {'生成计划': 1, '费用确认编号': 1}
-APPROVAL_STATUSES = ['申请脚本计划', '申请视频计划', '费用待确认']
+APPROVAL_STATUSES = ['申请脚本计划', '申请视频计划', '申请图片计划', '费用待确认']
 
 
 def policy_checked(policy):
@@ -44,14 +44,14 @@ def scheduled(workflow):
 
 def plan_workflow(base, table, flow, approval, policy, *, feishu_origin='https://open.feishu.cn',
                   script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn',
-                  verification_only=False, script_selection=None, video_selection=None):
+                  verification_only=False, script_selection=None, video_selection=None, image_selection=None):
     """No model nodes. One pending plan per project; never replace it silently."""
     policy = policy_checked(policy)
-    if flow not in ('script', 'video-submit'):
+    if flow not in ('script', 'video-submit', 'image'):
         raise Fault('APPROVAL_FLOW_INVALID')
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection,video_selection=video_selection)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection,video_selection=video_selection,image_selection=image_selection)
     url, nodes = start(base, table, feishu_origin)
-    state = '申请脚本计划' if flow == 'script' else '申请视频计划'
+    state = {'script':'申请脚本计划','video-submit':'申请视频计划','image':'申请图片计划'}[flow]
     search = {'filter': {'conjunction': 'and', 'conditions': [
         {'field_name': '状态', 'operator': 'is', 'value': [state]}]}}
     nodes += [http('Find plan request', url+'/search?page_size=1', 'POST', json.dumps(search, ensure_ascii=False), feishu=True),
@@ -61,7 +61,7 @@ const row=$json.data.items?.[0]; if(!row) return [];
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 const fields=row.fields;
 if(!/^rec[A-Za-z0-9_-]+$/.test(row.record_id)) throw new Error('PLAN_RECORD_INVALID');
-if(!text(fields[flow==='script'?'商品资料':'脚本']).trim()) throw new Error('PLAN_CONTENT_REQUIRED');
+if(!text(fields[flow==='script'?'商品资料':flow==='image'?'图片要求':'脚本']).trim()) throw new Error('PLAN_CONTENT_REQUIRED');
 if(flow==='video-submit' && text(fields['视频任务ID'])) throw new Error('EXISTING_VIDEO_NO_NEW_SUBMISSION');
 const snapshot={};
 for(const k of ['商品资料','脚本','审核意见','脚本历史','参考图链接','视频任务ID']) snapshot[k]=text(fields[k]);
@@ -72,6 +72,14 @@ if(flow==='video-submit' && model.first_frame_count===1) {
  const frames=snapshot['参考图附件'];
  if(snapshot['参考图链接'].trim() || frames.length!==1) throw new Error('VIDEO_ONE_FEISHU_FIRST_FRAME_REQUIRED');
  if(frames.some(a=>! /^[A-Za-z0-9_-]+$/.test(a.file_token || '') || !Number.isInteger(a.size) || a.size<1 || a.size>20*1024*1024 || !/\.(jpe?g|png)$/i.test(a.name || ''))) throw new Error('VIDEO_FIRST_FRAME_INVALID');
+}
+if(flow==='image') {
+ for(const k of ['图片要求','图片回执']) snapshot[k]=text(fields[k]);
+ snapshot['生成图片']=(fields['生成图片']||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size}));
+ if(snapshot['图片回执'] || snapshot['生成图片'].length) throw new Error('EXISTING_IMAGE_CREATE_NEW_TASK');
+ if(!snapshot['商品资料'].trim() || snapshot['图片要求'].length>2000 || snapshot['商品资料'].length>4000 || snapshot['审核意见'].length>1000) throw new Error('IMAGE_PROMPT_INVALID');
+ const refs=snapshot['参考图附件'];
+ if(snapshot['参考图链接'].trim() || refs.length!==1 || refs.some(a=>! /^[A-Za-z0-9_-]+$/.test(a.file_token||'') || !Number.isInteger(a.size) || a.size<1 || a.size>10*1024*1024 || !/\.(png|jpe?g)$/i.test(a.name||''))) throw new Error('IMAGE_ONE_FEISHU_REFERENCE_REQUIRED');
 }
 const plan={schema:2,id:'vf-'+policy.configuration+'-'+flow+'-'+String($execution.id),base,table,record:row.record_id,
   policy,flow,model,verification_only:verificationOnly,max_submissions:1,automatic_retry:false,snapshot,expires_at:Date.now()+86400000};
@@ -89,7 +97,7 @@ const p=$('Select task').first().json,f=$json.data.record.fields;
 const text=v=>Array.isArray(v)?v.map(x=>x.text||'').join(''):String(v||'');
 if(f['状态']!==p.source_status) throw new Error('PLAN_STATUS_CHANGED');
 for(const [k,v] of Object.entries(p.plan.snapshot)) {
- const actual=k==='参考图附件'?(f[k]||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})):text(f[k]);
+ const actual=['参考图附件','生成图片'].includes(k)?(f[k]||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})):text(f[k]);
  if(JSON.stringify(actual)!==JSON.stringify(v)) throw new Error('PLAN_INPUT_CHANGED');
 }
 return [{json:{fields:{'状态':'费用待确认','生成计划':p.display,'费用确认编号':''}}}];'''),
@@ -103,16 +111,16 @@ return [{json:{fields:{'状态':'费用待确认','生成计划':p.display,'费�
 
 def confirmation_workflow(base, table, flow, execution, approval, policy, path, *,
                           feishu_origin='https://open.feishu.cn',script_origin='https://api.deepseek.com',
-                          video_origin='https://api.minimax.cn', verification_only=False, script_selection=None, video_selection=None):
+                          video_origin='https://api.minimax.cn', verification_only=False, script_selection=None, video_selection=None, image_selection=None):
     """A trusted event selects the exact protected plan, never the first paid row.
 
     verification_only consumes the plan and returns a zero-provider receipt;
     it has no provider nodes. It cannot be toggled via a webhook request.
     """
     policy=policy_checked(policy); identifier(path)
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection,video_selection=video_selection)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection,video_selection=video_selection,image_selection=image_selection)
     workflow=guard_workflow(production_workflow(base,table,flow,feishu_origin=feishu_origin,
-                          script_origin=script_origin,video_origin=video_origin,script_selection=script_selection,video_selection=video_selection),execution)
+                          script_origin=script_origin,video_origin=video_origin,script_selection=script_selection,video_selection=video_selection,image_selection=image_selection),execution)
     old=workflow['nodes']; url=f'{feishu_origin}/open-apis/bitable/v1/apps/{base}/tables/{table}/records/'
     hook={'name':'Verified Feishu event','type':'n8n-nodes-base.webhook','typeVersion':2,
           'webhookId':str(uuid5(NAMESPACE_URL,'vf-owner:'+path)),
@@ -165,12 +173,12 @@ if(text(f['费用确认编号'])!==p.id) throw new Error('APPROVAL_CONFIRMATION_
 if(text(f['生成计划'])!==saved.display) throw new Error('APPROVAL_DISPLAY_CHANGED');
 if(!Number.isFinite(p.expires_at) || p.expires_at<Date.now()) throw new Error('APPROVAL_EXPIRED');
 for(const [k,v] of Object.entries(p.snapshot)) {
- const actual=k==='参考图附件'?(f[k]||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})):text(f[k]);
+ const actual=['参考图附件','生成图片'].includes(k)?(f[k]||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})):text(f[k]);
  if(JSON.stringify(actual)!==JSON.stringify(v)) throw new Error('APPROVED_INPUT_CHANGED');
 }
 return [{json:{id:p.record,fields:f,product:text(f['商品资料']),script:text(f['脚本']),feedback:text(f['审核意见']),
  history:text(f['脚本历史']),references:text(f['参考图链接']).split(/\s+/).filter(Boolean),
- attachments:p.snapshot['参考图附件'],job:text(f['视频任务ID']),execution:String($execution.id),approval:p}}];'''),
+ image_prompt:text(f['图片要求']),image_receipt:text(f['图片回执']),image_candidates:(f['生成图片']||[]).map(a=>({file_token:a.file_token,name:a.name,size:a.size})),attachments:p.snapshot['参考图附件'],job:text(f['视频任务ID']),execution:String($execution.id),approval:p}}];'''),
         ledger_update('Consume owner approval',approval,'awaiting',{'status':'consumed',
             'owner':"={{ $('Select task').first().json.execution }}",
             'result':"={{ JSON.stringify({plan:$('Select task').first().json.approval.id,event:$('Check event scope').first().json.event.header.event_id,actor:$('Check event scope').first().json.event.event.operator_id.open_id,consumed_at:Date.now()}) }}"}),
@@ -216,6 +224,10 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
     video=load_video(root,project,api.url)
     if 'video' in pool['roles'] and pool.get('video_selection',video_default())!=video:
         raise Fault('APPROVAL_VIDEO_CREDENTIAL_MODEL_MISMATCH')
+    from portable_images import load as load_image
+    image=load_image(root,project,api.url)
+    if 'image' in pool['roles'] and pool.get('image_selection')!=image:
+        raise Fault('APPROVAL_IMAGE_CREDENTIAL_MODEL_MISMATCH')
     model_options=options(root,project,api.url)
     event_root=secure_directory(root/(project+'-events'))
     scope={'origin':api.url,'project':project,'base':base,'table':table,'policy':policy,'verification_only':verification_only}
@@ -240,7 +252,7 @@ def configure_approval(api, root, project, base, table, policy, *, verification_
     config['confirmation_field']=identifier(checked['confirmation_field'])
     execution=ensure_ledger(api,root,project,base,table)
     approval=ensure_ledger(api,root,project+'-approval',base,table)
-    for flow,role in [('script','script'),('video-submit','video')]:
+    for flow,role in [('script','script'),('video-submit','video'),('image','image')]:
         if role not in pool['roles']: continue
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']
         identifier(path)
@@ -265,6 +277,8 @@ def set_approval_active(api, root, project, active):
     config=json.loads((root/(project+'-events')/'events.json').read_text(encoding='utf-8'))
     if config['origin']!=api.url: raise Fault('APPROVAL_ORIGIN_CHANGED')
     if active:
+        from portable_images import load as load_image
+        if load_image(root,project,api.url)!=config.get('image_selection'): raise Fault('APPROVAL_IMAGE_SCOPE_CHANGED')
         from portable_models import load as load_models, selection
         from portable_video_models import load as load_video,selection as video_default
         if load_video(root,project,api.url)!=config.get('video_selection',video_default()):
@@ -336,6 +350,8 @@ def _promote_approval(api, root, project):
     if load_video(root,project,api.url)!=config.get('video_selection',video_default()):
         raise Fault('APPROVAL_VIDEO_SCOPE_CHANGED')
     from portable_models import options
+    from portable_images import load as load_image
+    if load_image(root,project,api.url)!=config.get('image_selection'): raise Fault('APPROVAL_IMAGE_SCOPE_CHANGED')
     model_options=options(root,project,api.url)
     base,table=config['base'],config['table'];policy=policy_checked(config['policy'])
     execution=ensure_ledger(api,root,project,base,table);approval=ensure_ledger(api,root,project+'-approval',base,table)
@@ -354,7 +370,7 @@ def _promote_approval(api, root, project):
         if name.startswith('confirm-'):
             saved=api.request('GET','/api/v1/workflows/'+item['workflow'])
             expected=json.loads((root/('binding-'+item['project']+'.json')).read_text(encoding='utf-8'))['owned_template']
-            if saved['nodes']!=expected['nodes'] or saved['connections']!=expected['connections'] or any(n['name'] in ('Generate script','Submit video once') for n in saved['nodes']):
+            if saved['nodes']!=expected['nodes'] or saved['connections']!=expected['connections'] or any(n['name'] in ('Generate script','Submit video once','Generate image once') for n in saved['nodes']):
                 raise Fault('ZERO_CHARGE_TEMPLATE_CHANGED')
     set_approval_active(api,root,project,False)
     if pending is None:
@@ -368,7 +384,7 @@ def _promote_approval(api, root, project):
         if len(cleared)!=1: raise Fault('APPROVAL_SLOT_CHANGED')
     pool=json.loads((root/('credentials-'+project+'.json')).read_text(encoding='utf-8'))['roles'];values=load_secrets(event_root)
     new=json.loads(json.dumps(config));new['workflows']={};new['hooks']={};new['verification_only']=False
-    for flow,role in [('script','script'),('video-submit','video')]:
+    for flow,role in [('script','script'),('video-submit','video'),('image','image')]:
         if role not in pool:continue
         path='vf-owner-'+project+'-'+flow+'-'+policy['configuration']+'-paid';identifier(path)
         new['workflows']['plan-'+flow]=provision(api,root,project+'-plan-'+flow+'-paid',

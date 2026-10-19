@@ -87,4 +87,7 @@ def options(root, project, origin):
     result={}
     if script!=selection():result['script_selection']=script
     if video!=video_default():result['video_selection']=video
+    from portable_images import load as load_image
+    image=load_image(root,project,origin)
+    if image is not None: result['image_selection']=image
     return result
