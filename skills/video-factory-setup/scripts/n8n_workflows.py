@@ -198,7 +198,7 @@ if (text(fields['执行编号'])!==task.execution || !['脚本生成中','视频
 if (text(fields['商品资料'])!==task.product || text(fields['脚本'])!==task.script || text(fields['审核意见'])!==task.feedback || JSON.stringify(text(fields['参考图链接']).split(/\s+/).filter(Boolean))!==JSON.stringify(task.references)) throw new Error('TASK_INPUT_CHANGED_BEFORE_PROVIDER');
 if(text(fields['脚本历史'])!==task.history || text(fields['视频任务ID'])!==task.job) throw new Error('TASK_VERSION_CHANGED_BEFORE_PROVIDER');
 if(JSON.stringify((fields['参考图附件'] || []).map(a=>({file_token:a.file_token,name:a.name,size:a.size})))!==JSON.stringify(task.attachments)) throw new Error('TASK_ATTACHMENTS_CHANGED_BEFORE_PROVIDER');
-return [{json:{ok:true}}];""")]
+return [{json:{ok:true}}];""".replace("!['脚本生成中','视频提交中','图片生成中'].includes(fields['状态'])", "fields['状态']!=="+json.dumps(state)))]
     if flow == 'script':
         nodes += [code('Build script request', 'const profile='+json.dumps(profile)+';'+"""return [{json:{model:profile.model,stream:profile.stream,max_tokens:profile.max_tokens,thinking:profile.thinking,messages:[{role:'system',content:'根据商品资料编写可审核的短视频脚本，不编造功效。结合旧脚本和修改意见，返回完整新脚本。'},{role:'user',content:JSON.stringify({product:$('Select task').first().json.product,previous:$('Select task').first().json.script,feedback:$('Select task').first().json.feedback})}]}}];"""),
                   http('Generate script', profile['endpoint'], 'POST', '={{ $json }}', 'httpHeaderAuth'),

@@ -102,6 +102,8 @@ if(!png && !jpeg || !/^\d{2,5}x\d{2,5}$/.test(image.size||'')) throw new Error('
 const [w,h]=image.size.split('x').map(Number);
 if(w<14 || h<14 || w*h>36000000 || w/h>16 || h/w>16) throw new Error('IMAGE_DIMENSIONS_INVALID_NO_RETRY');
 const task=$('Select task').first().json;
+const usage=$json.usage;
+if(usage && (typeof usage!=='object' || JSON.stringify(usage).length>1000)) throw new Error('IMAGE_USAGE_INVALID_RECONCILE');
 return [{json:{artifact:{b64,mime:png?'image/png':'image/jpeg',size:bytes.length,name:'vf-'+task.id+'-'+task.execution+(png?'.png':'.jpg')},receipt:{model:profile.model,size:image.size,execution:task.execution,usage:$json.usage||null}}}];""")]
 
 

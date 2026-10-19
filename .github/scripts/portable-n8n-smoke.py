@@ -72,7 +72,7 @@ class Fixture(BaseHTTPRequestHandler):
             assert 'multipart/form-data' in self.headers['Content-Type']
             assert b'bitable_image' in raw and b'baseFixture' in raw and image_bytes in raw
             state['image_uploads']=state.get('image_uploads',0)+1
-            self.reply({'code':0,'data':{'file_token':'generatedFixture'}});return
+            self.reply({'code':999} if state.get('unknown_image_upload') else {'code':0,'data':{'file_token':'generatedFixture'}});return
         body=json.loads(raw)
         if self.path.endswith('/tenant_access_token/internal'):
             assert body == {'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}, body.keys()
@@ -627,6 +627,34 @@ try:
     assert state['attachments']==[{'file_token':'fileFixture','name':'first.png','size':len(image_bytes)}]
     assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
     execute(image_recovery['workflow']);assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    phase='saved image upload continuation and unknown-upload fence'
+    from portable_images import recover_image_workflow
+    staged_ledger=ensure_ledger(api,root/'bindings','image-staged','baseFixture','tableFixture')
+    staged=guard_workflow(production_workflow('baseFixture','tableFixture','image',feishu_origin=fixture_origin,image_selection=image_selection()),staged_ledger)
+    next(n for n in staged['nodes'] if n['name']=='Generate image once')['parameters']['url']=fixture_origin+'/images/generations'
+    # Interrupt after the persisted image, before the first upload attempt.
+    from n8n_workflows import code,compile_nodes
+    at=next(i for i,n in enumerate(staged['nodes']) if n['name']=='Claim image upload')
+    staged=compile_nodes(staged['nodes'][:at]+[code('Synthetic interruption',"throw new Error('FIXTURE_AFTER_IMAGE_SAVE');")])
+    paused=provision(api,root/'bindings','image-staged',staged,credentials)
+    state.update(status='请求图片',image_candidates=[],image_receipt='')
+    before=state['image_calls'];uploads=state['image_uploads']
+    execute(paused['workflow'],expect_failure=True)
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads
+    restored=provision(api,root/'bindings','image-staged-upload',recover_image_workflow('baseFixture','tableFixture',staged_ledger,feishu_origin=fixture_origin),credentials)
+    execute(restored['workflow'])
+    assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
+    written=provision(api,root/'bindings','image-staged-write',recovery_workflow('baseFixture','tableFixture',staged_ledger,feishu_origin=fixture_origin),credentials)
+    execute(written['workflow']);assert state['status']=='图片待审核'
+    # A later unknown upload must never be automatically repeated.
+    state.update(status='请求图片',image_candidates=[],image_receipt='',unknown_image_upload=True)
+    execute(imported['workflow'],expect_failure=True)
+    before=state['image_calls'];uploads=state['image_uploads']
+    uncertain=provision(api,root/'bindings','image-unknown-upload',recover_image_workflow('baseFixture','tableFixture',ledger,feishu_origin=fixture_origin),credentials)
+    execute(uncertain['workflow']);execute(image_recovery['workflow'])
+    assert state['image_calls']==before and state['image_uploads']==uploads
+    saved=api.request('GET','/api/v1/data-tables/'+ledger['table']+'/rows')['data'][0]
+    assert saved['status']=='image_uploading' and json.loads(saved['result'])['artifact']['b64']
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
