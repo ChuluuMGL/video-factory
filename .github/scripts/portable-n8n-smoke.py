@@ -19,7 +19,7 @@ from urllib.request import build_opener, HTTPCookieProcessor, Request
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/video-factory-setup/scripts'))
-from portable_n8n import API, environment, health, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
+from portable_n8n import Fault, API, environment, health, install_local, local_control, provision as provision_disabled, verify_setup, ensure_ledger
 from n8n_workflows import probe_workflow, production_workflow, schema_workflow, FIELDS, guard_workflow, recovery_workflow
 
 state = {'status': '请求脚本', 'script': '', 'model_calls': 0, 'token_calls': 0, 'writes': 0, 'video_calls':0, 'polls':0, 'fields':[], 'job':'','fail_writeback':False,'feedback':'','edit_during_model':False}
@@ -81,6 +81,7 @@ class Fixture(BaseHTTPRequestHandler):
             self.reply({'code':0,'data':{'items':items,'has_more':False}})
         elif self.path.endswith('/chat/completions'):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
+            state['last_script_request']=body
             state['model_calls']+=1
             if state['edit_during_model']: state['feedback']='New reviewer feedback'
             self.reply({'choices':[{'message':{'content':'Synthetic reviewable script'},'finish_reason':'stop'}]})
@@ -397,7 +398,7 @@ try:
         return configure_flows(*args,**kwargs,feishu_origin=fixture_origin,script_origin=fixture_origin,video_origin=fixture_origin)
     guided_prompts=[]
     with patch('portable_n8n.secret',side_effect=guided_secret), patch('portable_n8n.configure_flows',side_effect=guided_bundle), patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)), patch('n8n_workflows.schema_workflow',side_effect=lambda b,t:schema_workflow(b,t,feishu_origin=fixture_origin)):
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','y']):
+        with patch('builtins.input',side_effect=['1',api_origin,'guided','baseFixture','tableFixture','cli_fixture','y','y','deepseek','','y']):
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
@@ -514,6 +515,29 @@ try:
         local_control(root,'start')
         assert health(api_origin)
         print('OS service install/reuse/restart/stop/uninstall and manual resume passed',flush=True)
+    for _ in range(30):
+        try:
+            assert isinstance(api.request('GET','/api/v1/data-tables?limit=1')['data'],list)
+            break
+        except Fault:time.sleep(1)
+    else:raise AssertionError('PUBLIC_DATA_TABLE_API_NOT_READY_AFTER_RESTART')
+    phase='script provider profiles through actual n8n and Base writeback'
+    from portable_models import SCRIPTS,selection,profile
+    for provider in SCRIPTS:
+        selected=selection(provider)
+        project='profile-'+provider
+        provider_ledger=ensure_ledger(api,root/'bindings',project,'baseFixture','tableFixture')
+        workflow=guard_workflow(production_workflow('baseFixture','tableFixture','script',
+            feishu_origin=fixture_origin,script_origin=fixture_origin,script_selection=selected),provider_ledger)
+        selected_flow=provision(api,root/'bindings',project,workflow,credentials)
+        state['status']='请求脚本';before=state['model_calls']
+        execute(selected_flow['workflow'])
+        assert state['model_calls']==before+1 and state['status']=='脚本待审核'
+        expected={k:v for k,v in profile(selected).items() if k not in ('provider','endpoint')}
+        actual={k:v for k,v in state['last_script_request'].items() if k!='messages'}
+        assert actual==expected,provider
+        execute(selected_flow['workflow'])
+        assert state['model_calls']==before+1,'PROFILE_REPLAY_MUST_NOT_CALL_MODEL'
     print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):

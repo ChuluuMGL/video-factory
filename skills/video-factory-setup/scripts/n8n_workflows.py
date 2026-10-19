@@ -124,8 +124,14 @@ STATUSES = ['请求脚本', '脚本生成中', '脚本待审核', '脚本通过'
             '申请脚本计划', '申请视频计划', '费用待确认']
 
 
-def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn'):
+def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None):
     """The same non-secret contract is displayed, confirmed and executed."""
+    if flow == 'script' and script_selection is not None:
+        from portable_models import profile as script_profile
+        result = script_profile(script_selection)
+        if script_origin != 'https://api.deepseek.com':
+            result['endpoint'] = script_origin + '/chat/completions'
+        return result
     if flow == 'script':
         return {'provider': 'DeepSeek', 'model': 'deepseek-flash',
                 'endpoint': script_origin + '/chat/completions', 'max_tokens': 2048,
@@ -138,10 +144,10 @@ def generation_profile(flow, *, script_origin='https://api.deepseek.com', video_
 
 
 def production_workflow(base, table, flow, *, feishu_origin='https://open.feishu.cn',
-                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn'):
+                        script_origin='https://api.deepseek.com', video_origin='https://api.minimax.cn', script_selection=None):
     if flow not in ('script', 'video-submit', 'video-poll'):
         raise ValueError('FLOW_INVALID')
-    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin)
+    profile = generation_profile(flow, script_origin=script_origin, video_origin=video_origin, script_selection=script_selection)
     url, nodes = start(base, table, feishu_origin)
     status = {'script': ['请求脚本'], 'video-submit': ['视频生成已确认'], 'video-poll': ['视频生成中']}[flow]
     # Server-side filter avoids silently ignoring matching rows beyond page 1.
@@ -210,6 +216,17 @@ if(fields['状态']!=='视频生成中' || text(fields['视频任务ID'])!==task
     throw new Error('VIDEO_TASK_CHANGED_NO_OVERWRITE');
 return [{json:$('Check video completion').first().json}];"""),
                   write('Write video for human review', '={{ $json }}')]
+    if flow == 'script' and script_selection is not None:
+        for node in nodes:
+            if node['name'] == 'Build script request':
+                source = node['parameters']['jsCode']
+                source = source.replace('model:profile.model,stream:profile.stream,max_tokens:profile.max_tokens,thinking:profile.thinking,', '...options,')
+                source = source.replace('return [{json:', 'const {provider,endpoint,...options}=profile;return [{json:', 1)
+                node['parameters']['jsCode'] = source
+            if node['name'] == 'Validate script':
+                node['parameters']['jsCode'] = node['parameters']['jsCode'].replace(
+                    "if ($json.choices?.[0]?.finish_reason",
+                    "if (typeof script==='string' && /<[/]?think>/i.test(script)) throw new Error('SCRIPT_REASONING_NOT_SEPARATED');\nif ($json.choices?.[0]?.finish_reason")
     nodes.append(code('Writeback receipt', "if ($json.code !== 0) throw new Error('FEISHU_WRITEBACK_FAILED_DO_NOT_RESUBMIT_MODEL'); return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false}}];"))
     result_node={'script':'Validate script','video-submit':'Validate video receipt','video-poll':'Check video completion'}[flow]
     nodes += [http('Read persisted result',target,feishu=True),

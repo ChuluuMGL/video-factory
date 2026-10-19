@@ -423,7 +423,11 @@ def local_control(root, action):
         elif action == 'start':
             if health(saved['origin']):
                 if saved.get('pid') and saved.get('process_identity') == process_identity(saved['pid']):
-                    return {'status': 'reachable', 'origin': saved['origin']}
+                    for _ in range(120):
+                        if ready(saved['origin']):
+                            return {'status': 'reachable', 'origin': saved['origin']}
+                        time.sleep(1)
+                    raise Fault('START_TIMEOUT_INSPECT_OWNED_N8N_PROCESS')
                 raise Fault('PORT_IN_USE_NOT_STARTED_BY_THIS_INSTALLER')
             executable = root / 'node_modules/n8n/bin/n8n'
             if not executable.is_file():
@@ -464,7 +468,7 @@ def local_control(root, action):
             private_write(root / 'local.json', saved)
         if action == 'start':
             for _ in range(120):
-                if health(saved['origin']):
+                if ready(saved['origin']):
                     return {'status': 'reachable', 'origin': saved['origin'], 'owner_setup': 'complete_in_n8n_editor'}
                 if saved['mode']=='node' and not process_identity(saved['pid']):
                     raise Fault('START_FAILED_INSPECT_PRIVATE_N8N_LOG')
@@ -549,6 +553,10 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
         if (state['origin'],state['project'],state['app'])!=(api.url,project,app):
             raise Fault('PROJECT_CREDENTIAL_SCOPE_CHANGED')
         if state.get('pending'): raise Fault('CREDENTIAL_CREATE_UNKNOWN_RECONCILE_IN_N8N')
+        from portable_models import load as load_models, SCRIPTS, selection
+        script_choice=load_models(root,project,api.url)
+        if 'script' in state['roles'] and state.get('script_selection',selection())!=script_choice:
+            raise Fault('SCRIPT_CREDENTIAL_MODEL_MISMATCH')
         for role in roles:
             if role not in ('feishu','script','video'): raise Fault('CREDENTIAL_ROLE_INVALID')
             if role in state['roles']: continue
@@ -556,12 +564,13 @@ def project_credentials(api, root, project, app, roles, ask_secret=None):
                 kind='httpCustomAuth'
                 data={'json':json.dumps({'body':{'app_id':app,'app_secret':ask_secret('飞书 App Secret（隐藏输入）: ')}})}
             else:
-                key=provider_secret(('DeepSeek' if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
+                key=provider_secret((SCRIPTS[script_choice['provider']][0] if role=='script' else 'MiniMax 中国区')+' API Key（隐藏输入，:quit 退出）: ',ask_secret)
                 kind='httpHeaderAuth'; data={'name':'Authorization','value':'Bearer '+key}
             name='Video Factory '+project+' '+role
             state['pending']={'role':role,'name':name}; private_write(path,state)
             created=api.request('POST','/api/v1/credentials',{'name':name,'type':kind,'data':data})
             state['roles'][role]={'type':kind,'existing':{'id':identifier(created.get('id')),'name':name}}
+            if role=='script': state['script_selection']=script_choice
             state.pop('pending'); private_write(path,state)
         return {role:state['roles'][role] for role in roles}
 
@@ -570,13 +579,16 @@ def configure_flows(api, root, project, base, table, credentials, *, feishu_orig
                     script_origin='https://api.deepseek.com',video_origin='https://api.minimax.cn'):
     """Import a complete disabled bundle, with one shared project execution row."""
     from n8n_workflows import production_workflow,guard_workflow,recovery_workflow
+    from portable_models import load as load_models, selection
+    selected=load_models(root,project,api.url)
+    model_options={} if selected==selection() else {'script_selection':selected}
     ledger=ensure_ledger(api,root,project,base,table)
     result={}
     for flow,role in [('script','script'),('video-submit','video'),('video-poll','video'),('recover',None)]:
         if role and role not in credentials: continue
         template=(recovery_workflow(base,table,ledger,feishu_origin=feishu_origin) if flow=='recover' else
                   production_workflow(base,table,flow,feishu_origin=feishu_origin,
-                                      script_origin=script_origin,video_origin=video_origin))
+                                      script_origin=script_origin,video_origin=video_origin,**model_options))
         if flow in ('script','video-submit'): template=guard_workflow(template,ledger)
         selected={'httpCustomAuth':credentials['feishu']}
         if role: selected['httpHeaderAuth']=credentials[role]
@@ -665,7 +677,18 @@ def welcome(root, dependency_timeout=1200):
         receipt['schema']=verify_setup(api,bindings,project+'-schema',schema_workflow(base,table),selected)
     roles=[]
     print('接下来可导入脚本、视频和恢复流程，均保持关闭，不会调用模型。')
-    if ask_choice('配置 DeepSeek 脚本流程？y/N: ',('y','n'),'n')=='y': roles.append('script')
+    if ask_choice('配置脚本流程？y/N: ',('y','n'),'n')=='y':
+        from portable_models import load as load_models, save as save_models, selection, SCRIPTS
+        if (bindings/('models-'+project+'.json')).exists() or (bindings/('credentials-'+project+'.json')).exists() and 'script' in json.loads((bindings/('credentials-'+project+'.json')).read_text(encoding='utf-8')).get('roles',{}):
+            chosen=load_models(bindings,project,url)
+            print('沿用脚本供应商与模型：'+chosen['provider']+' / '+chosen['model'])
+        else:
+            print('DeepSeek 已有真实验收；其他脚本供应商为候选，须在本项目单独验收。')
+            provider=ask_choice('脚本供应商 ['+'/'.join(SCRIPTS)+']，默认 deepseek: ',tuple(SCRIPTS),'deepseek')
+            model=ask_value('模型 ID ['+SCRIPTS[provider][2]+']: ',lambda v:selection(provider,v)['model'],SCRIPTS[provider][2])
+            chosen=selection(provider,model)
+        save_models(bindings,project,url,chosen)
+        roles.append('script')
     if ask_choice('配置 MiniMax H3 视频流程？y/N: ',('y','n'),'n')=='y': roles.append('video')
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
@@ -725,6 +748,10 @@ def main(argv=None):
     export.add_argument('--flow', choices=['probe','schema','script','video-submit','video-poll'], required=True)
     export.add_argument('--out', type=Path, required=True)
     export.add_argument('--experimental-manual',action='store_true')
+    from portable_models import SCRIPTS
+    for target in (bind,export):
+        target.add_argument('--script-provider',choices=tuple(SCRIPTS))
+        target.add_argument('--script-model')
     export.add_argument('--ledger-table',help='手动创建的 n8n 执行锁数据表 ID')
     export.add_argument('--ledger-row',type=int,help='该数据表中项目执行锁行 ID')
     args = parser.parse_args(argv)
@@ -758,9 +785,12 @@ def main(argv=None):
                 raise Fault('MANUAL_TEST_OPT_IN_REQUIRED_NO_AUTOMATIC_PAID_EXECUTION')
             if args.flow in ('script','video-submit') and (not args.ledger_table or not args.ledger_row or args.ledger_row<1):
                 raise Fault('EXPORT_REQUIRES_EXISTING_N8N_LEDGER_TABLE_AND_ROW')
+            from portable_models import selection
+            selected=selection(args.script_provider or 'deepseek',args.script_model)
+            model_options={} if selected==selection() else {'script_selection':selected}
             template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                         schema_workflow(args.base,args.table) if args.flow=='schema' else
-                        production_workflow(args.base,args.table,args.flow))
+                        production_workflow(args.base,args.table,args.flow,**model_options))
             if args.flow in ('script','video-submit'):
                 template=guard_workflow(template,{'table':identifier(args.ledger_table),'row':args.ledger_row})
             if args.out.exists(): raise Fault('EXPORT_EXISTS_CHOOSE_NEW_PATH')
@@ -781,13 +811,18 @@ def main(argv=None):
                 app_id = input('飞书 App ID: ').strip()
                 identifier(app_id)
                 role='script' if args.flow=='script' else 'video' if args.flow in ('video-submit','video-poll') else None
+                from portable_models import load as load_models, save as save_models, selection
+                selected=load_models(args.root,args.project,api.url)
+                if args.script_provider or args.script_model:
+                    selected=save_models(args.root,args.project,api.url,selection(args.script_provider or selected['provider'],args.script_model))
+                model_options={} if selected==selection() else {'script_selection':selected}
                 pool=project_credentials(api,args.root,args.project,app_id,['feishu']+([role] if role else []))
                 credentials={'httpCustomAuth':pool['feishu']}
                 if role: credentials['httpHeaderAuth']=pool[role]
                 template = (probe_workflow(args.base,args.table) if args.flow=='probe' else
                             schema_workflow(args.base,args.table) if args.flow=='schema' else
                             recovery_workflow(args.base,args.table,ensure_ledger(api,args.root,args.project,args.base,args.table)) if args.flow=='recover' else
-                            production_workflow(args.base,args.table,args.flow))
+                            production_workflow(args.base,args.table,args.flow,**model_options))
                 if args.flow in ('script','video-submit'):
                     template=guard_workflow(template,ensure_ledger(api,args.root,args.project,args.base,args.table))
                 value = provision(api, args.root, args.project + '-' + args.flow,template,credentials)
