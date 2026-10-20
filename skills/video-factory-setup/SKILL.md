@@ -67,7 +67,7 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ### 便携视频模型候选
 
-源码候选的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。只有 H3 有既有真实验收；其他路线先完成各自账户的单次计划验收，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
+源码候选的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。Seedance 2.0/2.5 必须按现有 Key 所属账号已开通的版本选择；不因缺少某个版本要求新建 Key，不自动开通或换模型重试。只有 H3 有既有真实验收；其他路线先完成各自账户的单次计划验收，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
 
 ### Seedream 视频参考图（源码候选）
 

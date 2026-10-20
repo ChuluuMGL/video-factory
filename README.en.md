@@ -54,7 +54,7 @@ The portable route includes [designated-owner billing approval](docs/product/POR
 | Purpose | Selectable in the pinned release | Development candidate or planned |
 |---|---|---|
 | Scripts | DeepSeek Flash | GPT, Gemini, MiniMax text, Qwen, and Doubao setup, fee-plan and execution integration is in [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61); four-platform synthetic checks passed, but a38 excludes these routes and live-account acceptance remains open |
-| Video | MiniMax H3 | Kling, Seedance, and Wan setup, fee approval, submission and polling integration is in [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62); a38 excludes these routes and live generations remain unverified |
+| Video | MiniMax H3 | Kling, Seedance (2.0 / 2.5, choose the version enabled on your account), and Wan setup, fee approval, submission and polling integration is in [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62); a38 excludes these routes and live generations remain unverified |
 | Images | Source candidate: Seedream video reference images | [Setup and recovery](docs/product/PORTABLE_IMAGES.md): separate owner approval and Feishu attachments; not in a38, live-provider acceptance pending |
 
 Use in an earlier project or passing synthetic tests does not make a provider selectable in the pinned release. Each new route still needs its own account, output writeback, and human-review acceptance. Installation does not itself trigger paid generation.

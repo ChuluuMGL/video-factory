@@ -35,7 +35,7 @@ n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明�
 
 “豆包”在此表指脚本大模型，“Seedance”指视频生成，“Seedream”指图片生成；千问脚本与万相视频也是不同接口。既有项目用过某个模型，只能作为适配需求来源。新接口必须在隔离云端通过合成合同测试，再用客户授权的真实 Key 逐条付费验收；没有回执和成片回写前，不能写成开箱即用。模型列表随官方 API 变化，客户输入的模型 ID、接口区域和 Key 必须来自同一账户；不能从历史项目搬运密钥。
 
-便携脚本候选见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)：`welcome` 选择 `deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn` 或 `doubao-cn`。便携视频候选见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)：H3、北京 Seedance、北京万相、北京/新加坡可灵。两者都连接 n8n 加密凭据、精确费用计划和原行回写；a38 固定包没有这些新增模型选项。旧完整服务栈的 `production-setup` 适配另在 PR #38/#42，不能混用命令。
+便携脚本候选见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)：`welcome` 选择 `deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn` 或 `doubao-cn`。便携视频候选见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)：H3、北京 Seedance 2.0/2.5（按账号已开通版本选择）、北京万相、北京/新加坡可灵。两者都连接 n8n 加密凭据、精确费用计划和原行回写；a38 固定包没有这些新增模型选项。旧完整服务栈的 `production-setup` 适配另在 PR #38/#42，不能混用命令。
 
 候选中的默认模型只是配置起点，不代表该账户已有权限；保存 Key 不等于认证成功。已有项目续接沿用原供应商，不把旧 Key 自动发送到新平台。各供应商真实验收另行安排，费用计划变化必须重新确认。
 

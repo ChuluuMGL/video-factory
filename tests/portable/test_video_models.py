@@ -37,10 +37,9 @@ class VideoModels(unittest.TestCase):
         self.assertNotEqual(profile(selection('kling-cn'))['endpoint'],profile(selection('kling-global'))['endpoint'])
 
     def test_fee_profiles_receipts_and_polling_fail_closed(self):
-        for provider in VIDEOS:
-            if provider=='minimax-cn':continue
-            with self.subTest(provider=provider):
-                chosen=selection(provider);expected=profile(chosen)
+        for provider, model in [(p,m) for p,(_,_,models) in VIDEOS.items() if p!='minimax-cn' for m in models]:
+            with self.subTest(provider=provider, model=model):
+                chosen=selection(provider,model);expected=profile(chosen)
                 plan=plan_workflow('baseFixture','tableFixture','video-submit',{'table':'a','row':1},POLICY,video_selection=chosen)
                 confirm=confirmation_workflow('baseFixture','tableFixture','video-submit',{'table':'e','row':1},{'table':'a','row':1},POLICY,'confirm',video_selection=chosen)
                 poll=production_workflow('baseFixture','tableFixture','video-poll',video_selection=chosen)
@@ -67,11 +66,12 @@ const refs=name=>({first:()=>({json:name==='Resolve video references'?{model_ref
 const body=new Function('$',d.body)(refs)[0].json;assert.equal(body.duration||body.parameters?.duration||body.settings?.duration,5);
 const receipt=new Function('$json',d.receipt),poll=new Function('$json','$',d.poll);
 let submitted,result;
-if(d.provider==='seedance-cn'){submitted={id:'candidate-task-123'};result={id:'candidate-task-123',model:d.profile.model,status:'succeeded',content:{video_url:'https://media.example.invalid/video.mp4'}};}
+if(d.provider==='seedance-cn'){assert.equal(body.model,d.profile.model);assert.equal(body.resolution,'720p');assert.equal(body.generate_audio,true);submitted={id:'candidate-task-123'};result={id:'candidate-task-123',model:d.profile.model,status:'succeeded',content:{video_url:'https://media.example.invalid/video.mp4'}};}
 else if(d.provider==='wan-cn'){submitted={output:{task_id:'candidate-task-123'}};result={output:{task_id:'candidate-task-123',task_status:'SUCCEEDED',video_url:'https://media.example.invalid/video.mp4'}};}
 else{submitted={code:0,data:{id:'candidate-task-123'}};result={code:0,data:[{id:'candidate-task-123',status:'succeeded',outputs:[{type:'video',url:'https://media.example.invalid/video.mp4'}]}]};}
 assert.equal(receipt(submitted)[0].json.fields['视频任务ID'],'candidate-task-123');assert.throws(()=>receipt({}));
 assert.equal(poll(result,refs)[0].json.fields['状态'],'视频待审核');
+if(d.provider==='seedance-cn'){assert.throws(()=>poll({...result,model:result.model==='doubao-seedance-2-0-260128'?'doubao-seedance-2-5-260628':'doubao-seedance-2-0-260128'},refs),/UNVERIFIED/);}
 const bad=JSON.parse(JSON.stringify(result).replaceAll('candidate-task-123','other-task-999'));assert.throws(()=>poll(bad,refs),/UNVERIFIED/);
 for(const url of ['http://media.example.invalid/x','https://127.0.0.1/x','https://user@media.example.invalid/x','https://host.local/x']){const v=JSON.parse(JSON.stringify(result).replaceAll('https://media.example.invalid/video.mp4',url));assert.throws(()=>poll(v,refs));}
 """

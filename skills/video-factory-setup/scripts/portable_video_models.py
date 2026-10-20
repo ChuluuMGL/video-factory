@@ -5,7 +5,7 @@ from portable_n8n import Fault, identifier, locked, private_write
 
 VIDEOS = {
     'minimax-cn': ('MiniMax China', 'https://api.minimax.cn', ('MiniMax-H3',)),
-    'seedance-cn': ('Seedance Beijing', 'https://ark.cn-beijing.volces.com', ('doubao-seedance-2-5-260628',)),
+    'seedance-cn': ('Seedance Beijing', 'https://ark.cn-beijing.volces.com', ('doubao-seedance-2-0-260128', 'doubao-seedance-2-5-260628')),
     'wan-cn': ('Wan Beijing', 'https://dashscope.aliyuncs.com', ('wan2.7-i2v-2026-04-25',)),
     'kling-cn': ('Kling Beijing', 'https://api-beijing.klingai.com', ('kling-3.0', 'kling-3.0-turbo')),
     'kling-global': ('Kling Singapore', 'https://api-singapore.klingai.com', ('kling-3.0', 'kling-3.0-turbo')),
