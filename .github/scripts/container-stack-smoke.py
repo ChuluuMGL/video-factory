@@ -389,7 +389,19 @@ with tempfile.TemporaryDirectory(prefix='vf-stack-',dir='/root') as temp:
                'media_and_keys_preserved':True,'old_sessions_revoked':True,'unknown_submission_preserved':True,
                'paid_model_requests':0,'human_acceptance':'not_run','real_customer_host':'not_run','egress':'internal_network_only'}
         print(json.dumps(proof))
-    except Exception:
+    except Exception as error:
+        # Only structured state and a bounded public error code leave CI.
+        import re
+        error_code = str(error)
+        print(json.dumps({'stage':'container_failure',
+                          'error_code':error_code if re.fullmatch(r'[A-Z][A-Z0-9_]{3,80}',error_code) else None}),file=sys.stderr)
+        for failed_stack in stacks:
+            try:
+                components=failed_stack.status()['components']
+                known=('postgres','runtime','n8n','gateway','worker','egress','bootstrap')
+                print(json.dumps({'stage':'container_failure_components',
+                    'components':{name:{'state':value['state'],'exit_code':value.get('exit_code')} for name,value in components.items() if name in known}}),file=sys.stderr)
+            except Exception:pass
         if first is None and (firstroot/'stack.json').exists():
             try:stacks.append(Stack(firstroot,repair_derived=True))
             except Exception:pass
