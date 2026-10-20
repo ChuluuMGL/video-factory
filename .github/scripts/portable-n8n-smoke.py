@@ -601,7 +601,7 @@ try:
     state['script']='A synthetic first frame scene';state['feedback']='';state['job']=''
     for provider,model in [(p,m) for p,(_,_,models) in VIDEOS.items() if p!='minimax-cn' for m in models]:
         selected=video_selection(provider,model);state['candidate_model']=selected['model']
-        project='video-profile-'+provider+'-'+model
+        project='video-profile-'+provider+'-'+str(VIDEOS[provider][2].index(model))
         ledger=ensure_ledger(api,root/'bindings',project,'baseFixture','tableFixture')
         submit=guard_workflow(production_workflow('baseFixture','tableFixture','video-submit',
             feishu_origin=fixture_origin,video_origin=fixture_origin,video_selection=selected),ledger)
