@@ -25,18 +25,21 @@ n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明�
 
 模型账户按客户、项目分别配置；密钥只在客户私有终端录入，由所选实例的 n8n 加密保存。安装本身不发起付费生成。选中模型后仍需单条任务计划确认、提交回执、超时不自动重发，以及飞书人工审核。
 
-| 用途 | 接口 | 当前固定发行包 | 接入前仍需验证 |
+下表是 a40 便携路线的配置能力；a38 及更早固定包不含新增供应商。实际可下载版本以 Releases 为准，详细实测见 [a40 记录](DELIVERY_A40_RESULT.md)。
+
+| 用途 | 接口 | 已接入能力 | 真实验收 |
 |---|---|---|---|
-| 脚本 | DeepSeek Flash | 已接入 | 客户自己的 Key、区域、余额、真实脚本和 Base 回写 |
-| 脚本 | OpenAI GPT、Google Gemini、MiniMax 文本、阿里云千问、火山方舟豆包 | **当前固定发行包未包含**；便携候选已接通安装、固定域名的模型请求、费用计划和回写，但尚无各供应商真实付费验收 | 供应商账户和模型 ID、生成回执、飞书回写及费用；非 DeepSeek 当前无零费用只读鉴权 |
-| 视频 | MiniMax H3 | 已接入单次授权、轮询和媒体回收 | 客户素材、实际 Key、费用和真人审核 |
-| 视频 | 可灵 Kling、字节 Seedance、阿里云万相视频 | **未进入固定发行包**；便携候选已接通选择、费用计划、提交、轮询与回写；a38 的正式 Setup 仍只选 H3 | 各自的上传格式、任务 ID、状态轮询、下载来源、内容限制、费用与未知提交恢复 |
-| 图片 | 字节 Seedream（即梦图片） | **未接入固定发行包**；它是图片生成路线，不是 Seedance 视频接口 | 源码候选用于视频首帧/参考图；见 [配置和恢复](PORTABLE_IMAGES.md)，真实图片调用待验收 |
+| 脚本 | DeepSeek | 安装、费用计划、生成和回写 | 已有隔离真实生成与本人审核 |
+| 脚本 | GPT、Gemini、MiniMax 文本、千问、豆包 | 安装、固定官方域名请求、费用计划和回写；合成集成通过 | 各自真实账户未完成；非 DeepSeek 尚无零费用只读鉴权 |
+| 视频 | MiniMax H3 | 单次授权、提交、轮询和回写 | 已有真实验收 |
+| 视频 | Seedance 2.0 | 同上，按账号已开通版本选择 | 本次一次 5 秒有声视频生成、回写、完整解码通过，待本人审核 |
+| 视频 | 可灵、Seedance 2.5、万相 | 同上；合成集成通过 | 可灵本次未完成成片回写；2.5 和万相待验；不自动重试 |
+| 图片 | Seedream 5.0 Lite | 独立费用计划、单张参考图生成、附件回写和恢复 | 本次 2K 图片、飞书附件和完整解码通过，待本人审核 |
 
 “豆包”在此表指脚本大模型，“Seedance”指视频生成，“Seedream”指图片生成；千问脚本与万相视频也是不同接口。既有项目用过某个模型，只能作为适配需求来源。新接口必须在隔离云端通过合成合同测试，再用客户授权的真实 Key 逐条付费验收；没有回执和成片回写前，不能写成开箱即用。模型列表随官方 API 变化，客户输入的模型 ID、接口区域和 Key 必须来自同一账户；不能从历史项目搬运密钥。
 
-便携脚本候选见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)：`welcome` 选择 `deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn` 或 `doubao-cn`。便携视频候选见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)：H3、北京 Seedance 2.0/2.5（按账号已开通版本选择）、北京万相、北京/新加坡可灵。两者都连接 n8n 加密凭据、精确费用计划和原行回写；a38 固定包没有这些新增模型选项。旧完整服务栈的 `production-setup` 适配另在 PR #38/#42，不能混用命令。
+便携脚本接入见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)：`welcome` 选择 `deepseek`、`openai`、`gemini`、`minimax-cn`、`minimax-global`、`qwen-cn` 或 `doubao-cn`。便携视频接入见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)：H3、北京 Seedance 2.0/2.5（按账号已开通版本选择）、北京万相、北京/新加坡可灵。两者都连接 n8n 加密凭据、精确费用计划和原行回写；a38 固定包没有这些新增模型选项。旧完整服务栈的 `production-setup` 适配另在 PR #38/#42，不能混用命令。
 
-候选中的默认模型只是配置起点，不代表该账户已有权限；保存 Key 不等于认证成功。已有项目续接沿用原供应商，不把旧 Key 自动发送到新平台。各供应商真实验收另行安排，费用计划变化必须重新确认。
+配置中的默认模型只是配置起点，不代表该账户已有权限；保存 Key 不等于认证成功。已有项目续接沿用原供应商，不把旧 Key 自动发送到新平台。各供应商真实验收另行安排，费用计划变化必须重新确认。
 
 官方参考：[OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat/create)、[Gemini OpenAI 兼容接口](https://ai.google.dev/gemini-api/docs/openai)、[MiniMax OpenAI SDK](https://platform.minimax.io/docs/api-reference/text-openai-api)、[阿里云百炼兼容接口](https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope)、[火山方舟兼容接口](https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=zh)。这些说明供应商提供接口，不代表 Video Factory 已接入或验收。

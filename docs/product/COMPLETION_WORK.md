@@ -4,7 +4,7 @@
 
 ## 2026-10-19 便携路线收尾
 
-当前公开版本是 [0.1.0a38 测试版](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a38)。发行与官网证据见 [a38 回执](DELIVERY_A38_RESULT.md)；[a37](DELIVERY_A37_RESULT.md)、[a36](DELIVERY_A36_RESULT.md)和更早记录按版本保留。
+公开下载以 [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) 为准；本轮 [a40 验证](DELIVERY_A40_RESULT.md)与实际发行分开记录。发行与官网证据见 [a38 回执](DELIVERY_A38_RESULT.md)；[a37](DELIVERY_A37_RESULT.md)、[a36](DELIVERY_A36_RESULT.md)和更早记录按版本保留。
 
 ### 已完成并有回执
 
@@ -20,6 +20,8 @@
 
 - [x] a38 发布便携原地升级和 CLI 修复；固定包、四平台、匿名安装、完整 Skill 和公开附件隐私检查通过；官网部署与 44 个文件及真实交互的公网复测通过。
 
+- [x] 2026-10-20：Seedance 2.0 单次视频、Seedream 5.0 Lite 单张图片的生成、飞书回写与完整解码通过；真实结果保持待本人审核。当前源码四平台与整栈云端回归通过。
+
 ### 尚未完成，不能算作通过
 
 | 项目 | 当前状态 | 完成需要什么 |
@@ -28,8 +30,8 @@
 | 非作者独立安装与接管 | 因暂无同事而暂缓 | 未参与开发的人按官网与完整 Skill 操作，记录耗时、卡点及开发者介入 |
 | Mac / Windows 实际退出系统并重新登录 | 因暂无实际操作者/设备而暂缓 | 各自系统的真实桌面会话恢复；CI 服务生命周期和 ECS 重启不能替代 |
 | 可选结果快照表 [#20](https://github.com/ChuluuMGL/video-factory/issues/20) / [#9](https://github.com/ChuluuMGL/video-factory/issues/9) | 实现和合成测试已有，真实权限、附件及未知提交恢复未关闭 | 现有测试项目的管理员授权、准确远端状态和原回执；不重新生成模型内容。它与已通过的原任务表回写是两个功能 |
-| 其他脚本与视频模型 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61) / [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62) | 候选已接通安装选择、凭据、费用计划、执行和回写，四平台合成集成通过；不在 a38 固定包 | 各供应商账户/区域及单次付费计划、真实结果回写，再决定候选发行；不能用历史项目代签 |
-| Seedream 图片 [#45](https://github.com/ChuluuMGL/video-factory/issues/45) | 视频参考图源码候选已实现，单独凭据、费用计划、附件和恢复；不在 a38 | 云端合成检查与真实图片验收分别记录，不能用候选代码代替实际结果 |
+| 其他脚本与视频模型 | a40 便携配置接通；Seedance 2.0 单条真实生成与回写通过，其他接口见[矩阵](PLATFORMS_AND_MODELS.md) | 可灵尚未完成成片闭环，2.5、万相与其他文字模型仍须真实账户验收；旧失败/未知请求不得重发 |
+| 本轮 Seedance / Seedream 人工审核 | 单次真实生成、飞书回写和文件检查通过；状态保持待审核 | 本人审核结果及实际业务适用性；技术通过不代签审核 |
 | 独立财务核对：历史生成账单 | 回执已保留，精确账单金额未独立核对 | 供应商账单记录；token 上限不等于人民币金额 |
 | n8n Cloud SaaS | 维护者明确跳过真实实例测试 | 有公共 API 的实例与授权后再安排；不为此新开计费服务 |
 

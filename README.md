@@ -32,7 +32,7 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 先看安装目标
 
-a38 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Docker 的真实 n8n 自动化测试通过；真实飞书与模型的隔离验收另有回执，见[便携安装与验收记录](docs/product/PORTABLE_N8N.md)。新增[保留原项目的升级指引](docs/product/PORTABLE_UPGRADE.md)。发布与检查见 [a38 回执](docs/product/DELIVERY_A38_RESULT.md)。公开下载版本以 Release 为准。
+完整 Skill 提供本机安装与已有 n8n 接入，Windows、Mac、Linux、Docker 的实际 n8n 自动化检查已通过。a40 增加多模型配置，Seedance 2.0 视频与 Seedream 图片已完成一次隔离生成、飞书回写和文件完整性检查；详见 [a40 验证记录](docs/product/DELIVERY_A40_RESULT.md)。下载版本以 [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) 为准；已有项目按[保留数据的升级指引](docs/product/PORTABLE_UPGRADE.md)操作。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
 
@@ -51,13 +51,13 @@ a38 测试版包含本机安装与已有 n8n 接入。Windows、Mac、Linux、Do
 
 ## 模型支持到哪一步
 
-| 用途 | 固定发行包可选 | 开发候选或待接入 |
+| 用途 | a40 便携路线配置项 | 真实验收状态 |
 |---|---|---|
-| 脚本 | DeepSeek Flash | GPT、Gemini、MiniMax 文本、千问和豆包的安装、费用计划和执行接入见 [PR #61](https://github.com/ChuluuMGL/video-factory/pull/61)；四平台合成测试通过，未包含在 a38，真实账户验收待完成 |
-| 视频 | MiniMax H3 | 可灵、Seedance（2.0 / 2.5，按账号已开通版本选择）和万相视频的安装、费用确认、提交和轮询接入见 [PR #62](https://github.com/ChuluuMGL/video-factory/pull/62)；未包含在 a38，真实生成验收待完成 |
-| 图片 | 源码候选支持 Seedream 视频参考图 | [配置与恢复说明](docs/product/PORTABLE_IMAGES.md)；独立图片费用确认、飞书附件及人工审核；不在 a38，真实调用待验收 |
+| 脚本 | DeepSeek、GPT、Gemini、MiniMax 文本、千问、豆包 | DeepSeek 已有真实生成及本人审核；其他接口通过合成集成，真实账户验收待完成 |
+| 视频 | MiniMax H3、可灵、Seedance 2.0 / 2.5、万相 | H3 已有真实验收；Seedance 2.0 本次生成、回写与完整解码通过，待本人审核；可灵、2.5 和万相尚未完成闭环 |
+| 图片 | Seedream 5.0 Lite | 本次 2K 图片生成、飞书附件回写及完整解码通过，待本人审核；见[图片指南](docs/product/PORTABLE_IMAGES.md) |
 
-旧项目用过某个模型、合成测试通过，都不等于它已在本产品的固定发行包中可选。不同接口仍需用各自账户完成调用、结果回写和人工审核验收；安装本身不触发付费生成。
+这些新增配置从 a40 起提供；a38 及更早固定包仍只有原有模型路线。Seedance 按账号已开通版本选择，不因选择不同版本创建 Key 或自动开通服务。历史项目、合成测试和本次单条实测均不能代替客户自己的账户与业务验收。安装不触发付费生成，变更模型或参数必须重新确认费用计划。
 
 ## 安装完整 Video Factory
 

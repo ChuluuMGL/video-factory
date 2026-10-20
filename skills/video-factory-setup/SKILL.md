@@ -61,14 +61,14 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 使用同一绑定目录，先停止本项目事件接收器并用 `approval-disable` 暂停原入口；核对正在执行的任务回执。执行 `portable_n8n.py --root <原绑定目录> upgrade-plan --url <原 n8n 地址> --project <原项目>`，向用户展示项目、工作流数量、变更数及计划摘要。明确确认该计划后，执行 `upgrade-apply` 的同样参数并加 `--expect-plan <完整摘要>`。API Key 只在隐藏终端输入。升级只修改已有关闭工作流并保留凭据引用、ID、Webhook 与账本；不创建表、不调用模型、不自动启用。未完成费用计划先用原 `approval-cancel` 逐条取消，未知执行先对账。PUT 结果未知时只能续接同一计划回读，不能删检查点或重新导入；读回仍是旧值也不自动重试。完成后做零费用检查，再明确恢复接收器和入口。旧版本不支持此命令时，不要删除绑定文件绕过校验。
 
-## 便携多脚本模型候选
+## 便携多脚本模型（a40 起）
 
-仅当完整 Skill 中包含 `scripts/portable_models.py` 时，`welcome` 才提供脚本供应商选择。该源码候选不在 a37 / a38 固定包；按 `docs/product/PORTABLE_SCRIPT_MODELS.md` 核对范围。续接沿用原模型和凭据；不同供应商使用独立项目及凭据，不能猜测 Key、改接口后沿用旧费用确认。其他模型尚需本项目真实验收，不把历史项目或合成测试说成已通过。
+仅当完整 Skill 中包含 `scripts/portable_models.py` 时，`welcome` 才提供脚本供应商选择。这组配置从 a40 起提供，不在 a37 / a38 固定包；按 `docs/product/PORTABLE_SCRIPT_MODELS.md` 核对范围。续接沿用原模型和凭据；不同供应商使用独立项目及凭据，不能猜测 Key、改接口后沿用旧费用确认。其他模型尚需本项目真实验收，不把历史项目或合成测试说成已通过。
 
-### 便携视频模型候选
+### 便携视频模型（a40 起）
 
-源码候选的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。Seedance 2.0/2.5 必须按现有 Key 所属账号已开通的版本选择；不因缺少某个版本要求新建 Key，不自动开通或换模型重试。只有 H3 有既有真实验收；其他路线先完成各自账户的单次计划验收，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
+a40 的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。Seedance 2.0/2.5 必须按现有 Key 所属账号已开通的版本选择；不因缺少某个版本要求新建 Key，不自动开通或换模型重试。H3 有既有真实验收，Seedance 2.0 已完成一次独立生成、回写与完整解码，保持待本人审核；可灵、2.5 和万相尚未完成真实闭环。按 `docs/product/DELIVERY_A40_RESULT.md` 核对，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
 
-### Seedream 视频参考图（源码候选）
+### Seedream 视频参考图（a40 起）
 
-仅当完整 Skill 包含 `scripts/portable_images.py` 时，welcome 才可配置独立图片凭据与关闭状态的图片流程。使用一张 PNG/JPEG 飞书参考附件，在「图片要求」填写场景；指定负责人确认图片费用计划后仅生成一张，写入「生成图片」等待飞书人工审核。原图保留；审核通过后，由操作者把选定图片放到视频任务参考附件，再另行确认视频费用。未知生成/上传结果不重发。详见 `docs/product/PORTABLE_IMAGES.md`；不属于 a38 固定包，真实供应商验收未通过前不得宣称已投产。
+仅当完整 Skill 包含 `scripts/portable_images.py` 时，welcome 才可配置独立图片凭据与关闭状态的图片流程。使用一张 PNG/JPEG 飞书参考附件，在「图片要求」填写场景；指定负责人确认图片费用计划后仅生成一张，写入「生成图片」等待飞书人工审核。原图保留；审核通过后，由操作者把选定图片放到视频任务参考附件，再另行确认视频费用。未知生成/上传结果不重发。详见 `docs/product/PORTABLE_IMAGES.md`；不属于 a38 固定包。本轮一次真实生成、附件回写与完整解码已通过，保持待本人审核；不据此宣称已投产。
