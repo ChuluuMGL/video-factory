@@ -1,6 +1,10 @@
 # 当前产品状态
 
-当前公开版本为 **0.1.0a38（MIT，测试版）**，当前发行与官网回执见 [a38 记录](DELIVERY_A38_RESULT.md)。安装、单账号真实业务、跨账号权限和非作者安装分别验收；不能互相代替。剩余事项统一见 [工作清单](COMPLETION_WORK.md)。
+公开下载以 [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) 为准。a40 多模型代码与真实生成检查见 [a40 验证记录](DELIVERY_A40_RESULT.md)，历史发行与官网回执见 [a38 记录](DELIVERY_A38_RESULT.md)。安装、单账号真实业务、跨账号权限和非作者安装分别验收；不能互相代替。剩余事项统一见 [工作清单](COMPLETION_WORK.md)。
+
+## 2026-10-20 a40 多模型验证
+
+Seedance 2.0 和 Seedream 5.0 Lite 各一次授权生成、原行回写与媒体完整解码通过，保持飞书待审核。四平台 n8n、完整栈恢复、断网安装、指南及隐私检查通过；最终包须完成自己的发行检查。可灵及其他未验证接口、第二账号与独立设备仍待验，不自动重发旧失败任务。详见 [a40 记录](DELIVERY_A40_RESULT.md)。
 
 ## 2026-10-19 a38 维护更新
 
