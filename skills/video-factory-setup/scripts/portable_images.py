@@ -91,7 +91,10 @@ if(refs.length!==1 || !/^data:image\/(png|jpeg);base64,/.test(refs[0])) throw ne
 return [{json:{model:profile.model,prompt:JSON.stringify({product:task.product,request:task.image_prompt,feedback:task.feedback}),image:refs[0],size:profile.size,response_format:profile.response_format,stream:false,sequential_image_generation:'disabled',watermark:profile.watermark}}];"""),
         http('Generate image once', configured['endpoint'], 'POST', '={{ $json }}', 'httpHeaderAuth'),
         code('Validate image bytes', 'const profile='+json.dumps(configured)+';'+r"""
-if($json.error || !Array.isArray($json.data) || $json.data.length!==1 || $json.model!==profile.model) throw new Error('IMAGE_RESPONSE_RECONCILE_NO_RETRY');
+// Official API treats these two exact IDs as aliases; no model-family fallback.
+const acceptedModels=profile.model==='doubao-seedream-5-0-lite-260128'
+ ? [profile.model,'doubao-seedream-5-0-260128'] : [profile.model];
+if($json.error || !Array.isArray($json.data) || $json.data.length!==1 || !acceptedModels.includes($json.model)) throw new Error('IMAGE_RESPONSE_RECONCILE_NO_RETRY');
 const image=$json.data[0],b64=image.b64_json;
 if(typeof b64!=='string' || b64.length>Math.ceil(profile.max_output_bytes/3)*4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) throw new Error('IMAGE_BYTES_INVALID_NO_RETRY');
 const bytes=Buffer.from(b64,'base64');
@@ -140,7 +143,7 @@ if(actualW!==w || actualH!==h) throw new Error('IMAGE_ACTUAL_DIMENSIONS_MISMATCH
 const task=$('Select task').first().json;
 const usage=$json.usage;
 if(usage && (typeof usage!=='object' || JSON.stringify(usage).length>1000)) throw new Error('IMAGE_USAGE_INVALID_RECONCILE');
-return [{json:{artifact:{b64,mime:png?'image/png':'image/jpeg',size:bytes.length,name:'vf-'+task.id+'-'+task.execution+(png?'.png':'.jpg')},receipt:{model:profile.model,size:image.size,execution:task.execution,usage:$json.usage||null}}}];""")]
+return [{json:{artifact:{b64,mime:png?'image/png':'image/jpeg',size:bytes.length,name:'vf-'+task.id+'-'+task.execution+(png?'.png':'.jpg')},receipt:{model:profile.model,response_model:$json.model,size:image.size,execution:task.execution,usage:$json.usage||null}}}];""")]
 
 
 def upload_nodes(base, ledger, feishu_origin):

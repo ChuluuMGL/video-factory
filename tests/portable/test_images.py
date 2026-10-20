@@ -68,6 +68,9 @@ const refs=name=>({first:()=>({json:name==='Resolve video references'?{model_ref
 const body=new Function('$',d['Build image request'])(refs)[0].json;assert.equal(body.sequential_image_generation,'disabled');assert.equal(body.response_format,'b64_json');assert.equal(body.stream,false);
 const validate=new Function('$json','$',d['Validate image bytes']);const bytes=d.image;
 const valid={model:d.profile.model,data:[{b64_json:bytes,size:'2048x2048'}]};assert.equal(validate(valid,refs)[0].json.artifact.mime,'image/png');
+const alias=validate({...valid,model:'doubao-seedream-5-0-260128'},refs)[0].json;
+assert.equal(alias.receipt.model,d.profile.model);assert.equal(alias.receipt.response_model,'doubao-seedream-5-0-260128');
+assert.throws(()=>validate({...valid,model:'doubao-seedream-5-0-pro-260628'},refs),/RECONCILE_NO_RETRY/);
 for(const changed of [{model:'other'}, {data:[]}, {data:[...valid.data,...valid.data]}, {data:[{b64_json:'<secret>',size:'2048x2048'}]}, {data:[{b64_json:bytes,size:'1x1'}]}])assert.throws(()=>validate({...valid,...changed},refs));
 assert.throws(()=>validate({...valid,data:[{b64_json:bytes,size:'1024x1024'}]},refs),/ACTUAL_DIMENSIONS/);
 const raw=Buffer.from(bytes,'base64'),corrupt=Buffer.from(raw);corrupt[40]^=1;

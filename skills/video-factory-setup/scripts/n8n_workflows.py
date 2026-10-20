@@ -355,6 +355,39 @@ def ledger_update(name, ledger, status, values, owner=False):
                           'columns':{'mappingMode':'defineBelow','value':values},'options':{}}}
 
 
+def provider_http_receipt(nodes, ledger):
+    """Retain bounded HTTP evidence without saving tokens or execution payloads.
+
+    The project remains busy on rejection or uncertainty. A receipt never
+    authorizes retry or proves that a provider did not charge for the request.
+    Transport failures with no HTTP response remain unknown and locked.
+    """
+    provider = next(n for n in nodes if n['name'] in
+                    ('Generate script', 'Submit video once', 'Generate image once'))
+    provider['parameters']['options']['response'] = {
+        'response': {'neverError': True, 'fullResponse': True, 'responseFormat': 'json'}}
+    summarize = code('Build provider HTTP receipt', r"""
+const status=Number.isInteger($json.statusCode)&&$json.statusCode>=100&&$json.statusCode<=599?$json.statusCode:null;
+const body=$json.body, safe=v=>typeof v==='string'&&/^[A-Za-z0-9_.-]{1,96}$/.test(v)?v:null;
+const rawCode=body?.error?.code??body?.code??body?.base_resp?.status_code;
+const providerCode=Number.isSafeInteger(rawCode)?rawCode:safe(rawCode);
+const job=safe(body?.task_id)||safe(body?.output?.task_id)||safe(body?.id)||safe(body?.data?.id);
+return [{json:{provider_http_receipt:{version:1,execution:$('Select task').first().json.execution,
+http_status:status,provider_code:providerCode,job_id:job,response_model:safe(body?.model),
+output_count:Array.isArray(body?.data)?body.data.length:null,automatic_resubmit:false}}}];""")
+    persist = ledger_update('Persist provider HTTP receipt', ledger, 'busy',
+                            {'result':'={{ JSON.stringify($json) }}'}, owner=True)
+    unwrap = code('Check provider HTTP receipt',
+                  "if($json.owner!==$('Select task').first().json.execution) throw new Error('PROVIDER_RECEIPT_NOT_OWNED');"
+                  "const saved=JSON.parse($json.result).provider_http_receipt;"
+                  "if(!saved||saved.execution!==$json.owner) throw new Error('PROVIDER_RECEIPT_UNVERIFIED');"
+                  "if(saved.http_status===null) throw new Error('PROVIDER_RESPONSE_UNKNOWN_NO_RESUBMIT');"
+                  "if(saved.http_status<200||saved.http_status>=300) throw new Error('PROVIDER_HTTP_'+saved.http_status+'_NO_RESUBMIT');"
+                  "return [{json:$("+json.dumps(provider['name'])+").first().json.body}];")
+    position = nodes.index(provider)+1
+    nodes[position:position] = [summarize, persist, unwrap]
+
+
 def guard_workflow(workflow, ledger):
     """Serialize a project's model operations in n8n's own transactional store.
 
@@ -404,6 +437,7 @@ return [{json:result}];""")
     nodes[before:before]=[save,restore,fresh,unchanged]
     nodes += [ledger_update('Release completed execution',ledger,'result_ready',{'status':'idle'},owner=True),
               code('Execution receipt',"return [{json:{writeback:'verified',human_review:'in_feishu',automatic_resubmit:false,result_saved:true}}];")]
+    provider_http_receipt(nodes, ledger)
     return compile_nodes(nodes)
 
 
