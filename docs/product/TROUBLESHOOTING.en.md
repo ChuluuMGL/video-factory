@@ -1,5 +1,7 @@
 # Troubleshooting and issue reporting
 
+For Kling, `http_status=429` with `provider_code=1102` means the prepaid resource pack is exhausted or expired, rather than rate or concurrency limiting. Check the API video pack in the key's region. Successful read-only authentication does not establish generation quota. Retain the receipt and lock; restoring quota requires a new explicit fee plan, not automatic resubmission. See [official error codes](https://klingai.com/document-api/api/get-started/error-codes).
+
 This index is for administrators, installers and their agents. First read the **running** `vfctl` version, project, failing step and exact error code. Check the customer server, Feishu Base, n8n and provider receipts separately. A passing CI job or a successful command invocation does not establish business completion.
 
 For portable `PROVIDER_HTTP_<status>_NO_RESUBMIT` errors, inspect the original execution ledger's `result.provider_http_receipt`. It retains only the HTTP status, bounded error code, job ID, response model, output count and execution ID, without response bodies, credentials or full execution logs. The ledger stays `busy`: do not clear it or resubmit. A 404, 429 or 500 does not prove that no charge occurred. A transport failure without a receipt remains unknown. Upgrade existing project workflows to obtain this diagnostic behavior; it cannot reconstruct previously lost responses.
