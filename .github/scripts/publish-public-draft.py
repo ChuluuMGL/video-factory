@@ -15,6 +15,10 @@ notes=Path('public-release-notes.md');notes.write_text('''Video Factory · MIT p
 
 Cloud-tested fixed installer, complete Setup Skill, checksums and dependency notices/source. Customer servers obtain pinned upstream service images. No historical internal images or raw logs are included.
 
+本候选包含结果同步目标校验、恢复时保留并发修改，以及便携多模型适配。DeepSeek 和 MiniMax H3 有既有真实验收；新增 GPT、Gemini、MiniMax 文本、千问、豆包、可灵、Seedance、万相和 Seedream 路线的合成测试不等于供应商真实验收。发布前以逐模型验收回执为准，不宣称所有模型可生产使用。
+
+New provider adapters are preview routes. Synthetic n8n tests do not establish live provider acceptance, account eligibility, output quality or production readiness. Consult the per-provider acceptance status before enabling paid execution. Unknown submissions must be reconciled, never automatically retried.
+
 This alpha includes portable Node.js/Docker setup and existing-n8n integration. Isolated acceptance verified real Feishu, DeepSeek, one H3 shot and first-attempt owner-confirmed script generation with human approval. Distinct employee authorization, nonauthor installation and actual desktop logout/login remain unverified. See docs/product/DELIVERY_ACCEPTANCE.md and handoff.json for their separate scopes.
 ''')
 subprocess.run(['gh','release','create','v'+r['version'],'--target',r['source_commit'],'--draft','--prerelease','--title','Video Factory '+r['version'],'--notes-file',str(notes),*[str(p) for p in sorted(root.iterdir())]],check=True)
