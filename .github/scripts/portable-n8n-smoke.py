@@ -707,7 +707,8 @@ try:
         assert row['status']=='busy' and state['model_calls']==before+1
         evidence=json.loads(row['result'])['provider_http_receipt']
         assert evidence=={'version':1,'execution':row['owner'],'http_status':failure,
-                          'provider_code':'Fixture.Rejected','job_id':None,'automatic_resubmit':False}
+                          'provider_code':'Fixture.Rejected','job_id':None,'response_model':None,
+                          'output_count':None,'automatic_resubmit':False}
         assert 'DO_NOT_PERSIST' not in row['result'] and 'synthetic-token' not in row['result']
         state['status']='请求脚本'
         execute(rejected['workflow'])

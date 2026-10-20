@@ -57,6 +57,9 @@ for(const status of [null,undefined,0,600,'200',200.5]) {
 assert.throws(()=>check({...wrap(response),owner:'other'},lookup),/NOT_OWNED/);
 assert.throws(()=>check({owner:'42',result:'{}'},lookup),/UNVERIFIED/);
 assert.equal(get({statusCode:200,body:{data:{id:'job-12345'},code:0}}).provider_http_receipt.job_id,'job-12345');
+const image=get({statusCode:200,body:{model:'approved-model',data:[{b64_json:'SECRET_IMAGE'}]}});
+assert.equal(image.provider_http_receipt.response_model,'approved-model');
+assert.equal(image.provider_http_receipt.output_count,1);assert.ok(!JSON.stringify(image).includes('SECRET_IMAGE'));
 """
         result = subprocess.run(['node','-e',js,json.dumps(sources)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)

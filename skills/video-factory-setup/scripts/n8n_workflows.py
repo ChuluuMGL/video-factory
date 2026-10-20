@@ -373,7 +373,8 @@ const rawCode=body?.error?.code??body?.code??body?.base_resp?.status_code;
 const providerCode=Number.isSafeInteger(rawCode)?rawCode:safe(rawCode);
 const job=safe(body?.task_id)||safe(body?.output?.task_id)||safe(body?.id)||safe(body?.data?.id);
 return [{json:{provider_http_receipt:{version:1,execution:$('Select task').first().json.execution,
-http_status:status,provider_code:providerCode,job_id:job,automatic_resubmit:false}}}];""")
+http_status:status,provider_code:providerCode,job_id:job,response_model:safe(body?.model),
+output_count:Array.isArray(body?.data)?body.data.length:null,automatic_resubmit:false}}}];""")
     persist = ledger_update('Persist provider HTTP receipt', ledger, 'busy',
                             {'result':'={{ JSON.stringify($json) }}'}, owner=True)
     unwrap = code('Check provider HTTP receipt',
