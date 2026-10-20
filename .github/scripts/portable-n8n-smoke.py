@@ -599,10 +599,9 @@ try:
     from portable_video_models import VIDEOS,selection as video_selection
     state['references']='';state['attachments']=[{'file_token':'fileFixture','name':'first.png','size':len(image_bytes)}]
     state['script']='A synthetic first frame scene';state['feedback']='';state['job']=''
-    for provider in VIDEOS:
-        if provider=='minimax-cn':continue
-        selected=video_selection(provider);state['candidate_model']=selected['model']
-        project='video-profile-'+provider
+    for provider,model in [(p,m) for p,(_,_,models) in VIDEOS.items() if p!='minimax-cn' for m in models]:
+        selected=video_selection(provider,model);state['candidate_model']=selected['model']
+        project='video-profile-'+provider+'-'+model
         ledger=ensure_ledger(api,root/'bindings',project,'baseFixture','tableFixture')
         submit=guard_workflow(production_workflow('baseFixture','tableFixture','video-submit',
             feishu_origin=fixture_origin,video_origin=fixture_origin,video_selection=selected),ledger)

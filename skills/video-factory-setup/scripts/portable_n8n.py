@@ -711,6 +711,7 @@ def welcome(root, dependency_timeout=1200):
         else:
             print('H3 已有真实验收；其他视频供应商为候选，使用一张 PNG/JPEG 飞书首帧附件，须单独验收。')
             provider=ask_choice('视频供应商 ['+'/'.join(VIDEOS)+']，默认 minimax-cn: ',tuple(VIDEOS),'minimax-cn')
+            print('请选择此 API Key 所属账号已开通的模型版本；有 Key 不代表所有版本均已开通。不会自动开通或切换版本。')
             model=ask_choice('模型 ['+'/'.join(VIDEOS[provider][2])+']: ',VIDEOS[provider][2],VIDEOS[provider][2][0])
             chosen=video_selection(provider,model)
         save_video(bindings,project,url,chosen)

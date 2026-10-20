@@ -9,10 +9,12 @@
 | 选项 | 默认模型 | 本候选单次计划 |
 |---|---|---|
 | `minimax-cn` | `MiniMax-H3` | 原 6 秒、768P、9:16 路线不变 |
-| `seedance-cn` | `doubao-seedance-2-5-260628` | 北京；5 秒、720p、9:16、有声 |
+| `seedance-cn` | `doubao-seedance-2-0-260128`，可选 `doubao-seedance-2-5-260628` | 北京；5 秒、720p、9:16、有声 |
 | `wan-cn` | `wan2.7-i2v-2026-04-25` | 北京；5 秒、720P，比例随首帧 |
 | `kling-cn` | `kling-3.0`，可选 `kling-3.0-turbo` | 北京；5 秒、720p，比例随首帧、有声 |
 | `kling-global` | 同上 | 新加坡；其他参数同上 |
+
+Seedance 2.0 与 2.5 是独立模型选项。安装人员先核对现有 Key 所属账号的模型开通状态，再选择对应版本；无需新建 Key，也不会自动开通新模型或把旧计划换成另一版本。2.0 使用官方模型 ID `doubao-seedance-2-0-260128`（[官方说明](https://docs.volcengine.com/docs/ark/seedance-2-0?lang=zh)）。
 
 生成费用计划前先检查脚本长度、首帧数量、附件格式和大小；不符合要求时不占用确认计划。执行前仍核对相同输入，下载后验证图片内容。
 
