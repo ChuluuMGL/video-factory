@@ -267,7 +267,7 @@ return [{json:$('Check video completion').first().json}];"""),
         # can otherwise become HTTP 500 "No item to return" despite success.
         query = next(n for n in nodes if n['name'] == 'Poll existing video')
         query['parameters']['options']['response'] = {
-            'response': {'neverError': True, 'fullResponse': True, 'responseFormat': 'text'}}
+            'response': {'neverError': True, 'fullResponse': True, 'responseFormat': 'text', 'outputPropertyName': 'body'}}
         index = nodes.index(query) + 1
         nodes.insert(index, code('Check video query HTTP', r"""const status=$json.statusCode;
 if(!Number.isInteger(status) || status<100 || status>599) throw new Error('VIDEO_QUERY_HTTP_UNVERIFIED_NO_RESUBMIT');
