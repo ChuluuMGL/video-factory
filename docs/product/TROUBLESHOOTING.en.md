@@ -20,6 +20,15 @@ A Seedream request for `doubao-seedream-5-0-lite-260128` accepts the documented 
 | Video or attachment missing | Media decode and SHA-256, upload receipt, remote row and write intent | Read back and reconcile before retrying a write. See [result sync](BASE_RESULTS.md). |
 | Upgrade or restore failed | Old/new stack roots, containers, database, backup and restore receipt | Identify the running version and rollback path. A backup file alone is not a restore test. See [stack operations](STACK_USAGE.md). |
 
+## First video query fails (query-fix candidate)
+
+Once a provider job ID is saved, query that job only. The candidate returns `video_query: pending` for queued or running jobs and leaves the Base row unchanged. An empty output in an older temporary n8n webhook can return HTTP 500; this alone does not prove a provider generation failure.
+
+`VIDEO_QUERY_HTTP_<status>_EXISTING_JOB_ONLY` identifies a query HTTP error separately from paid submission errors. Check the region, credentials and service, then query the same job again. Do not clear its ID or submit another generation. `VIDEO_QUERY_BODY_UNVERIFIED_NO_RESUBMIT` and `VIDEO_QUERY_UNVERIFIED` require reconciliation of the response structure, model or job identity. Provider response bodies and authentication data are excluded from these query errors.
+
+A completed result must pass version checks, Base writeback and readback before human review. Query recovery does not approve the result. This candidate still requires release and an explicit project upgrade; existing a40 workflows do not change automatically.
+
+
 ## Portable candidate: terminal and startup
 
 Use the [portable guide](PORTABLE_N8N.md) for local or existing n8n. The Ubuntu restriction belongs to the pinned server package.
