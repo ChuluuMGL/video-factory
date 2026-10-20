@@ -2,6 +2,10 @@
 
 公开下载以 [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) 为准。a40 多模型代码与真实生成检查见 [a40 验证记录](DELIVERY_A40_RESULT.md)，历史发行与官网回执见 [a38 记录](DELIVERY_A38_RESULT.md)。安装、单账号真实业务、跨账号权限和非作者安装分别验收；不能互相代替。剩余事项统一见 [工作清单](COMPLETION_WORK.md)。
 
+## 2026-10-21 查询修复与 a41 候选
+
+视频处理中返回明确回执，查询错误保留原任务、不重新生成。[PR #72](https://github.com/ChuluuMGL/video-factory/pull/72) 已合并，四平台实际 n8n、整栈升级恢复和离线安装通过。可灵单次实测被资源包错误 `429 / 1102` 拒绝，尚无成片，不能列为通过。a41 固定包仍须独立发行检查；详见 [a41 记录](DELIVERY_A41_RESULT.md)。
+
 ## 2026-10-20 a40 多模型验证
 
 Seedance 2.0 和 Seedream 5.0 Lite 各一次授权生成、原行回写与媒体完整解码通过，保持飞书待审核。四平台 n8n、完整栈恢复、断网安装、指南及隐私检查通过；最终包须完成自己的发行检查。可灵及其他未验证接口、第二账号与独立设备仍待验，不自动重发旧失败任务。详见 [a40 记录](DELIVERY_A40_RESULT.md)。
