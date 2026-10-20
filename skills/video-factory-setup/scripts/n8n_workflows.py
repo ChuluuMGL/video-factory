@@ -220,7 +220,7 @@ return [{json:{fields:{'脚本':script,'脚本历史':history,'状态':'脚本�
                   code('Check video completion', """const task=$json.task;
 if (!task || String(task.id)!==$('Select task').first().json.job || task.model!=='MiniMax-H3') throw new Error('VIDEO_QUERY_UNVERIFIED');
 if (['failed','cancelled'].includes(task.status)) throw new Error('VIDEO_FAILED_REQUIRES_HUMAN_REVIEW');
-if (['queued','running'].includes(task.status)) return [];
+if (['queued','running'].includes(task.status)) return [{json:{video_query:'pending',provider_state:task.status,automatic_resubmit:false}}];
 if (task.status!=='succeeded' || !String(task.content?.url || '').startsWith('https://')) throw new Error('VIDEO_DOWNLOAD_UNAVAILABLE');
 return [{json:{fields:{'视频链接':{link:task.content.url,text:'查看视频'},'状态':'视频待审核'}}}];"""),
                   http('Read task before video writeback',target,feishu=True),
@@ -262,6 +262,33 @@ return [{json:$('Check video completion').first().json}];"""),
     result_node={'script':'Validate script','video-submit':'Validate video receipt','video-poll':'Check video completion','image':'Validate image upload receipt'}[flow]
     nodes += [http('Read persisted result',target,feishu=True),
               persisted_fields_check('Verify persisted result',result_node)]
+    if flow == 'video-poll':
+        # A pending job must yield a receipt. With lastNode webhooks, zero items
+        # can otherwise become HTTP 500 "No item to return" despite success.
+        query = next(n for n in nodes if n['name'] == 'Poll existing video')
+        query['parameters']['options']['response'] = {
+            'response': {'neverError': True, 'fullResponse': True, 'responseFormat': 'text'}}
+        index = nodes.index(query) + 1
+        nodes.insert(index, code('Check video query HTTP', r"""const status=$json.statusCode;
+if(!Number.isInteger(status) || status<100 || status>599) throw new Error('VIDEO_QUERY_HTTP_UNVERIFIED_NO_RESUBMIT');
+if(status<200 || status>=300) throw new Error('VIDEO_QUERY_HTTP_'+status+'_EXISTING_JOB_ONLY');
+let body; try {body=JSON.parse($json.body);} catch {throw new Error('VIDEO_QUERY_BODY_UNVERIFIED_NO_RESUBMIT');}
+if(!body || typeof body!=='object' || Array.isArray(body)) throw new Error('VIDEO_QUERY_BODY_UNVERIFIED_NO_RESUBMIT');
+return [{json:body}];"""))
+        index = next(i for i,n in enumerate(nodes) if n['name']=='Check video completion') + 1
+        nodes.insert(index, {'name':'Video result ready','type':'n8n-nodes-base.if','typeVersion':2.2,
+            'parameters':{'conditions':{'options':{'caseSensitive':True,'leftValue':'','typeValidation':'strict'},
+                'conditions':[{'id':'video-ready','leftValue':"={{ $json.video_query !== 'pending' }}",
+                    'rightValue':True,'operator':{'type':'boolean','operation':'true','singleValue':True}}],
+                'combinator':'and'},'options':{}}})
+        workflow = compile_nodes(nodes)
+        pending = code('Video still processing', "return $input.all();")
+        pending.update(id='vf-video-pending', position=[index*240,240])
+        workflow['nodes'].append(pending)
+        workflow['connections']['Video result ready'] = {'main':[
+            [{'node':'Read task before video writeback','type':'main','index':0}],
+            [{'node':'Video still processing','type':'main','index':0}]]}
+        return workflow
     return compile_nodes(nodes)
 
 

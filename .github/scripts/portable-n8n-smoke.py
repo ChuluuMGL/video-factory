@@ -61,11 +61,15 @@ class Fixture(BaseHTTPRequestHandler):
         elif self.path.startswith(('/api/v3/contents/generations/tasks/','/api/v1/tasks/','/tasks?task_ids=')):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['polls']+=1
+            if state.get('query_http'):
+                self.reply({'private_provider_detail':'MUST_NOT_ESCAPE_QUERY_ERROR'},state['query_http']);return
+            query_state=state.get('query_state','succeeded')
+            query_job='other-task-999' if state.get('query_mismatch') else state['job']
             if self.path.startswith('/api/v3'):
-                self.reply({'id':state['job'],'model':state['candidate_model'],'status':'succeeded','content':{'video_url':'https://media.example.invalid/candidate.mp4'}})
+                self.reply({'id':query_job,'model':state['candidate_model'],'status':query_state,'content':{'video_url':'https://media.example.invalid/candidate.mp4'}})
             elif self.path.startswith('/api/v1'):
-                self.reply({'output':{'task_id':state['job'],'task_status':'SUCCEEDED','video_url':'https://media.example.invalid/candidate.mp4'}})
-            else:self.reply({'code':0,'data':[{'id':state['job'],'status':'succeeded','outputs':[{'type':'video','url':'https://media.example.invalid/candidate.mp4'}]}]})
+                self.reply({'output':{'task_id':query_job,'task_status':{'queued':'PENDING','running':'RUNNING','succeeded':'SUCCEEDED'}[query_state],'video_url':'https://media.example.invalid/candidate.mp4'}})
+            else:self.reply({'code':0,'data':[{'id':query_job,'status':{'queued':'submitted','running':'processing','succeeded':'succeeded'}[query_state],'outputs':[{'type':'video','url':'https://media.example.invalid/candidate.mp4'}]}]})
         elif self.path.endswith('/recFixture'):
             self.reply({'code':0,'data':{'record':{'record_id':'recFixture','fields':task_fields()}}})
         else:
@@ -96,6 +100,10 @@ class Fixture(BaseHTTPRequestHandler):
         elif self.path.startswith(('/api/v3/contents/generations/tasks','/api/v1/services/aigc/video-generation/video-synthesis','/image-to-video/')):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             image='data:image/png;base64,'+base64.b64encode(image_bytes).decode()
+            if state.get('query_http'):
+                self.reply({'private_provider_detail':'MUST_NOT_ESCAPE_QUERY_ERROR'},state['query_http']);return
+            query_state=state.get('query_state','succeeded')
+            query_job='other-task-999' if state.get('query_mismatch') else state['job']
             if self.path.startswith('/api/v3'):
                 assert body['model']==state['candidate_model'] and body['duration']==5 and body['content'][1]['image_url']['url']==image
                 response={'id':'candidate-task-123'}
@@ -250,6 +258,7 @@ try:
     saved=provision(api,root/'bindings','probe',workflow,credentials)
     assert provision(api,root/'bindings','probe',workflow,credentials)==saved
     def execute(workflow_id, expect_failure=False, body=None):
+        hook_status=None;hook_body=b''
         before=api.request('GET','/api/v1/executions?workflowId='+workflow_id+'&limit=1')['data']
         previous=before[0]['id'] if before else None
         try:
@@ -258,12 +267,14 @@ try:
                         headers={'Authorization':'Bearer synthetic-model-key','Content-Type':'application/json'})
             for attempt in range(5):
                 try:
-                    with opener.open(req,timeout=180) as response: response.read(65536)
+                    with opener.open(req,timeout=180) as response:
+                        hook_status=response.status;hook_body=response.read(65536)
                     break
                 except HTTPError as error:
                     if error.code==404 and attempt<4:
                         time.sleep(2); continue
-                    print('Synthetic webhook diagnostic: '+error.read(1600).decode(errors='replace'),flush=True)
+                    hook_status=error.code;hook_body=error.read(1600)
+                    print('Synthetic webhook diagnostic: '+hook_body.decode(errors='replace'),flush=True)
                     if error.code==404: raise AssertionError('SYNTHETIC_WEBHOOK_NOT_REGISTERED') from None
                     # An empty successful workflow may return HTTP 500 with
                     # 'No item to return'. Assert the execution receipt below.
@@ -284,6 +295,7 @@ try:
         finally:
             api.request('POST','/api/v1/workflows/'+workflow_id+'/deactivate',{})
             assert not api.request('GET','/api/v1/workflows/'+workflow_id)['active']
+        return hook_status,hook_body
     phase='probe execution'
     execute(saved['workflow'])
     assert state['token_calls']==1
@@ -612,6 +624,36 @@ try:
         execute(saved_submit['workflow']);assert state['video_calls']==before+1
         poll=production_workflow('baseFixture','tableFixture','video-poll',feishu_origin=fixture_origin,video_origin=fixture_origin,video_selection=selected)
         saved_poll=provision(api,root/'bindings',project+'-poll',poll,credentials)
+        snapshot=task_fields();writes=state['writes']
+        if provider=='seedance-cn' and model==VIDEOS[provider][2][0]:
+            # Reproduce the old empty-pending behavior on real pinned n8n.
+            legacy=json.loads(json.dumps(poll))
+            check=next(n for n in legacy['nodes'] if n['name']=='Check video completion')
+            check['parameters']['jsCode']=check['parameters']['jsCode'].replace(
+                "return [{json:{video_query:'pending',provider_state:state,automatic_resubmit:false}}]",'return []')
+            legacy_saved=provision(api,root/'bindings',project+'-legacy-empty',legacy,credentials)
+            state['query_state']='running'
+            status,body=execute(legacy_saved['workflow'])
+            assert status==500 and b'No item to return' in body,(status,body)
+            print('Reproduced: empty pending result -> HTTP 500 despite successful execution',flush=True)
+        for pending in ['queued','running']:
+            state['query_state']=pending
+            status,body=execute(saved_poll['workflow'])
+            assert status==200,(provider,status,body)
+            receipt=json.loads(body)
+            if isinstance(receipt,list):receipt=receipt[0]
+            assert receipt=={'video_query':'pending','provider_state':pending,'automatic_resubmit':False},receipt
+            assert task_fields()==snapshot and state['writes']==writes
+        state.pop('query_state')
+        for http_error in ([401,404,429,500] if provider=='seedance-cn' else [500]):
+            state['query_http']=http_error
+            execute(saved_poll['workflow'],expect_failure=True)
+            assert task_fields()==snapshot and state['writes']==writes
+        state.pop('query_http')
+        state['query_mismatch']=True
+        execute(saved_poll['workflow'],expect_failure=True)
+        assert task_fields()==snapshot and state['writes']==writes
+        state.pop('query_mismatch')
         execute(saved_poll['workflow'])
         assert state['status']=='视频待审核' and state['video_link']['link']=='https://media.example.invalid/candidate.mp4',provider
         assert state['video_calls']==before+1

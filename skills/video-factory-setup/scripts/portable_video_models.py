@@ -105,8 +105,8 @@ const image=refs[0];"""
         else:
             result="if($json.code!==0 || !Array.isArray($json.data) || $json.data.length!==1)throw new Error('VIDEO_QUERY_UNVERIFIED');const task=$json.data[0];id=task.id;state=({submitted:'queued',processing:'running',succeeded:'succeeded',failed:'failed'})[task.status];const videos=Array.isArray(task.outputs)?task.outputs.filter(x=>x.type==='video'):[];url=videos.length===1?videos[0].url:null;"
         finish=r"""if(id!==expected)throw new Error('VIDEO_QUERY_UNVERIFIED');
-if(['queued','running'].includes(state))return [];
-if(['failed','cancelled'].includes(state))throw new Error('VIDEO_FAILED_REQUIRES_HUMAN_REVIEW');
+if(['queued','running'].includes(state))return [{json:{video_query:'pending',provider_state:state,automatic_resubmit:false}}];
+if(['failed','cancelled','expired'].includes(state))throw new Error('VIDEO_FAILED_REQUIRES_HUMAN_REVIEW');
 // Preserve the provider URL only; do not download it with credentials.
 if(state!=='succeeded' || typeof url!=='string' || !/^https:\/\/[a-zA-Z0-9.-]+(?::443)?\//.test(url) || /[\s\\#@]/.test(url))throw new Error('VIDEO_DOWNLOAD_UNAVAILABLE');
 const host=url.split('/')[2].split(':')[0];
