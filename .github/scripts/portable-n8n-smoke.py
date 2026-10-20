@@ -38,8 +38,8 @@ def task_fields():
 class Fixture(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self, *_): pass
-    def reply(self, body):
-        raw=json.dumps(body).encode(); self.send_response(200)
+    def reply(self, body, status=200):
+        raw=json.dumps(body).encode(); self.send_response(status)
         self.send_header('Content-Type','application/json'); self.send_header('Content-Length', str(len(raw)))
         self.end_headers(); self.wfile.write(raw)
     def do_GET(self):
@@ -123,6 +123,10 @@ class Fixture(BaseHTTPRequestHandler):
             assert self.headers['Authorization']=='Bearer synthetic-model-key'
             state['last_script_request']=body
             state['model_calls']+=1
+            if state.get('provider_http_failure'):
+                self.reply({'error':{'code':'Fixture.Rejected','message':'DO_NOT_PERSIST_PROVIDER_BODY'},
+                            'token':'DO_NOT_PERSIST_PROVIDER_TOKEN'},state['provider_http_failure'])
+                return
             if state['edit_during_model']: state['feedback']='New reviewer feedback'
             self.reply({'choices':[{'message':{'content':'Synthetic reviewable script'},'finish_reason':'stop'}]})
         else: raise AssertionError('unknown fixture route')
@@ -690,7 +694,30 @@ try:
     execute(owner_image['workflow'],False,confirmation_event())
     assert state['image_calls']==before+1 and state['image_uploads']==uploads+1
     assert api.request('GET','/api/v1/data-tables/'+image_approval['table']+'/rows')['data'][0]['status']=='idle'
-    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
+    phase='bounded provider HTTP receipts preserve no-resubmit lock'
+    for failure in (403,404,429,500):
+        rejected_ledger=ensure_ledger(api,root/'bindings','http-'+str(failure),'baseFixture','tableFixture')
+        rejected_template=guard_workflow(production_workflow('baseFixture','tableFixture','script',feishu_origin=fixture_origin),rejected_ledger)
+        next(n for n in rejected_template['nodes'] if n['name']=='Generate script')['parameters']['url']=fixture_origin+'/chat/completions'
+        rejected=provision(api,root/'bindings','http-'+str(failure),rejected_template,credentials)
+        state.update(status='请求脚本',script='',history='',feedback='',job='',provider_http_failure=failure)
+        before=state['model_calls']
+        execute(rejected['workflow'],expect_failure=True)
+        row=api.request('GET','/api/v1/data-tables/'+rejected_ledger['table']+'/rows')['data'][0]
+        assert row['status']=='busy' and state['model_calls']==before+1
+        evidence=json.loads(row['result'])['provider_http_receipt']
+        assert evidence=={'version':1,'execution':row['owner'],'http_status':failure,
+                          'provider_code':'Fixture.Rejected','job_id':None,'automatic_resubmit':False}
+        assert 'DO_NOT_PERSIST' not in row['result'] and 'synthetic-token' not in row['result']
+        state['status']='请求脚本'
+        execute(rejected['workflow'])
+        assert state['model_calls']==before+1,'HTTP_FAILURE_MUST_NOT_ENABLE_RESUBMISSION'
+        recovery=provision(api,root/'bindings','http-recover-'+str(failure),recovery_workflow('baseFixture','tableFixture',rejected_ledger,feishu_origin=fixture_origin),credentials)
+        execute(recovery['workflow'])
+        assert state['model_calls']==before+1
+        assert api.request('GET','/api/v1/data-tables/'+rejected_ledger['table']+'/rows')['data'][0]['status']=='busy'
+    state.pop('provider_http_failure')
+    print(json.dumps({'platform':sys.platform,'mode':mode,'real_n8n':True,'install_resume':'pass','api_import_readback':'pass','feishu_credential_binding':'pass','script_writeback':'pass','schema_resume':'pass','durable_writeback_recovery':'pass','atomic_claim':'pass','video_submit_poll':'pass','script_approval_not_payment':'pass','sequential_duplicate':'blocked','provider_http_receipt':'pass','paid_calls':0,'real_feishu':'not_run','real_cloud_saas':'not_run','designated_owner_plan_gate':'pass'}),flush=True)
 except Exception as error:
     if phase=='install' and isinstance(error,subprocess.TimeoutExpired):
         print((error.output or b'').decode(errors='replace')[-5000:],flush=True)
