@@ -69,6 +69,8 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 a40 的 welcome 支持 MiniMax、Seedance、万相、可灵的明确区域选择，分步命令增加 `--video-provider` / `--video-model`。Seedance 2.0/2.5 必须按现有 Key 所属账号已开通的版本选择；不因缺少某个版本要求新建 Key，不自动开通或换模型重试。H3 有既有真实验收，Seedance 2.0 已完成一次独立生成、回写与完整解码，保持待本人审核；可灵、2.5 和万相尚未完成真实闭环。按 `docs/product/DELIVERY_A40_RESULT.md` 核对，不能按接口兼容直接宣布可生产。新路线需要一张 PNG/JPEG 飞书首帧附件；不同供应商新建项目，沿用原项目时不重填 Key。详情见 `docs/product/PORTABLE_VIDEO_MODELS.md`，不属于 a38 固定包。
 
+a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失败只核对原任务，不重新生成。可灵 `429 / 1102` 须由管理员核对对应 API 资源包，不能通过清锁或重复提交解决。详见 `docs/product/DELIVERY_A41_RESULT.md` 和 `docs/product/TROUBLESHOOTING.md`；客户以已发布版本为准，旧项目须按原地升级指引显式更新。
+
 ### Seedream 视频参考图（a40 起）
 
 仅当完整 Skill 包含 `scripts/portable_images.py` 时，welcome 才可配置独立图片凭据与关闭状态的图片流程。使用一张 PNG/JPEG 飞书参考附件，在「图片要求」填写场景；指定负责人确认图片费用计划后仅生成一张，写入「生成图片」等待飞书人工审核。原图保留；审核通过后，由操作者把选定图片放到视频任务参考附件，再另行确认视频费用。未知生成/上传结果不重发。详见 `docs/product/PORTABLE_IMAGES.md`；不属于 a38 固定包。本轮一次真实生成、附件回写与完整解码已通过，保持待本人审核；不据此宣称已投产。
