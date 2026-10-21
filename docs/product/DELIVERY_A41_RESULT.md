@@ -50,7 +50,7 @@
 
 ## 2026-10-21 只读模型与账单复核
 
-维护者将本轮模型检查范围收窄为 API 连通与鉴权，不再为验收新增付费生成或重复素材质量审核。DeepSeek 官方余额接口返回 HTTP 200；OpenAI、Gemini 的官方只读接口在现有测试主机返回网络不可达，不能据此判定 Key 无效，也不能记录为鉴权通过。其他独立接口没有新凭据回执时继续保留未核验状态；可灵免测决定不变。
+维护者将本轮模型检查范围收窄为 API 连通与鉴权，不再为验收新增付费生成或重复素材质量审核。DeepSeek 官方余额接口返回 HTTP 200；OpenAI、Gemini 的官方只读接口在现有测试主机返回网络不可达，不能据此判定 Key 无效，也不能记录为鉴权通过。随后维护者明确暂缓 OpenAI / Gemini，不再继续探测或将其作为本轮收尾阻塞项；原网络失败记录保留。其他独立接口没有新凭据回执时继续保留未核验状态；可灵免测决定不变。
 
 已核对火山账户在原测试日期范围内的当期账单：存在 Seedance 与 Seedream 计费明细。账单尚未到最终出账期，且未提供每笔模型请求 ID 的对应关系，因此只记为账户日期范围核对，不声称全部历史请求已经财务结清。金额、账户明细和原始截图仅存私有验收目录；DeepSeek 当前余额不作为历史账单证明。本轮新增模型生成请求为零。
 
@@ -65,3 +65,5 @@ One explicitly authorized Kling request returned HTTP 429 / code 1102, documente
 The maintainer narrowed this closeout to read-only API connectivity/authentication with no new paid generation or repeated media-quality review. DeepSeek authentication passed; OpenAI and Gemini were unreachable from the current test host, so credential validity remains unestablished. Provisional account-date billing was reviewed privately; per-request billing reconciliation and final invoices are not claimed.
 
 Real Feishu fault injection now passed for lost table-creation responses, lost record-write responses, and preservation of a concurrent script edit. The original input table stayed unchanged, no model was called, and synchronization was paused. Identity was a synthetic fixture; this does not replace distinct-user acceptance or claim all attachment interruption cases.
+
+The maintainer subsequently explicitly deferred OpenAI and Gemini testing. No further probes are scheduled for this closeout; the prior network failures remain recorded, not converted to passes. Other provider credential gaps, final billing and deferred real-person/device gates remain distinct.
