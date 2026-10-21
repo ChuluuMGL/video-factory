@@ -37,8 +37,31 @@
 
 第二真实账号、独立操作者和设备验收仍按维护者安排放到最后。其他尚无本产品真实调用证据的模型继续标为待验；n8n Cloud SaaS 实例测试继续跳过。私有账号、Base、任务编号、素材与原始回执不进入公开仓库。
 
+## 2026-10-21 真实结果快照故障验收
+
+使用已发布 a41 核心，在原隔离测试机内新建独立测试状态目录与合成输入表；不修改原部署数据库、原工作流或原任务。实际请求到达飞书后，由测试包装层丢弃成功响应，模拟未知提交结果。
+
+- 建表响应丢失后重新查表并续接：仅一次建表 POST，精确名称只匹配一张表。
+- 记录写入响应丢失后续接：查到已写记录并完成同步，仅一次追加 POST。
+- 第二条测试快照响应丢失后，模拟操作者改动脚本字段：续接返回 `BASE_RESULTS_EXTERNAL_EDIT_CONFLICT`，修改保留，不追加重复记录。
+- 原输入表前后内容摘要一致；模型调用为零，结束时结果同步已暂停。新建的测试表和故障证据保留。
+
+这是实际飞书读写和持久化日志恢复的验收。身份层使用独立合成测试账号，不冒充第二个真实飞书身份；未向正在使用的客户工作流注入故障，也未覆盖附件上传中断的所有分支。此前真实视频附件下载与原文件摘要匹配的回执继续有效。首次测试夹具因未创建私有状态目录而停止，修正夹具后复用已建测试表与行，未重复建表；不是修改产品代码后掩盖失败。
+
+## 2026-10-21 只读模型与账单复核
+
+维护者将本轮模型检查范围收窄为 API 连通与鉴权，不再为验收新增付费生成或重复素材质量审核。DeepSeek 官方余额接口返回 HTTP 200；OpenAI、Gemini 的官方只读接口在现有测试主机返回网络不可达，不能据此判定 Key 无效，也不能记录为鉴权通过。其他独立接口没有新凭据回执时继续保留未核验状态；可灵免测决定不变。
+
+已核对火山账户在原测试日期范围内的当期账单：存在 Seedance 与 Seedream 计费明细。账单尚未到最终出账期，且未提供每笔模型请求 ID 的对应关系，因此只记为账户日期范围核对，不声称全部历史请求已经财务结清。金额、账户明细和原始截图仅存私有验收目录；DeepSeek 当前余额不作为历史账单证明。本轮新增模型生成请求为零。
+
+已通过的 H3 与脚本审核沿用原回执。后续 Seedance / Seedream 的文件与回写技术检查已通过；本轮不重复索要质量审核，也不替用户修改原任务的审核状态。
+
 ## English
 
 The query repair passed actual n8n checks on Windows, macOS, Ubuntu and Docker, plus full server regression, cold restore and offline installation. A pending provider job now returns an explicit receipt without Base writes or another generation. A read-only query of an existing Seedance job also passed. The exact cause of the older live HTTP 500 remains unproven because its response was not retained.
 
 One explicitly authorized Kling request returned HTTP 429 / code 1102, documented as an exhausted or expired prepaid resource pack. No job ID was returned; the receipt and lock remain, and isolated workflows are disabled. There was no automatic retry. This is not a successful Kling video acceptance or a billing clearance. The maintainer explicitly waived further Kling live testing based on prior project experience; it no longer blocks this closeout. The waiver does not claim a successful generation or shipped legacy AK/SK support. The a41 package is published; final packaging, anonymous installation and the official-site 52-file and browser checks passed. Distinct-account, independent-device and other provider acceptance remain separate.
+
+The maintainer narrowed this closeout to read-only API connectivity/authentication with no new paid generation or repeated media-quality review. DeepSeek authentication passed; OpenAI and Gemini were unreachable from the current test host, so credential validity remains unestablished. Provisional account-date billing was reviewed privately; per-request billing reconciliation and final invoices are not claimed.
+
+Real Feishu fault injection now passed for lost table-creation responses, lost record-write responses, and preservation of a concurrent script edit. The original input table stayed unchanged, no model was called, and synchronization was paused. Identity was a synthetic fixture; this does not replace distinct-user acceptance or claim all attachment interruption cases.
