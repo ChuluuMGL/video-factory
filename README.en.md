@@ -32,7 +32,7 @@ See the [cloud verification](https://github.com/ChuluuMGL/video-factory/actions/
 
 ## Choose what you want to run
 
-The complete Skill supports local installation and existing-n8n integration. Actual n8n checks passed on Windows, macOS, Linux and Docker. a40 adds provider selection; one isolated Seedance 2.0 video and one Seedream image passed generation, Feishu writeback and full media decoding. See the [a40 evidence](docs/product/DELIVERY_A40_RESULT.md). Download the version shown in [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) and use the [in-place upgrade guide](docs/product/PORTABLE_UPGRADE.md) for existing projects. Distinct-account authorization, independent installation and actual desktop logout/login remain open.
+The complete Skill supports local installation and existing-n8n integration. Actual n8n checks passed on Windows, macOS, Linux and Docker. a40 adds provider selection; one isolated Seedance 2.0 video and one Seedream image passed generation, Feishu writeback and full media decoding. See the [a40 evidence](docs/product/DELIVERY_A40_RESULT.md). The current public release is [a41](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a41); its query fix, anonymous installation and official-site verification are recorded in the [release receipt](docs/product/DELIVERY_A41_RESULT.md). Download it and use the [in-place upgrade guide](docs/product/PORTABLE_UPGRADE.md) for existing projects. Distinct-account authorization, independent installation and actual desktop logout/login remain open.
 
 The Setup Skill first asks where your n8n runs, whether a Feishu application and Base already exist, and where the product execution services should run. Keep an existing n8n instance; choose an installation method only if n8n is absent. Its read-only `scripts/choose_install_path.py` records the route without changing your instance.
 
@@ -54,7 +54,7 @@ The portable route includes [designated-owner billing approval](docs/product/POR
 | Purpose | Portable configuration from a40 | Live acceptance |
 |---|---|---|
 | Scripts | DeepSeek, GPT, Gemini, MiniMax text, Qwen, Doubao | DeepSeek has real generation and human review; other adapters have synthetic integration checks and await real-account acceptance |
-| Video | MiniMax H3, Kling, Seedance 2.0 / 2.5, Wan | Existing H3 acceptance; one Seedance 2.0 generation, writeback and full decode passed, awaiting human review; Kling, 2.5 and Wan remain unverified end to end |
+| Video | MiniMax H3, Kling, Seedance 2.0 / 2.5, Wan | Existing H3 acceptance; one Seedance 2.0 generation, writeback and full decode passed, awaiting human review; Kling live retesting was waived by the maintainer; 2.5 and Wan remain unverified end to end |
 | Images | Seedream 5.0 Lite | One 2K image, Feishu attachment writeback and full decode passed, awaiting human review; see the [image guide](docs/product/PORTABLE_IMAGES.md) |
 
 New selections require a40 or later; a38 and earlier packages retain their original routes. Choose the Seedance version already enabled on the account. Setup does not create keys or enable services to change versions. Historical projects, synthetic checks and a single real acceptance do not replace customer-specific validation. Installation makes no paid requests; model or parameter changes require a new explicit fee plan.

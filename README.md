@@ -32,7 +32,7 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 先看安装目标
 
-完整 Skill 提供本机安装与已有 n8n 接入，Windows、Mac、Linux、Docker 的实际 n8n 自动化检查已通过。a40 增加多模型配置，Seedance 2.0 视频与 Seedream 图片已完成一次隔离生成、飞书回写和文件完整性检查；详见 [a40 验证记录](docs/product/DELIVERY_A40_RESULT.md)。下载版本以 [GitHub Releases](https://github.com/ChuluuMGL/video-factory/releases) 为准；已有项目按[保留数据的升级指引](docs/product/PORTABLE_UPGRADE.md)操作。
+完整 Skill 提供本机安装与已有 n8n 接入，Windows、Mac、Linux、Docker 的实际 n8n 自动化检查已通过。a40 增加多模型配置，Seedance 2.0 视频与 Seedream 图片已完成一次隔离生成、飞书回写和文件完整性检查；详见 [a40 验证记录](docs/product/DELIVERY_A40_RESULT.md)。当前公开版本为 [a41](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a41)，查询修复、匿名安装和官网检查见 [发行回执](docs/product/DELIVERY_A41_RESULT.md)；已有项目按[保留数据的升级指引](docs/product/PORTABLE_UPGRADE.md)操作。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
 
@@ -54,7 +54,7 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 | 用途 | a40 便携路线配置项 | 真实验收状态 |
 |---|---|---|
 | 脚本 | DeepSeek、GPT、Gemini、MiniMax 文本、千问、豆包 | DeepSeek 已有真实生成及本人审核；其他接口通过合成集成，真实账户验收待完成 |
-| 视频 | MiniMax H3、可灵、Seedance 2.0 / 2.5、万相 | H3 已有真实验收；Seedance 2.0 本次生成、回写与完整解码通过，待本人审核；可灵、2.5 和万相尚未完成闭环 |
+| 视频 | MiniMax H3、可灵、Seedance 2.0 / 2.5、万相 | H3 已有真实验收；Seedance 2.0 本次生成、回写与完整解码通过，待本人审核；可灵按维护者决定免测；2.5 和万相尚未完成闭环 |
 | 图片 | Seedream 5.0 Lite | 本次 2K 图片生成、飞书附件回写及完整解码通过，待本人审核；见[图片指南](docs/product/PORTABLE_IMAGES.md) |
 
 这些新增配置从 a40 起提供；a38 及更早固定包仍只有原有模型路线。Seedance 按账号已开通版本选择，不因选择不同版本创建 Key 或自动开通服务。历史项目、合成测试和本次单条实测均不能代替客户自己的账户与业务验收。安装不触发付费生成，变更模型或参数必须重新确认费用计划。
