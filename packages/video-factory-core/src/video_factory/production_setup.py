@@ -16,6 +16,7 @@ from .setup_run import choice
 from .dispatch import template
 from .workspace import status as workspace_status
 from .runner import status as runner_status
+from .script_provider import ScriptProvider, PROVIDERS
 
 
 def register(commands):
@@ -82,7 +83,7 @@ def schedule(stack,session,token,*,activate=False):
 def welcome(args,read=input,hidden=getpass.getpass,write=print,*,admin_token=None):
     stack=Stack(args.stack_root);session=SessionStore(args.session).read()
     write('Video Factory · 项目生产配置')
-    write('脚本模型为 DeepSeek Flash；密钥保留在客户服务器。配置不会立即生成内容。')
+    write('脚本供应商按项目选择；密钥保留在客户服务器。配置不会立即生成内容。')
     project=session['configuration']['project']['id']
     write('当前项目：'+project)
     with stack.lock():
@@ -92,16 +93,25 @@ def welcome(args,read=input,hidden=getpass.getpass,write=print,*,admin_token=Non
     token=opened['token'] if admin_token is None else admin_token
     try:
         if choice('配置或更换本项目脚本 API Key',read,write):
-            secret=hidden('DeepSeek API Key（隐藏输入）: ')
+            write('脚本供应商：'+', '.join(PROVIDERS))
+            provider=read('供应商（回车默认 deepseek）> ').strip() or 'deepseek'
+            if provider not in PROVIDERS:raise RuntimeFault('SCRIPT_PROVIDER_UNSUPPORTED')
+            default_model=PROVIDERS[provider][2]
+            model=read('模型 ID（回车默认 '+default_model+'）> ').strip() or default_model
+            ScriptProvider(provider,model)
+            secret=hidden(provider+' API Key（隐藏输入）: ')
             billing=read('本客户费用账户标签> ').strip()
             if choice('确认将脚本密钥加密保存到本项目',read,write):
                 with stack.lock():ready=runner_status(stack,project).get('status')=='running'
                 if ready:
-                    with stack.lock():rpc(stack,{'action':'script_check','token':token,'session':session,'secret':secret})
-                    write('脚本密钥认证通过；未生成内容。余额与实际生成仍需单独验收。')
+                    with stack.lock():check=rpc(stack,{'action':'script_check','token':token,'session':session,
+                        'secret':secret,'provider':provider,'model':model})
+                    if check['status']=='authenticated':write('脚本密钥只读认证通过；未生成内容。余额与实际生成仍需单独验收。')
+                    else:write('此供应商没有零费用只读认证检查；Key 尚未验证，首次生成须单独验收。')
                 else:
                     write('私网 Runner 尚未运行，本次只保存密钥，认证尚未验证；部署 Runner 后请续接本向导验证。')
-                with stack.lock():rpc(stack,{'action':'script','token':token,'session':session,'secret':secret,'billing_owner':billing})
+                with stack.lock():rpc(stack,{'action':'script','token':token,'session':session,'secret':secret,
+                    'billing_owner':billing,'provider':provider,'model':model})
                 write('脚本凭据已保存。');secret=None
         if choice('配置或更换本项目视频 API Key 与 SKU 素材',read,write):
             secret=hidden('MiniMax H3 API Key（隐藏输入）: ')
