@@ -5,9 +5,11 @@ record-history display name alone is never a review credential.
 """
 import hashlib
 import json
+import time
 
 from .feishu_bridge import FeishuBridge, meta, save, plain_text, select_text
 from .feishu_client import resource
+from .postgres_store import PostgresStore
 from .runtime_store import RuntimeFault, fingerprint, identifier
 
 EVENT_TYPE = 'drive.file.bitable_record_changed_v1'
@@ -23,7 +25,29 @@ FINAL_DENIALS = {'FEISHU_TENANT_OR_ROLE_DENIED','FEISHU_REVIEW_TRANSITION_INVALI
                  'FEISHU_REVIEW_VIDEO_CHANGED','FEISHU_REVIEW_FEEDBACK_REQUIRED',
                  'FEISHU_REVIEW_STATE_CONFLICT','FEISHU_REVIEW_SOURCE_NOT_BOUND',
                  'FEISHU_REVIEW_EVENT_CONFLICT','FEISHU_REVIEW_STATUS_OPTION_UNKNOWN',
-                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS'}
+                 'FEISHU_EVENT_FIELD_INVALID','FEISHU_EVENT_FIELD_AMBIGUOUS',
+                 'PRODUCTION_REQUEST_REMOTE_CHANGED','PRODUCTION_BRIEF_TOO_LONG',
+                 'PRODUCTION_EXISTING_PLAN_REQUIRES_RECONCILIATION',
+                 'PRODUCTION_SKU_NOT_IN_PROJECT','PRODUCTION_TASK_NOT_READY',
+                 'PRODUCTION_PLAN_REQUIRES_RECONCILIATION','PRODUCTION_MIXED_EVENT_DENIED',
+                 'PRODUCTION_PLAN_EXPIRED','PRODUCTION_PLAN_REMOTE_CHANGED',
+                 'PRODUCTION_COST_APPROVER_DENIED','PRODUCTION_COST_APPROVER_NOT_BOUND',
+                 'PRODUCTION_COST_REMOTE_CHANGED',
+                 'PRODUCTION_PLAN_NOT_READY','PRODUCTION_COST_ALREADY_CONFIRMED',
+                 'PRODUCTION_TASK_REVISION_CHANGED','PRODUCTION_TASK_SOURCE_CONFLICT',
+                 'PRODUCTION_COST_TRANSITION_INVALID','PRODUCTION_COST_APPROVAL_DISABLED',
+                 'PRODUCTION_REVIEW_STATE_CONFLICT','PRODUCTION_SOURCE_REVISION_MUST_ADVANCE',
+                 'PRODUCTION_COST_PREMATURE','PRODUCTION_TASK_SOURCE_CONFLICT',
+                 'PRODUCTION_REVIEW_FEEDBACK_MISSING','PRODUCTION_REVIEW_FEEDBACK_CHANGED'}
+FINAL_DENIALS |= {'PRODUCTION_EVENT_ACTIVATION_CHANGED', 'PRODUCTION_COST_EVENT_BEFORE_PLAN'}
+FINAL_DENIALS |= {'PRODUCTION_VIDEO_REVISION_INVALID', 'PRODUCTION_VIDEO_SCRIPT_NOT_APPROVED',
+                  'PRODUCTION_VIDEO_SOURCE_CHANGED', 'PRODUCTION_VIDEO_REMOTE_CHANGED',
+                  'PRODUCTION_VIDEO_COST_PREMATURE', 'PRODUCTION_VIDEO_PROFILE_REQUIRED',
+                  'PRODUCTION_VIDEO_PLAN_REQUIRES_RECONCILIATION',
+                  'PRODUCTION_VIDEO_PLAN_EXPIRED_OR_CHANGED', 'PRODUCTION_VIDEO_PLAN_STATE_INVALID',
+                  'PRODUCTION_VIDEO_COST_TRANSITION_INVALID', 'PRODUCTION_VIDEO_PLAN_NOT_READY',
+                  'PRODUCTION_VIDEO_COST_ALREADY_CONFIRMED', 'PRODUCTION_VIDEO_ASSETS_CHANGED',
+                  'PRODUCTION_VIDEO_JOB_CONFLICT'}
 
 
 def source_key(project, task):
@@ -73,6 +97,20 @@ def _changed(action, field_id, option_names):
     return (before, after) if before != after and after is not None else None
 
 
+def _field_changed(action, field_id):
+    """Feishu may echo unchanged (including empty) select fields in an edit."""
+    values = []
+    for side in ('before_value', 'after_value'):
+        rows = [item for item in action.get(side, [])
+                if isinstance(item, dict) and item.get('field_id') == field_id]
+        if len(rows) > 1: raise RuntimeFault('FEISHU_EVENT_FIELD_AMBIGUOUS')
+        raw = rows[0].get('field_value') if rows else None
+        if raw is not None and (not isinstance(raw, str) or len(raw) > 16000):
+            raise RuntimeFault('FEISHU_EVENT_FIELD_INVALID')
+        values.append(raw)
+    return values[0] != values[1]
+
+
 class NativeReview:
     def __init__(self, store, *, client_factory):
         self.store, self.client_factory = store, client_factory
@@ -95,6 +133,7 @@ class NativeReview:
         with self.store.connect() as db:
             binding = self.bridge._binding(db, project)
             config = meta(db, 'native:config:'+project)
+            production = meta(db, 'production:config:'+project)
             if not config or not config.get('enabled') or header.get('app_id') != config['app_id']:
                 raise RuntimeFault('FEISHU_NATIVE_REVIEW_DISABLED')
             if (header.get('tenant_key') != binding['tenant_key'] or event.get('file_token') != binding['base_token']
@@ -106,32 +145,66 @@ class NativeReview:
             reduced['event'] = {k: event[k] for k in ('file_type','file_token','table_id','operator_id') if k in event}
             reduced['event']['operator_id'] = {'open_id':event['operator_id']['open_id']}
             reduced['event']['action_list'] = []
+            allowed_fields = {config['fields']['status']}
+            production_fields = set()
+            if production and production.get('enabled'):
+                operation = production.get('fields', {}).get('operation')
+                cost = production.get('fields', {}).get('cost')
+                if not isinstance(operation, str) or not isinstance(cost, str):
+                    raise RuntimeFault('PRODUCTION_CONFIGURATION_INVALID')
+                allowed_fields.update((operation, cost))
+                production_fields.update((operation, cost))
+            has_production_action = False
             for action in actions:
                 if not isinstance(action, dict): raise RuntimeFault('FEISHU_EVENT_ACTIONS_INVALID')
                 resource(action.get('record_id'), 'rec')
+                kept = {side: [item for item in action.get(side, []) if item.get('field_id') in allowed_fields]
+                        for side in ('before_value','after_value')}
+                has_production_action |= any(item.get('field_id') in production_fields
+                                             for side in ('before_value','after_value') for item in kept[side])
                 reduced['event']['action_list'].append({
                     'record_id': action['record_id'], 'action': action.get('action'),
-                    **{side: [item for item in action.get(side, []) if item.get('field_id') == config['fields']['status']]
-                       for side in ('before_value','after_value')}})
+                    **kept})
+            if has_production_action:
+                reduced['header']['production_activation_id'] = production.get('activation_id')
             key = queue_key(project, event_id)
             old = meta(db, key)
             if old:
                 if old['event'] != reduced: raise RuntimeFault('FEISHU_EVENT_ID_CONFLICT')
                 return {'status': old['status'], 'replayed': True}
-            save(db, key, {'project': project, 'event': reduced, 'status': 'pending'})
+            save(db, key, {'project': project, 'event': reduced, 'status': 'pending',
+                           'received_at_ns': time.time_ns(),
+                           'production_activation_id': (production.get('activation_id')
+                                                        if has_production_action else None)})
         return {'status': 'queued', 'provider_requests': 0}
 
     def process_one(self, project):
         prefix = 'native:event:' + identifier(project) + ':'
         pattern = prefix.replace('\\', '\\\\').replace('_', '\\_') + '%'
+        if isinstance(self.store, PostgresStore):
+            # PostgreSQL has neither SQLite's json_extract nor rowid. Sort by
+            # the receipt timestamp so a cost confirmation cannot overtake
+            # the earlier request that prepared its plan.
+            query = ("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
+                     "AND value::jsonb ->> 'status' = 'pending' "
+                     "ORDER BY COALESCE((value::jsonb ->> 'received_at_ns')::bigint, 0), key LIMIT 1001")
+        else:
+            query = ("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' "
+                     "AND json_extract(value,'$.status')='pending' ORDER BY rowid LIMIT 1001")
         with self.store.connect() as db:
-            rows = db.execute("SELECT key,value FROM meta WHERE key LIKE ? ESCAPE '\\' ORDER BY key LIMIT 1001",
-                              (pattern,)).fetchall()
+            rows = db.execute(query, (pattern,)).fetchall()
             if len(rows)>1000: raise RuntimeFault('FEISHU_EVENT_QUEUE_CAPACITY')
             pending = [(row['key'],json.loads(row['value'])) for row in rows
-                       if json.loads(row['value']).get('project')==project and json.loads(row['value'])['status']=='pending']
+                       if json.loads(row['value']).get('project')==project]
         for key, value in pending:
-            try: result = self.consume_verified(project, value['event'])
+            try:
+                if value.get('production_activation_id'):
+                    with self.store.connect() as db:
+                        production = meta(db, 'production:config:' + project)
+                    if (not production or not production.get('enabled')
+                            or production.get('activation_id') != value['production_activation_id']):
+                        raise RuntimeFault('PRODUCTION_EVENT_ACTIVATION_CHANGED')
+                result = self.consume_verified(project, value['event'])
             except RuntimeFault as error:
                 if str(error) in ('FEISHU_EVENT_SCOPE_DENIED','FEISHU_NATIVE_REVIEW_DISABLED'): continue
                 if str(error) in FINAL_DENIALS:
@@ -170,12 +243,17 @@ class NativeReview:
         with self.store.connect() as db:
             binding = self.bridge._binding(db, project)
             config = meta(db, 'native:config:'+project)
+            production = meta(db, 'production:config:'+project)
             if not config or not config.get('enabled'):
                 raise RuntimeFault('FEISHU_NATIVE_REVIEW_DISABLED')
             if (header.get('app_id') != config['app_id'] or header.get('tenant_key') != binding['tenant_key']
                     or event.get('file_type') != 'bitable' or event.get('file_token') != binding['base_token']
                     or event.get('table_id') != binding['table_id']):
                 raise RuntimeFault('FEISHU_EVENT_SCOPE_DENIED')
+            if ('production_activation_id' in header and
+                    (not production or not production.get('enabled') or
+                     header['production_activation_id'] != production.get('activation_id'))):
+                raise RuntimeFault('PRODUCTION_EVENT_ACTIVATION_CHANGED')
             mapping = config['fields']
         actions = event.get('action_list')
         if not isinstance(actions, list) or not 1 <= len(actions) <= 100:
@@ -183,11 +261,35 @@ class NativeReview:
         client = self.client_factory(config['app_id'])
         option_names = None
         results = []
+        plans = []
+        approvals = []
+        with self.store.connect() as db:
+            production = meta(db, 'production:config:'+project)
+        operation_field = (production.get('fields', {}).get('operation')
+                           if production and production.get('enabled') else None)
+        cost_field = (production.get('fields', {}).get('cost')
+                      if production and production.get('enabled') else None)
         for action in actions:
             if not isinstance(action, dict) or action.get('action') != 'record_edited': continue
             record_id = resource(action.get('record_id'), 'rec')
-            if not any(item.get('field_id') == mapping['status'] for side in ('before_value','after_value')
-                       for item in action.get(side, []) if isinstance(item, dict)):
+            has_operation = bool(operation_field and _field_changed(action, operation_field))
+            has_cost = bool(cost_field and _field_changed(action, cost_field))
+            has_status = _field_changed(action, mapping['status'])
+            if sum((has_operation, has_cost, has_status)) > 1:
+                raise RuntimeFault('PRODUCTION_MIXED_EVENT_DENIED')
+            if has_operation:
+                from .feishu_production_entry import ProductionEntry
+                receipt = ProductionEntry(self.store, self.client_factory).prepare_verified(
+                    project, event_id, operator, record_id, action, production)
+                if receipt: plans.append(receipt)
+                continue
+            if has_cost:
+                from .feishu_production_entry import ProductionEntry
+                receipt = ProductionEntry(self.store, self.client_factory).confirm_verified(
+                    project, event_id, operator, record_id, action, production)
+                if receipt: approvals.append(receipt)
+                continue
+            if not has_status:
                 continue
             if option_names is None:
                 fields = [field for field in client.fields(binding['base_token'], binding['table_id'])
@@ -269,4 +371,5 @@ class NativeReview:
                                              project, task, revision, stage, decision, feedback)
                 save(db, key, {'request': request, 'receipt': receipt})
                 results.append(receipt)
-        return {'project': project, 'reviewed': results, 'provider_requests': 0}
+        return {'project': project, 'reviewed': results, 'plans': plans,
+                'approvals': approvals, 'provider_requests': 0}
