@@ -37,7 +37,7 @@ for(const body of ['not json','null','[]']) assert.throws(()=>http({statusCode:2
 for(const pending of ['queued','running']) {
  let body;
  if(d.provider==='minimax-cn') body={task:{id:job,model:d.model,status:pending}};
- else if(d.provider==='seedance-cn') body={id:job,model:d.model,status:pending};
+ else if(['seedance-cn','seedance-novai'].includes(d.provider)) body={id:job,model:d.model,status:pending};
  else if(d.provider==='wan-cn') body={output:{task_id:job,task_status:pending==='queued'?'PENDING':'RUNNING'}};
  else body={code:0,data:[{id:job,status:pending==='queued'?'submitted':'processing'}]};
  const parsed=http({statusCode:200,body:JSON.stringify(body)})[0].json;
@@ -45,7 +45,7 @@ for(const pending of ['queued','running']) {
  const changed=JSON.parse(JSON.stringify(body).replaceAll(job,'other-task-999'));
  assert.throws(()=>complete(changed,refs),/UNVERIFIED/);
 }
-if(d.provider==='seedance-cn') assert.throws(()=>complete({id:job,model:d.model,status:'expired'},refs),/HUMAN_REVIEW/);
+if(['seedance-cn','seedance-novai'].includes(d.provider)) assert.throws(()=>complete({id:job,model:d.model,status:'expired'},refs),/HUMAN_REVIEW/);
 """
                 result = subprocess.run(['node', '-e', js, json.dumps(data)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)

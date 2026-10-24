@@ -6,10 +6,12 @@ from portable_n8n import Fault, identifier, locked, private_write
 VIDEOS = {
     'minimax-cn': ('MiniMax China', 'https://api.minimax.cn', ('MiniMax-H3',)),
     'seedance-cn': ('Seedance Beijing', 'https://ark.cn-beijing.volces.com', ('doubao-seedance-2-0-260128', 'doubao-seedance-2-5-260628')),
+    'seedance-novai': ('Seedance NovAI Enterprise', 'https://xinghezhiyun.com', ('doubao-seedance-2-0-260128', 'doubao-seedance-2-5-260628')),
     'wan-cn': ('Wan Beijing', 'https://dashscope.aliyuncs.com', ('wan2.7-i2v-2026-04-25',)),
     'kling-cn': ('Kling Beijing', 'https://api-beijing.klingai.com', ('kling-3.0', 'kling-3.0-turbo')),
     'kling-global': ('Kling Singapore', 'https://api-singapore.klingai.com', ('kling-3.0', 'kling-3.0-turbo')),
 }
+ARK_ROUTES = ('seedance-cn', 'seedance-novai')
 
 
 def selection(provider='minimax-cn', model=None):
@@ -53,14 +55,15 @@ def profile(value):
     if provider=='minimax-cn':
         return {'provider':label,'model':value['model'],'endpoint':origin+'/v2/video_generation',
                 'duration':6,'resolution':'768P','ratio':'9:16'}
-    path=('/api/v3/contents/generations/tasks' if provider=='seedance-cn' else
+    path=('/api/v3/contents/generations/tasks' if provider in ARK_ROUTES else
           '/api/v1/services/aigc/video-generation/video-synthesis' if provider=='wan-cn' else
           '/image-to-video/'+value['model'])
     result={'provider':label,'model':value['model'],'endpoint':origin+path,'duration':5,
             'resolution':'720p' if provider.startswith('kling-') else '720P',
-            'ratio':'9:16' if provider=='seedance-cn' else 'from_first_frame',
+            'ratio':'9:16' if provider in ARK_ROUTES else 'from_first_frame',
             'first_frame_count':1,'audio':'native','watermark':False}
     if provider=='wan-cn':result['prompt_extend']=False
+    if provider=='seedance-novai':result['auto_asset']=False
     if provider.startswith('kling-'):result['multi_shot']=False
     return result
 
@@ -80,8 +83,9 @@ return $input.all();"""
         common=prefix+r"""const task=$('Select task').first().json,refs=$('Resolve video references').first().json.model_references;
 if(refs.length!==1 || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/.test(refs[0]))throw new Error('VIDEO_ONE_VERIFIED_FIRST_FRAME_REQUIRED');
 const image=refs[0];"""
-        if route=='seedance-cn':
+        if route in ARK_ROUTES:
             body="{model:profile.model,content:[{type:'text',text:task.script},{type:'image_url',image_url:{url:image}}],duration:profile.duration,resolution:profile.resolution.toLowerCase(),ratio:profile.ratio,generate_audio:true,watermark:profile.watermark}"
+            if route=='seedance-novai':body=body[:-1]+",auto_asset:profile.auto_asset}"
             receipt="if($json.error)throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION');const id=$json.id;"
         elif route=='wan-cn':
             body="{model:profile.model,input:{prompt:task.script,media:[{type:'first_frame',url:image}]},parameters:{duration:profile.duration,resolution:profile.resolution,prompt_extend:profile.prompt_extend,watermark:profile.watermark}}"
@@ -94,11 +98,11 @@ const image=refs[0];"""
         by_name['Validate video receipt']['parameters']['jsCode']=receipt+r"""if(typeof id!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{5,95}$/.test(id))throw new Error('VIDEO_SUBMISSION_REQUIRES_RECONCILIATION');return [{json:{fields:{'视频任务ID':id,'状态':'视频生成中'}}}];"""
     elif flow=='video-poll':
         origin=fixture_origin or VIDEOS[route][1]
-        path=('/api/v3/contents/generations/tasks/' if route=='seedance-cn' else '/api/v1/tasks/' if route=='wan-cn' else '/tasks?task_ids=')
+        path=('/api/v3/contents/generations/tasks/' if route in ARK_ROUTES else '/api/v1/tasks/' if route=='wan-cn' else '/tasks?task_ids=')
         by_name['Require job receipt']['parameters']['jsCode']=r"""if(!/^[A-Za-z0-9][A-Za-z0-9_-]{5,95}$/.test($json.job))throw new Error('VIDEO_JOB_REQUIRED_NO_RESUBMIT');return $input.all();"""
         by_name['Poll existing video']['parameters']['url']='={{ '+json.dumps(origin+path)+" + $('Select task').first().json.job }}"
         common=prefix+"const expected=$('Select task').first().json.job;let id,state,url;"
-        if route=='seedance-cn':
+        if route in ARK_ROUTES:
             result="if($json.error || $json.model!==profile.model)throw new Error('VIDEO_QUERY_UNVERIFIED');id=$json.id;state=$json.status;url=$json.content?.video_url;"
         elif route=='wan-cn':
             result="if($json.code)throw new Error('VIDEO_QUERY_UNVERIFIED');id=$json.output?.task_id;state=({PENDING:'queued',RUNNING:'running',SUCCEEDED:'succeeded',FAILED:'failed',CANCELED:'cancelled'})[$json.output?.task_status];url=$json.output?.video_url;"

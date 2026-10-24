@@ -63,6 +63,7 @@
         <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">识别已有 n8n 与飞书 → 选择可用路线 → 配置首个项目与服务 → 连接飞书。已有 n8n 可直接接入；没有时再选择 Node.js、Docker 或 Ubuntu 完整栈。模型、真实任务和人工审核随后逐项验收。</p></details>
         <details><summary>安装后，团队怎样使用？</summary><p>商品资料和创作要求放在飞书任务表；配置完成后，指定负责人核对并确认单次费用计划，再生成脚本。员工在原表查看脚本和成片、填写意见并审核。不同员工的权限隔离仍待真实验收。</p></details>
         <details><summary>新增项目或帮助另一个客户，需要重装吗？</summary><p>Skill 可以复用。同一客户新增项目时复用已有服务，另设项目资料与权限；不同客户分别部署。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></details>
+        <details><summary>自己的 Codex 能帮忙排障吗？</summary><p>可以。选择“排查问题”，将私有安装记录和任务编号交给已获你授权的助手。它会先检查原项目，再说明修复办法；重新生成或停机需要你确认。</p></details>
         <details><summary>中断、报错或升级，怎样处理？</summary><p>选择“继续上次安装”或“排查问题”，把安装记录交给助手。续接保留已完成配置；密码和密钥在私有输入处填写。升级前先备份，更新 Skill 不会自动升级服务器。</p></details>
         <details><summary>关闭终端后还能运行吗？</summary><p>由助手按版本检查后台运行方式。便携路线提供自启管理：Mac、Windows 登录后启动，Linux 系统服务可开机启动；Docker 需先启动自身服务。接收器会等待 n8n 数据库就绪；电脑休眠会暂停本机任务。安装后核对实际状态，已有 n8n 不会被接管。Mac/Windows 实际退出并重新登录的真人验收仍待完成。</p></details>
         <details><summary>模型和费用怎么配置？</summary><p>当前固定发行包接入 DeepSeek Flash 与 MiniMax H3。使用客户自己的 API 账户；密钥配置不生成内容，每次生成单独确认，结果在飞书审核。指定负责人逐条确认费用；更换模型或接口后重新确认计划。已完成单账号真实验收；第二账号权限仍待验。GPT、Gemini、MiniMax 文本、千问、豆包及可灵、Seedance、万相视频仍需独立验收；Seedream 是图片模型，也尚未接入。旧项目案例不代表这些接口已进入本产品正式安装包。</p></details>

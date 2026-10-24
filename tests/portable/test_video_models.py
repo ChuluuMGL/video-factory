@@ -66,12 +66,12 @@ const refs=name=>({first:()=>({json:name==='Resolve video references'?{model_ref
 const body=new Function('$',d.body)(refs)[0].json;assert.equal(body.duration||body.parameters?.duration||body.settings?.duration,5);
 const receipt=new Function('$json',d.receipt),poll=new Function('$json','$',d.poll);
 let submitted,result;
-if(d.provider==='seedance-cn'){assert.equal(body.model,d.profile.model);assert.equal(body.resolution,'720p');assert.equal(body.generate_audio,true);submitted={id:'candidate-task-123'};result={id:'candidate-task-123',model:d.profile.model,status:'succeeded',content:{video_url:'https://media.example.invalid/video.mp4'}};}
+if(['seedance-cn','seedance-novai'].includes(d.provider)){assert.equal(body.model,d.profile.model);assert.equal(body.resolution,'720p');assert.equal(body.generate_audio,true);if(d.provider==='seedance-novai'){assert.equal(body.auto_asset,false);assert.ok(d.profile.endpoint.startsWith('https://xinghezhiyun.com/'));}submitted={id:'candidate-task-123'};result={id:'candidate-task-123',model:d.profile.model,status:'succeeded',content:{video_url:'https://media.example.invalid/video.mp4'}};}
 else if(d.provider==='wan-cn'){submitted={output:{task_id:'candidate-task-123'}};result={output:{task_id:'candidate-task-123',task_status:'SUCCEEDED',video_url:'https://media.example.invalid/video.mp4'}};}
 else{submitted={code:0,data:{id:'candidate-task-123'}};result={code:0,data:[{id:'candidate-task-123',status:'succeeded',outputs:[{type:'video',url:'https://media.example.invalid/video.mp4'}]}]};}
 assert.equal(receipt(submitted)[0].json.fields['视频任务ID'],'candidate-task-123');assert.throws(()=>receipt({}));
 assert.equal(poll(result,refs)[0].json.fields['状态'],'视频待审核');
-if(d.provider==='seedance-cn'){assert.throws(()=>poll({...result,model:result.model==='doubao-seedance-2-0-260128'?'doubao-seedance-2-5-260628':'doubao-seedance-2-0-260128'},refs),/UNVERIFIED/);}
+if(['seedance-cn','seedance-novai'].includes(d.provider)){assert.throws(()=>poll({...result,model:result.model==='doubao-seedance-2-0-260128'?'doubao-seedance-2-5-260628':'doubao-seedance-2-0-260128'},refs),/UNVERIFIED/);}
 const bad=JSON.parse(JSON.stringify(result).replaceAll('candidate-task-123','other-task-999'));assert.throws(()=>poll(bad,refs),/UNVERIFIED/);
 for(const url of ['http://media.example.invalid/x','https://127.0.0.1/x','https://user@media.example.invalid/x','https://host.local/x']){const v=JSON.parse(JSON.stringify(result).replaceAll('https://media.example.invalid/video.mp4',url));assert.throws(()=>poll(v,refs));}
 """

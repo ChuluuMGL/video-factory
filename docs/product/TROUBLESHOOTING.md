@@ -101,3 +101,7 @@ a36 便携路线的 `APPROVAL_RECORD_CHANGED`、`APPROVAL_STATUS_CHANGED`、`APP
 遇到本页没有覆盖的问题，先搜[现有 Issues](https://github.com/ChuluuMGL/video-factory/issues)，再用[问题模板](https://github.com/ChuluuMGL/video-factory/issues/new/choose)提交**脱敏的最小复现**：版本、阶段、错误码、期望与实际结果、已做的检查。不要提交密码、API Key、App Secret、服务器 IP、真实飞书 ID、客户内容、原始日志或未脱敏截图。安全漏洞使用[私密报告](https://github.com/ChuluuMGL/video-factory/security/advisories/new)。客户或实施人员审核后自行提交；Agent 不自动公开发送诊断资料。
 
 Issue 是待核查的问题记录，不能直接当作已验证的修复方案。维护者修复并验证后，在对应 PR 中更新本页及相关操作文档，注明适用版本；每次固定发行前复查索引与失效链接。关闭 Issue 不等于客户实例已升级，也不等于客户任务已恢复。
+
+## 远程客户安装与第三方平台
+
+新增经验见[客户部署复盘](CUSTOMER_DEPLOYMENT_LESSONS.md)；具体 Agent 步骤见[客户远程安装与接管](../../skills/video-factory-setup/references/customer-remote.md)。客户操作版见[第一次测试与让 Agent 排障](FIRST_RUN_AND_AGENT_SUPPORT.md)。远程输入动作未到达不能判为密码错误，品牌相同不代表 API 域名相同；程序事件不代表负责人身份验收。新增 SKU 模块和企业版模型适配仍是源码候选，不自动改变 a41 固定包。

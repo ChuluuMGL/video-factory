@@ -74,3 +74,9 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 ### Seedream 视频参考图（a40 起）
 
 仅当完整 Skill 包含 `scripts/portable_images.py` 时，welcome 才可配置独立图片凭据与关闭状态的图片流程。使用一张 PNG/JPEG 飞书参考附件，在「图片要求」填写场景；指定负责人确认图片费用计划后仅生成一张，写入「生成图片」等待飞书人工审核。原图保留；审核通过后，由操作者把选定图片放到视频任务参考附件，再另行确认视频费用。未知生成/上传结果不重发。详见 `docs/product/PORTABLE_IMAGES.md`；不属于 a38 固定包。本轮一次真实生成、附件回写与完整解码已通过，保持待本人审核；不据此宣称已投产。
+
+## 客户远程部署与 Agent 接管
+
+代客户安装、远程输入失效、旧服务器隔离、第三方平台身份核对或客户自己的 Codex 接管时，读取 [客户远程安装与接管](references/customer-remote.md)。沿用授权 SSH/API，先盘点既有网站与数据库。使用 [交接模板](references/handoff.md) 给客户保存准确运行版本、目录、入口、启用状态和待验步骤；不把官网或常驻员工网页当作飞书日常入口。
+
+源码候选新增 `seedance-novai`，仅对应核实过的 `https://xinghezhiyun.com` 企业版，独立凭据且 `auto_asset=false`；只读认证通过，真实生成闭环未验。`portable_catalog.py` 提供单 SKU 快照模块，尚未接入 `welcome` 的自动建表与事件分发。两项均不在 a41 固定包，不向旧安装器虚构可用命令。详细范围见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
