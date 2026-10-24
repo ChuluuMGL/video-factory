@@ -25,3 +25,9 @@ Seedance 2.0 与 2.5 是独立模型选项。安装人员先核对现有 Key 所
 本候选将供应商视频链接写回原行供人工审核。它不承诺供应商链接永久有效，也不声称已把成片复制进飞书附件。可选结果快照附件功能是另一项验收。Seedream 是图片模型，不混入视频选择。
 
 接口依据：[可灵图生视频](https://kling.ai/document-api/apiReference/model/imageToVideo)、[Seedance 创建任务](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh)、[万相图生视频](https://help.aliyun.com/en/model-studio/image-to-video-general-api-reference)。
+
+## 新星数科企业版（a41 之后的源码候选）
+
+配置项 `seedance-novai` 独立于官方 `seedance-cn`，固定 `https://xinghezhiyun.com/api/v3/contents/generations/tasks`，支持当前配置列出的 Seedance 2.0 / 2.5 ID，默认 2.0。使用企业版平台自己的 Key，不复用官方方舟 Key；不同域名或区域需另核对，不能因品牌同名自动切换。请求和费用计划均固定 `auto_asset=false`，不隐式启用平台素材入库。
+
+已核对[供应商公开 API 规范](https://xinghezhiyun.com/docs/openapi.json)的生产域名、`/v1/models` 与方舟兼容路径；现场只读认证及模型列表通过，未做该平台的付费生成、轮询、结果回写验收。合成测试覆盖请求参数、计划一致性、任务 ID / 模型回执匹配和查询不重发。它不在 a41 固定包，不能与官方 Seedance 已有验收混为一谈。

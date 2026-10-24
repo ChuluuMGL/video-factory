@@ -32,3 +32,7 @@ Suggestions, reproducible bug reports and focused pull requests are welcome.
 - Submit original or compatibly licensed code and document new dependencies. Third-party terms remain separate from this project's license.
 
 Include source and sanitized verification summaries only. Do not commit build artifacts, databases, keys or raw diagnostic bundles. Maintainers may request changes; no response SLA is promised.
+
+## 安装问题回写闭环
+
+每次安装的问题先保留客户私有证据，再抽象为不含真实标识的 Issue。修复 PR 同步代码、合成回归、适用版本、Skill 排障入口和用户说明。新增能力标注“源码候选 / 已发行 / 当前客户已验收”，不要互相替代。官网只同步通用入口与能力边界，不能公开客户配置。参考[客户部署复盘](docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md)。

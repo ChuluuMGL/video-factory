@@ -13,3 +13,9 @@
 - 便携模型 HTTP 失败：含诊断回执的工作流把有限状态保存到原执行账本 `result.provider_http_receipt`，不保存原始响应或完整执行日志。`PROVIDER_HTTP_<状态码>_NO_RESUBMIT` 后保持 `busy`；404、429、500 都不能作为清锁重发或未收费的证明。无回执仍按未知处理，升级不能恢复过去丢失的响应。
 
 新问题先搜索公开 Issues。Agent 可以写**脱敏草稿**交客户或实施人员审阅，不自动提交公开 Issue。不得把 API Key、App Secret、密码、IP、真实飞书 ID、客户资料、原始日志或未脱敏截图发到 GitHub；疑似漏洞使用私密报告。已关闭 Issue 也不能代替客户本机的升级与验收。
+
+## 本次客户部署补充
+
+远程输入无变化、同品牌多域名 401、邮箱无用户 ID、Base 可编辑但事件不达、限流后的字段续建，按 [客户远程安装与接管](customer-remote.md) 分层检查。SKU 关联字段在 search 与 GET 的结构不同，应先读取单记录再比较，不能把结构差异判断为商品丢失。
+
+源码 SKU 模块的 `CATALOG_TASK_ALREADY_PLANNED_USE_NEW_TASK` 要求保留旧计划并新建任务；`CATALOG_TASK_CHANGED_NO_WRITE` 表示写前发现编辑，应先核对当前行；`CATALOG_SNAPSHOT_NOT_PERSISTED` / `CATALOG_ATTACHMENTS_NOT_PERSISTED` 要求回读原行，不能盲目重放写入。模块尚未由 a41 welcome 自动安装。完整问题与未完成项见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。

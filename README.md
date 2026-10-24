@@ -119,3 +119,5 @@ Windows/Mac 用户可直接选择本机 Node.js、Docker 或已有 n8n。只有�
 Copyright (c) 2026 Chuluu。署名与授权状态见 [NOTICE](NOTICE)。本项目自有源码和文档采用 [MIT](LICENSE)；第三方依赖、镜像和案例媒体保留各自条款，见 [第三方说明](THIRD_PARTY_NOTICES.md)。欢迎通过 Issue 和 Pull Request 提出改进，参见 [贡献指南](CONTRIBUTING.md)。
 
 公开包包含项目自身 wheel 和固定依赖下载清单。首次安装由同一入口从 files.pythonhosted.org 获取外部 wheel 并逐一校验 SHA-256；服务器也需能访问服务镜像源。已完整获取的依赖可离线复用，不重复下载。
+
+[首次测试与 Agent 排障](docs/product/FIRST_RUN_AND_AGENT_SUPPORT.md) · [客户部署复盘](docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md)

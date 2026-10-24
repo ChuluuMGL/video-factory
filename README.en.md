@@ -123,3 +123,5 @@ Maintained by [Chuluu](https://github.com/ChuluuMGL). Product website: [YUEYU TE
 Copyright (c) 2026 Chuluu. See [NOTICE](NOTICE) for attribution and authorization status. Original code and documentation use the [MIT license](LICENSE). Dependencies, images and case media retain their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Issues and pull requests are welcome; see [contributing](CONTRIBUTING.md).
 
 Public packages contain the project wheel and hash-locked download metadata. First installation fetches external wheels directly from files.pythonhosted.org; server image registries must also be reachable. Reuse verifies cached bytes and does not redownload unchanged dependencies.
+
+[First-run and Agent support](docs/product/FIRST_RUN_AND_AGENT_SUPPORT.md) · [Customer deployment lessons](docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md) (Chinese)
