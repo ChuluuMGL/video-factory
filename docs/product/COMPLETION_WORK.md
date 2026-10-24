@@ -4,6 +4,10 @@
 
 <a id="2026-10-19-便携路线收尾"></a>
 
+## 2026-10-24 客户部署回写
+
+客户现场步骤的产品化缺口统一跟踪 [#79](https://github.com/ChuluuMGL/video-factory/issues/79)：SKU 初始化/事件分发、限流续接、统一只读凭据预检、原生指南正文交付和客户 Agent 接管。企业版新模型仅通过只读认证，真实生成仍待验。源码与文档修复见 [PR #78](https://github.com/ChuluuMGL/video-factory/pull/78)；不改变 a41 固定包，也不关闭第二账号或独立设备验收。
+
 ## 2026-10-21 技术收尾
 
 当前公开版本为 [a41](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a41)，固定包发行、匿名安装和官网公网复测已完成；详见 [a41 回执](DELIVERY_A41_RESULT.md)。这是当前状态清单，历史版本记录保留当时结论。

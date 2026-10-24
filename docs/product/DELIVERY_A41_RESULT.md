@@ -33,7 +33,7 @@
 - [官网同步 PR #45](https://github.com/ChuluuMGL/YUEYUTECH/pull/45)已合并并部署。[公网复测](https://github.com/ChuluuMGL/YUEYUTECH/actions/runs/39522540656)确认 52 个文件摘要、四种屏宽、复制与降级复制、Skill 下载、共用菜单和页脚、语言路由及四个案例视频通过。仅同步产品静态目录，其他页面、运行配置和上传资料保持原状。
 - 发行归档 SHA-256：`d867285f63ca34d752c42eeab0d8e1de6047eaf9b25c152ad4a6737ee7b014bd`；内部清单 SHA-256：`35d67eb9440307331312bec7e482619ccff2257eab3e0ebe5bc4684318d9e4c8`。
 
-后续状态文档更新不替换已冻结的 a41 安装包、完整 Skill 或官网交付文件；这些文件保留发行时内容和摘要。最新验收结论以本仓库的[工作清单](COMPLETION_WORK.md)为准。
+后续状态文档更新不替换已冻结的 a41 安装包、完整 Skill 或官网交付文件；这些文件保留发行时内容和摘要。最新验收结论以本仓库的[工作清单](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/COMPLETION_WORK.md)为准。
 
 第二真实账号、独立操作者和设备验收仍按维护者安排放到最后。其他尚无本产品真实调用证据的模型继续标为待验；n8n Cloud SaaS 实例测试继续跳过。私有账号、Base、任务编号、素材与原始回执不进入公开仓库。
 

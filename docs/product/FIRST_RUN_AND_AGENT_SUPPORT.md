@@ -41,6 +41,6 @@ Codex 需要客户授权的连接方式才能操作；只读 GitHub 能得到方
 
 ## 管理员维护与反馈
 
-详细检查见[排障索引](TROUBLESHOOTING.md)与[远程接管步骤](../../skills/video-factory-setup/references/customer-remote.md)。保留本项目私有交接、版本、工作流与接收器位置、凭据到期日及下一步；不保存明文密码。
+详细检查见[排障索引](TROUBLESHOOTING.md)与[远程接管步骤](https://github.com/ChuluuMGL/video-factory/blob/main/skills/video-factory-setup/references/customer-remote.md)。保留本项目私有交接、版本、工作流与接收器位置、凭据到期日及下一步；不保存明文密码。
 
 无法解决的问题由 Agent 准备脱敏 Issue 草稿：版本、安装路线、错误码、最小复现、预期与实际结果、已检查项目。删除客户名称、邮箱、IP、Base/人员/凭据 ID、原始日志和素材后由客户或维护人员审核提交。Issue 关闭不代表客户服务已升级；修复、发布、应用到客户和任务验收分别确认。
