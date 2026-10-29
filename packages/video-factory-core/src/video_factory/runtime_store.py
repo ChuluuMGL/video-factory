@@ -149,7 +149,7 @@ class RuntimeStore:
     def invalidate_worker_approvals(db):
         # Restoring old ready rows cannot carry an old paid permission forward.
         # Keep receipts intact so submitted/unknown jobs can still be reconciled.
-        for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'agent:video:plan:%'").fetchall():
+        for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'agent:video:plan:%' OR key LIKE 'agent:script:plan:%'").fetchall():
             value=json.loads(row['value']);value['expires_at']=0;value['revoked']=True
             db.execute('UPDATE meta SET value=? WHERE key=?',(canonical(value),row['key']))
 

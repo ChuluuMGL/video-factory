@@ -65,6 +65,6 @@ vfctl agent-plan approve --root /absolute/private/runtime --project test_project
 
 ## 剩余工作
 
-此候选只完成阶段 B 的视频子集。ScriptJobs 仍需真实飞书 submitter 身份、绑定与原表源版本；#37 与脚本准备/批准拆分继续单独审查。Workflow Agent 服务端适配、脚本/预览展示、报价与预算上限、负责人友好确认 UI、真实隔离验收均未完成。#81 保持打开。
+视频候选只完成阶段 B 的视频子集。后续[脚本计划候选](AGENT_SCRIPT_PLANS.md)保留飞书 submitter 身份、绑定与原表源版本，并拆开准备/批准/入队；#37 继续单独审查。Workflow Agent 服务端适配、脚本/预览展示、报价与预算上限、负责人友好确认 UI、真实隔离验收均未完成。#81 保持打开。
 
 云端 Ubuntu/macOS 使用合成 SQLite、假供应商与本机回环 HTTP 验证：权限隔离、并发重复提交、事务回滚、版本/配置/凭据/素材漂移、期限/撤销/恢复、未知结果无重试、CLI 费用确认和敏感字段隔离。本机仅编辑、静态解析和 Git。

@@ -57,7 +57,7 @@ Workflow Agent 的服务端从受控配置读取 token，在 `Authorization: Bea
 
 后续准备、批准和提交接口必须绑定项目/任务/版本、请求 ID、输入摘要、具体模型与凭据版本、调用上限、计划到期时间。Agent 提出方案，不持有管理员权限或自动生成用户批准。
 
-Video Factory 保存执行事实及产物；Workflow Agent 保存讨论和方案引用。通用 `prepare_plan`、`approve_plan`、`submit_plan` 仍未开放。视频专用能力由启动开关与凭据权限共同决定；脚本计划、内容、预览和局部返修尚未提供。不得从一个 HTTP 200 推断完整 Agent 创作闭环已经上线。
+Video Factory 保存执行事实及产物；Workflow Agent 保存讨论和方案引用。通用 `prepare_plan`、`approve_plan`、`submit_plan` 仍未开放。视频专用能力由启动开关与凭据权限共同决定；[脚本计划候选](AGENT_SCRIPT_PLANS.md)使用独立显式开关及固定飞书提交人委托。脚本内容、预览和局部返修尚未提供。不得从一个 HTTP 200 推断完整 Agent 创作闭环已经上线。
 
 ## 尚未接入与验证
 

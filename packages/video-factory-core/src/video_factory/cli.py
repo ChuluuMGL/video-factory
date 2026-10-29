@@ -101,7 +101,7 @@ def main(argv=None):
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
     args = parser.parse_args(argv)
-    if args.command in ('up', 'agent-key', 'agent-plan'):
+    if args.command in ('up', 'agent-key', 'agent-plan', 'agent-script-plan'):
         return local_cli(args)
     if args.command == 'production-setup':
         return production_cli(args)
