@@ -37,14 +37,23 @@ class ExecutionStore(RuntimeStore):
     def resolve_secret(self,*args):return self.store.resolve_secret(*args)
 
 
-def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Worker):
+def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Worker,
+                 after=None, on_selected=None):
     identifier(project)
+    if after is not None and after != '':identifier(after)
     with store.connect() as db:
         authorize(db,token,project)
         # Task selection comes from the customer's ledger, not caller-supplied
         # asset paths, credentials, provider IDs, plans or arbitrary job payloads.
-        rows=db.execute("SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.state IN ('ready','submitted','submission_unknown','script_queued','script_submission_unknown') AND t.revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id) ORDER BY t.id LIMIT 1001",(project,)).fetchall()
-        if len(rows)>1000:raise RuntimeFault('EXECUTION_QUEUE_REQUIRES_PAGINATION')
+        query="SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.state IN ('ready','submitted','submission_unknown','script_queued','script_submission_unknown') AND t.revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id)"
+        if after is None:
+            rows=db.execute(query+" ORDER BY t.id LIMIT 1001",(project,)).fetchall()
+            if len(rows)>1000:raise RuntimeFault('EXECUTION_QUEUE_REQUIRES_PAGINATION')
+            next_after=None
+        else:
+            rows=db.execute(query+" AND t.id>? ORDER BY t.id LIMIT 101",(project,after)).fetchall()
+            next_after=rows[99]['id'] if len(rows)>100 else ''
+            rows=rows[:100]
         from .worker import job_key
         selected=None;blocked=[]
         for row in rows:
@@ -64,7 +73,13 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
             if row['state']=='submission_unknown' and not value.get('provider_receipt'):
                 blocked.append({'task':row['id'],'revision':row['revision'],'reason':'submission_unknown'});continue
             selected=dict(row);break
-    if selected is None:return {'project':project,'status':'idle','blocked':blocked,'provider_requests':0}
+    if selected is None:
+        result={'project':project,'status':'idle','blocked':blocked,'provider_requests':0}
+        if after is not None:result['next_after']=next_after
+        return result
+    # The local scheduler checkpoints selection before I/O: one failed/pending
+    # task cannot starve the rest. Worker still owns all approval/intent checks.
+    if on_selected is not None:on_selected(selected['id'])
     # Worker rechecks capability, approval, revision, credential version and
     # content hashes inside its durable intent transaction immediately before POST.
     if selected['state'].startswith('script_'):

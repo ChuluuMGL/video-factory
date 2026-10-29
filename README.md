@@ -20,6 +20,8 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 当前版本与使用范围
 
+开发候选：[#80 本机内核](https://github.com/ChuluuMGL/video-factory/issues/80)与 [#81 Workflow Agent 接入](https://github.com/ChuluuMGL/video-factory/issues/81)正在分阶段推进。新增源码命令与接口见[开发说明](docs/product/LOCAL_AGENT_KERNEL.md)，不在 a41 固定安装包中，尚不提供完整 Agent 创作或本机自助安装闭环。
+
 **MIT 开源测试版。固定版本与摘要以公开 Release 为准。**
 
 官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户提供运行环境、飞书及模型账户。
