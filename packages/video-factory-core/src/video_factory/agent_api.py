@@ -1,7 +1,6 @@
-"""Project-scoped Agent read API. No login, review, generation or shell routes."""
+"""Scoped Agent metadata and opt-in plans; no owner approval or provider routes."""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
-import json
 
 from .onboarding import read_json
 from .runtime_store import RuntimeFault, canonical, identifier

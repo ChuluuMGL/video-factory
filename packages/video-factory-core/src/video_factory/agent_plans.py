@@ -153,8 +153,10 @@ class VideoPlans:
                     if saved.get('submitted'):
                         key = job_key(self.project, saved['task'], saved['revision'])
                         job = meta(db, key)
-                        row = self.store._current(db, self.project, saved['task'], saved['revision'])
-                        if (not job or job.get('agent_plan_id') != plan_id or row['state'] != 'ready'
+                        # Revocation must remain possible after configuration drift.
+                        row = db.execute('SELECT state,provider_id FROM tasks WHERE project=? AND id=? AND revision=?',
+                                         (self.project, saved['task'], saved['revision'])).fetchone()
+                        if (not row or not job or job.get('agent_plan_id') != plan_id or row['state'] != 'ready'
                                 or row['provider_id'] or job.get('provider_receipt')):
                             raise RuntimeFault('AGENT_EXECUTION_ALREADY_STARTED_OR_CHANGED')
                         job['expires_at'] = 0

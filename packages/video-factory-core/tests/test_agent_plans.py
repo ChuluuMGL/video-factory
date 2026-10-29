@@ -142,7 +142,13 @@ class AgentPlanTests(unittest.TestCase):
         self.store = RuntimeStore(self.root)
         self.plans = VideoPlans(self.store, 'brand')
         self.assertTrue(self.submit(plan)['replayed'])
-        self.scheduler().tick(); self.scheduler().tick()
+        self.scheduler().tick()
+        self.assertEqual(self.state(), 'submitted')
+        # The persisted fairness cursor wraps on an idle scan before polling
+        # the first task again; a restart must not reset that cursor.
+        self.scheduler().tick()
+        self.assertEqual(self.state(), 'submitted')
+        self.scheduler().tick()
         receipt = self.plans.receipt(self.reader, plan['plan_id'])
         self.assertEqual(receipt['task_state'], 'awaiting_video_review')
         self.assertTrue(receipt['provider_receipt_recorded'])
@@ -196,6 +202,15 @@ class AgentPlanTests(unittest.TestCase):
         with self.store.connect() as db:
             db.execute("UPDATE projects SET digest='changed' WHERE id='brand'")
         with self.assertRaisesRegex(RuntimeFault, 'CONFIGURATION_CHANGED'): self.submit(plan)
+
+    def test_owner_can_revoke_enqueued_plan_after_configuration_drift(self):
+        plan = self.prepare(); self.approve(plan); self.submit(plan)
+        with self.store.connect() as db:
+            db.execute("UPDATE projects SET digest='changed' WHERE id='brand'")
+        receipt = self.plans.owner(self.admin, 'revoke', plan['plan_id'], plan['plan_sha256'])
+        self.assertEqual(receipt['phase'], 'revoked')
+        with self.store.connect() as db:
+            self.assertEqual(meta(db, job_key('brand', 'one', 1))['expires_at'], 0)
 
     def test_credential_and_asset_changes_block_enqueue(self):
         plan = self.prepare(); self.approve(plan)
