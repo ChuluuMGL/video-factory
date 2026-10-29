@@ -1,13 +1,16 @@
 """Cloud-only synthetic script proposal, Feishu identity and paid-intent tests."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
 import hashlib
 import http.client
+import io
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import threading
+import select
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +19,7 @@ from review_fixture import Fixture
 from video_factory import automation
 from video_factory.agent_api import AgentAPI, AgentServer
 from video_factory.agent_script_plans import ScriptPlans
+from video_factory.cli import main
 from video_factory.feishu_bridge import meta, save
 from video_factory.local_runtime import configured_script_plans
 from video_factory.runtime_store import RuntimeFault, RuntimeStore, exclusive_write
@@ -333,6 +337,40 @@ class ScriptPlanTests(unittest.TestCase):
         missing = subprocess.run(cmd + ['--accept-provider-charges'], capture_output=True, text=True, timeout=20)
         self.assertEqual(missing.returncode, 2); self.assertIn('IDENTITY_INPUTS_REQUIRED', missing.stdout)
         self.assertNotIn(self.admin, denied.stdout + missing.stdout)
+        token_file.chmod(0o600)
+        output = io.StringIO()
+        with patch('video_factory.agent_script_plans.ScriptJobs', return_value=self.jobs), redirect_stdout(output):
+            result = main(cmd[3:] + ['--accept-provider-charges', '--script-user-token-file', str(token_file),
+                                    '--script-open-id', 'ou_employee'])
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertEqual(json.loads(output.getvalue())['phase'], 'approved')
+        for secret in (self.admin, self.f.user_token, self.request['brief']):
+            self.assertNotIn(secret, output.getvalue())
+
+    def test_real_cli_enables_script_capabilities_without_dispatch_or_identity_calls(self):
+        token_file = self.root / 'delegated.token'; exclusive_write(token_file, self.f.user_token.encode())
+        cmd = [sys.executable, '-c', 'from video_factory.cli import main; raise SystemExit(main())',
+               'up', '--root', str(self.store.root), '--project', self.project, '--port', '0',
+               '--agent-script-plans', '--script-user-token-file', str(token_file), '--script-open-id', 'ou_employee']
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            self.assertTrue(select.select([process.stdout], [], [], 20)[0], 'startup timed out')
+            ready = json.loads(process.stdout.readline())
+            self.assertFalse(ready['execution_enabled'])
+            conn = http.client.HTTPConnection('127.0.0.1', ready['port'], timeout=5)
+            try:
+                conn.request('POST', '/v1/agent/capabilities', json.dumps({'project': self.project}),
+                             {'Authorization': 'Bearer ' + self.planner, 'Content-Type': 'application/json'})
+                response = conn.getresponse(); caps = json.loads(response.read())
+                self.assertEqual(response.status, 200); self.assertTrue(caps['script_plan_available'])
+            finally: conn.close()
+            process.terminate(); stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, stderr)
+            self.assertEqual(stderr, '')
+            self.assertNotIn(self.f.user_token, stdout)
+        finally:
+            if process.poll() is None: process.kill(); process.communicate(timeout=5)
+        self.assertEqual(self.provider.calls, [])
 
 
 if __name__ == '__main__': unittest.main()
