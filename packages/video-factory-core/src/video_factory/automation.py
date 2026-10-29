@@ -8,7 +8,7 @@ from .runtime_store import RuntimeFault,canonical,identifier
 
 
 def issue(store,token,project,ttl_hours=24,*,scope='queue_read'):
-    if scope not in ('queue_read','approved_execution'):raise RuntimeFault('AUTOMATION_SCOPE_INVALID')
+    if scope not in ('queue_read','approved_execution','agent_read'):raise RuntimeFault('AUTOMATION_SCOPE_INVALID')
     identifier(project)
     maximum=8760 if scope=='approved_execution' else 168
     if type(ttl_hours) is not int or not 1<=ttl_hours<=maximum:raise RuntimeFault('AUTOMATION_TTL_INVALID')
