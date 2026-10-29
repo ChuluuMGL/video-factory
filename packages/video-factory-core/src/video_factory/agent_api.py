@@ -1,17 +1,17 @@
 """Project-scoped Agent read API. No login, review, generation or shell routes."""
-import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
 import json
-import time
 
 from .onboarding import read_json
 from .runtime_store import RuntimeFault, canonical, identifier
+from .agent_plans import VideoPlans, authorize
 
 
 class AgentAPI:
-    def __init__(self, store, project, scheduler):
+    def __init__(self, store, project, scheduler, *, plans_enabled=False):
         self.store, self.project, self.scheduler = store, identifier(project), scheduler
+        self.plans_enabled = plans_enabled
 
     def call(self, route, token, body):
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
@@ -23,24 +23,34 @@ class AgentAPI:
             '/v1/agent/status': {'project'},
             '/v1/agent/tasks': {'project', 'after'},
             '/v1/agent/task': {'project', 'task', 'revision'},
+            '/v1/agent/video/prepare': {'project', 'task', 'revision', 'request_id'},
+            '/v1/agent/video/submit': {'project', 'plan_id', 'plan_sha256'},
+            '/v1/agent/video/receipt': {'project', 'plan_id'},
         }
         if route not in fields:
             raise RuntimeFault('AGENT_ROUTE_NOT_AVAILABLE')
         if set(body) - fields[route]:
             raise RuntimeFault('AGENT_FIELDS_INVALID')
+        if '/video/' in route:
+            plans = VideoPlans(self.store, self.project)
+            if route.endswith('/receipt'):
+                return plans.receipt(token, body.get('plan_id'))
+            if not self.plans_enabled:
+                raise RuntimeFault('AGENT_PLANS_DISABLED')
+            if route.endswith('/prepare'):
+                return plans.prepare(token, body.get('task'), body.get('revision'), body.get('request_id'))
+            return plans.submit(token, body.get('plan_id'), body.get('plan_sha256'))
         with self.store.connect() as db:
-            key = 'automation:key:' + hashlib.sha256(token.encode()).hexdigest()
-            row = db.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
-            value = json.loads(row[0]) if row else {}
-            if (value.get('scope') != 'agent_read' or value.get('project') != self.project
-                    or value.get('expires_at', 0) <= time.time()):
-                raise RuntimeFault('AUTH_AGENT_DENIED')
+            value, _ = authorize(db, token, self.project)
             if route.endswith('/capabilities'):
+                enabled = self.plans_enabled and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
-                        'available': ['task_metadata', 'task_list', 'runtime_status'],
+                        'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt']
+                                     + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else []),
                         'unavailable': ['prepare_plan', 'approve_plan', 'submit_plan',
                                         'script_content', 'media_preview', 'shot_repair'],
-                        'mutations_allowed': False}
+                        'mutations_allowed': enabled, 'approval_authority': 'local_administrator',
+                        'script_plan_available': False}
             if route.endswith('/status'):
                 return self.scheduler.status()
             columns = 't.id,t.revision,t.state,t.input_digest,t.configuration_digest'
