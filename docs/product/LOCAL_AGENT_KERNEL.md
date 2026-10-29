@@ -8,7 +8,7 @@
 - 在同一账本复用 `dispatch_one`、`Worker.step` 和 `ScriptJobs.step`；有明确执行开关、有效项目执行凭据和既有任务批准时，才推进任务。
 - 游标在供应商 I/O 前保存，失败或持续排队的首条任务不会阻塞其他任务。一次扫描最多 100 条，扫描到底后从头继续。休眠唤醒后不补发错过的调度次数。
 - 锁覆盖整个本机 SQLite runtime 目录，比每项目一把锁更严格；同一目录只能运行一个 `vfctl up`。后续多项目单进程管理另行设计。
-- Agent 只能读取能力、任务元数据和当前进程状态；没有批准、生成、审核、shell、任意 URL 或模型选择接口。
+- 默认 Agent 只能读取能力、任务元数据和当前进程状态。第二阶段候选增加显式启用的视频计划准备与已批准计划入队，见 [视频计划合同](AGENT_VIDEO_PLANS.md)；没有 Agent 批准、审核、shell、任意 URL 或模型选择接口。
 
 ## 启动前提与停止
 
@@ -57,7 +57,7 @@ Workflow Agent 的服务端从受控配置读取 token，在 `Authorization: Bea
 
 后续准备、批准和提交接口必须绑定项目/任务/版本、请求 ID、输入摘要、具体模型与凭据版本、调用上限、计划到期时间。Agent 提出方案，不持有管理员权限或自动生成用户批准。
 
-Video Factory 保存执行事实及产物；Workflow Agent 保存讨论和方案引用。准备/提交接口未实现前，能力发现明确返回 `prepare_plan`、`approve_plan`、`submit_plan` 不可用。脚本内容、预览和局部返修也尚未提供。不得从一个 HTTP 200 推断完整 Agent 创作闭环已经上线。
+Video Factory 保存执行事实及产物；Workflow Agent 保存讨论和方案引用。通用 `prepare_plan`、`approve_plan`、`submit_plan` 仍未开放。视频专用能力由启动开关与凭据权限共同决定；脚本计划、内容、预览和局部返修尚未提供。不得从一个 HTTP 200 推断完整 Agent 创作闭环已经上线。
 
 ## 尚未接入与验证
 
