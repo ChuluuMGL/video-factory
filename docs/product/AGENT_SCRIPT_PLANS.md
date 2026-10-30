@@ -68,3 +68,5 @@ vfctl agent-script-plan approve --root /absolute/private/runtime --project test_
 云端合成测试覆盖真实本机回环飞书身份 fixture、假脚本供应商、原表变更、并发、事务回滚、身份/权限/配置/凭据漂移、审核修订、未知提交、恢复和 HTTP/CLI 边界。本机只做编辑、静态解析和 Git，不进行运行测试或真实 API 请求。
 
 尚需现有 Workflow Agent 的服务端适配与对话界面、受控脚本内容/视频预览接口、友好的身份授权与费用确认页面、金额预算，以及隔离真实飞书/模型和第二位使用者验收。#37 仍是单独未合并的原表生产入口，未在本候选中整体引入。该接口候选不代表这些阶段已完成。
+
+Workbench candidate: [controlled catalog, plan listing and content reads](AGENT_WORKBENCH_CONTENT.md). With this extension, agent_plan plus --agent-script-plans grants content access; agent_read remains metadata-only.
