@@ -31,6 +31,9 @@ class AgentAPI:
             '/v1/agent/script/prepare-record': {'project', 'request_id', 'record', 'expected_revision'},
             '/v1/agent/script/submit': {'project', 'plan_id', 'plan_sha256'},
             '/v1/agent/script/receipt': {'project', 'plan_id'},
+            '/v1/agent/script/catalog': {'project'},
+            '/v1/agent/script/plans': {'project', 'after'},
+            '/v1/agent/script/content': {'project', 'plan_id', 'plan_sha256'},
         }
         if route not in fields:
             raise RuntimeFault('AGENT_ROUTE_NOT_AVAILABLE')
@@ -41,6 +44,12 @@ class AgentAPI:
                 return ScriptPlans(self.store, self.project).receipt(token, body.get('plan_id'))
             if self.script_plans is None:
                 raise RuntimeFault('AGENT_SCRIPT_PLANS_DISABLED')
+            if route.endswith('/catalog'):
+                return self.script_plans.catalog(token)
+            if route.endswith('/plans'):
+                return self.script_plans.listing(token, body.get('after', ''))
+            if route.endswith('/content'):
+                return self.script_plans.content(token, body.get('plan_id'), body.get('plan_sha256'))
             if route.endswith('/submit'):
                 return self.script_plans.submit(token, body.get('plan_id'), body.get('plan_sha256'))
             request = {k: v for k, v in body.items() if k not in ('project', 'request_id')}
@@ -63,9 +72,10 @@ class AgentAPI:
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
                         'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt']
                                      + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
-                                     + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan'] if scripts else []),
+                                     + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
+                                         'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),
                         'unavailable': ['prepare_plan', 'approve_plan', 'submit_plan',
-                                        'script_content', 'media_preview', 'shot_repair'],
+                                        'media_preview', 'shot_repair'] + ([] if scripts else ['script_content']),
                         'mutations_allowed': enabled or scripts, 'approval_authority': 'local_administrator',
                         'script_plan_available': scripts}
             if route.endswith('/status'):
