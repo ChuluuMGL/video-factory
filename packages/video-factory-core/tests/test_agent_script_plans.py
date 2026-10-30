@@ -264,7 +264,7 @@ class ScriptPlanTests(unittest.TestCase):
                             db.execute("UPDATE meta SET value='changed' WHERE key='deployment'")
                     return secret
                 with patch.object(self.store, 'resolve_secret', side_effect=mutate):
-                    with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_PLAN_CHANGED'): self.step()
+                    with self.assertRaisesRegex(RuntimeFault, 'PROJECT_CONFIGURATION_CHANGED' if change == 'configuration' else 'SCRIPT_PLAN_CHANGED'): self.step()
                 with self.store.connect() as db:
                     self.assertEqual(meta(db, job_key(self.project, 'generated_one', 1))['state'], 'queued')
                     save(db, 'setup:project:' + self.project, setup)
