@@ -200,6 +200,17 @@ class ScriptJobs:
             save(db,native_source_key(project,task),{'record_id':plan['native_source']['record_id']})
         return {**result,'state':'script_queued','provider_requests':0}
 
+    def _fence_execution(self, db, plan):
+        """Recheck mutable project facts at the irreversible provider boundary."""
+        project = plan['project']
+        setup = meta(db, 'setup:project:' + project)
+        config = db.execute('SELECT digest FROM projects WHERE id=?', (project,)).fetchone()
+        deployment = db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()
+        if (not setup or plan['sku'] not in setup['configuration']['project']['products']
+                or not config or config[0] != plan['configuration_digest']
+                or not deployment or deployment[0] != plan['deployment']):
+            raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+
     def step(self,token,project,task,revision,master_key):
         from .dispatch import authorize
         with self.store.connect() as db:
@@ -211,6 +222,7 @@ class ScriptJobs:
             if job['state']!='queued':return {'state':row['state'],'provider_requests':0,'automatic_resubmit':False}
             if job['expires_at']<time.time():raise RuntimeFault('SCRIPT_APPROVAL_EXPIRED')
             plan=job['plan'];settings=meta(db,'script:profile:'+project)
+            self._fence_execution(db, plan)
             binding=self.bridge._binding(db,project)
             setup=meta(db,'setup:project:'+project)
             if (settings!=plan['profile'] or fingerprint(binding)!=plan['binding_sha256'] or not setup
@@ -241,6 +253,7 @@ class ScriptJobs:
             authorize(db,token,project)
             latest=meta(db,key(project,task,revision));row=self.store._current(db,project,task,revision)
             if latest!=job or row['state']!='script_queued':raise RuntimeFault('SCRIPT_INTENT_ALREADY_CLAIMED')
+            self._fence_execution(db, plan)
             if meta(db,'script:profile:'+project)!=settings:raise RuntimeFault('SCRIPT_PLAN_CHANGED')
             current_native=meta(db,'native:config:'+project)
             current_native=current_native if current_native and current_native.get('enabled') else None

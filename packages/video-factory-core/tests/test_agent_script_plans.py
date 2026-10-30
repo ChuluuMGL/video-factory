@@ -242,6 +242,36 @@ class ScriptPlanTests(unittest.TestCase):
             setup['configuration']['project']['products'] = []; save(db, 'setup:project:' + self.project, setup)
         with self.assertRaisesRegex(RuntimeFault, 'SKU_NOT_IN_PROJECT'): self.submit(plan)
 
+    def test_paid_intent_rechecks_project_facts_after_external_reads(self):
+        plan = self.prepare(); self.approve(plan); self.submit(plan)
+        resolve = self.store.resolve_secret
+        for change in ('sku', 'configuration', 'deployment'):
+            with self.subTest(change=change):
+                with self.store.connect() as db:
+                    setup = meta(db, 'setup:project:' + self.project)
+                    config = db.execute('SELECT digest FROM projects WHERE id=?', (self.project,)).fetchone()[0]
+                    deployment = db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()[0]
+                def mutate(*args):
+                    secret = resolve(*args)
+                    with self.store.connect() as db:
+                        if change == 'sku':
+                            modified = json.loads(json.dumps(setup))
+                            modified['configuration']['project']['products'] = []
+                            save(db, 'setup:project:' + self.project, modified)
+                        elif change == 'configuration':
+                            db.execute('UPDATE projects SET digest=? WHERE id=?', ('changed', self.project))
+                        else:
+                            db.execute("UPDATE meta SET value='changed' WHERE key='deployment'")
+                    return secret
+                with patch.object(self.store, 'resolve_secret', side_effect=mutate):
+                    with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_PLAN_CHANGED'): self.step()
+                with self.store.connect() as db:
+                    self.assertEqual(meta(db, job_key(self.project, 'generated_one', 1))['state'], 'queued')
+                    save(db, 'setup:project:' + self.project, setup)
+                    db.execute('UPDATE projects SET digest=? WHERE id=?', (config, self.project))
+                    db.execute("UPDATE meta SET value=? WHERE key='deployment'", (deployment,))
+                self.assertEqual(self.provider.calls, [])
+
     def test_commit_rechecks_token_and_credentials_after_external_reads(self):
         original = self.jobs.prepare
         def rotate(*args, **kwargs):
