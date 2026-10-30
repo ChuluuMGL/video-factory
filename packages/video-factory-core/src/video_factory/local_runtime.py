@@ -9,6 +9,7 @@ import threading
 from . import automation
 from .agent_api import AgentAPI, AgentServer
 from .agent_plans import VideoPlans
+from .agent_script_plans import ScriptPlans
 from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault, RuntimeStore, exclusive_write, private_directory
 from .scheduler import Scheduler, runtime_lock
@@ -31,6 +32,9 @@ def register(commands):
     up.add_argument('--master-key-file', type=Path)
     up.add_argument('--media-root', type=Path)
     up.add_argument('--agent-plans', action='store_true', help='enable video plan preparation and approved enqueue; separate from execution')
+    up.add_argument('--agent-script-plans', action='store_true', help='enable delegated Feishu script plans; does not approve fees')
+    up.add_argument('--script-user-token-file', type=Path)
+    up.add_argument('--script-open-id', help='pin the configured Feishu submitter; validated against live identity')
     key = commands.add_parser('agent-key', help='save a scoped Agent token to a new private file; read-only by default')
     key.add_argument('--root', type=Path, default=default_root())
     key.add_argument('--project', required=True)
@@ -46,16 +50,38 @@ def register(commands):
     plan.add_argument('--plan-id', required=True)
     plan.add_argument('--plan-sha256')
     plan.add_argument('--accept-provider-charges', action='store_true', help='approve one call at the configured provider rate; no price quote is available')
+    script = commands.add_parser('agent-script-plan', help='inspect/approve/revoke a script proposal as local administrator')
+    script.add_argument('action', choices=('inspect', 'approve', 'revoke'))
+    script.add_argument('--root', type=Path, default=default_root())
+    script.add_argument('--project', required=True)
+    script.add_argument('--admin-token-file', type=Path, required=True)
+    script.add_argument('--plan-id', required=True)
+    script.add_argument('--plan-sha256')
+    script.add_argument('--accept-provider-charges', action='store_true')
+    script.add_argument('--script-user-token-file', type=Path)
+    script.add_argument('--script-open-id')
+
+
+def configured_script_plans(store, project, enabled, token_file, open_id):
+    if not enabled:
+        if token_file or open_id: raise RuntimeFault('AGENT_SCRIPT_EXPLICIT_ENABLE_REQUIRED')
+        return None
+    if not token_file or not open_id: raise RuntimeFault('AGENT_SCRIPT_IDENTITY_INPUTS_REQUIRED')
+    # Validate a private file now, read it again for each request to support
+    # deliberate token refresh. Never save its content or path in plan receipts.
+    secret_input(token_file, '')
+    return ScriptPlans(store, project, user_token_provider=lambda: secret_input(token_file, ''), open_id=open_id)
 
 
 def serve(store, project, port, stop, *, execution_token=None, master_key=None,
-          media_root=None, interval=5, plans_enabled=False, on_ready=lambda value: None):
+          media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise RuntimeFault('PORT_INVALID')
     with runtime_lock(store.root):
         scheduler = Scheduler(store, project, execution_token=execution_token, master_key=master_key,
                               media_root=media_root, interval=interval)
-        with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler, plans_enabled=plans_enabled)) as server:
+        with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler,
+                         plans_enabled=plans_enabled, script_plans=script_plans)) as server:
             thread = threading.Thread(target=scheduler.run, args=(stop,), name='vf-local-scheduler')
             thread.start()
             try:
@@ -78,6 +104,18 @@ def cli(args):
         if os.environ.get('VF_CONTAINER_MODE') == '1' or os.environ.get('VF_DATABASE_URL_FILE'):
             raise RuntimeFault('LOCAL_SQLITE_ENVIRONMENT_REQUIRED')
         store = RuntimeStore(args.root)
+        if args.command == 'agent-script-plan':
+            if args.action == 'approve' and not args.accept_provider_charges:
+                raise RuntimeFault('AGENT_EXPLICIT_PROVIDER_CHARGES_REQUIRED')
+            # Reject unauthorized administrators before loading any delegated token.
+            admin = secret_input(args.admin_token_file, '')
+            with store.connect() as db: store.authorize(db, admin, 'admin')
+            plans = configured_script_plans(store, args.project, args.action == 'approve',
+                                            args.script_user_token_file, args.script_open_id)
+            receipt = (plans or ScriptPlans(store, args.project)).owner(admin, args.action,
+                                                                       args.plan_id, args.plan_sha256)
+            emit(receipt)
+            return 0
         if args.command == 'agent-plan':
             if args.action == 'approve' and not args.accept_provider_charges:
                 raise RuntimeFault('AGENT_EXPLICIT_PROVIDER_CHARGES_REQUIRED')
@@ -105,13 +143,16 @@ def cli(args):
             raise RuntimeFault('LOCAL_EXPLICIT_EXECUTION_REQUIRED')
         token = secret_input(args.execution_key_file, '') if args.execute_approved else None
         key = secret_input(args.master_key_file, '') if args.execute_approved else None
+        scripts = configured_script_plans(store, args.project, args.agent_script_plans,
+                                          args.script_user_token_file, args.script_open_id)
         stop = threading.Event()
         previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
         try:
             for sig in previous:
                 signal.signal(sig, lambda *_: stop.set())
             serve(store, args.project, args.port, stop, execution_token=token, master_key=key,
-                  media_root=args.media_root, interval=args.interval, plans_enabled=args.agent_plans, on_ready=emit)
+                  media_root=args.media_root, interval=args.interval, plans_enabled=args.agent_plans,
+                  script_plans=scripts, on_ready=emit)
         finally:
             for sig, handler in previous.items():
                 signal.signal(sig, handler)

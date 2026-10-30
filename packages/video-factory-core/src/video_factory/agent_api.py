@@ -5,12 +5,14 @@ import io
 from .onboarding import read_json
 from .runtime_store import RuntimeFault, canonical, identifier
 from .agent_plans import VideoPlans, authorize
+from .agent_script_plans import ScriptPlans
 
 
 class AgentAPI:
-    def __init__(self, store, project, scheduler, *, plans_enabled=False):
+    def __init__(self, store, project, scheduler, *, plans_enabled=False, script_plans=None):
         self.store, self.project, self.scheduler = store, identifier(project), scheduler
         self.plans_enabled = plans_enabled
+        self.script_plans = script_plans
 
     def call(self, route, token, body):
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
@@ -25,11 +27,25 @@ class AgentAPI:
             '/v1/agent/video/prepare': {'project', 'task', 'revision', 'request_id'},
             '/v1/agent/video/submit': {'project', 'plan_id', 'plan_sha256'},
             '/v1/agent/video/receipt': {'project', 'plan_id'},
+            '/v1/agent/script/prepare': {'project', 'request_id', 'task', 'sku_id', 'brief', 'expected_revision'},
+            '/v1/agent/script/prepare-record': {'project', 'request_id', 'record', 'expected_revision'},
+            '/v1/agent/script/submit': {'project', 'plan_id', 'plan_sha256'},
+            '/v1/agent/script/receipt': {'project', 'plan_id'},
         }
         if route not in fields:
             raise RuntimeFault('AGENT_ROUTE_NOT_AVAILABLE')
         if set(body) - fields[route]:
             raise RuntimeFault('AGENT_FIELDS_INVALID')
+        if '/script/' in route:
+            if route.endswith('/receipt'):
+                return ScriptPlans(self.store, self.project).receipt(token, body.get('plan_id'))
+            if self.script_plans is None:
+                raise RuntimeFault('AGENT_SCRIPT_PLANS_DISABLED')
+            if route.endswith('/submit'):
+                return self.script_plans.submit(token, body.get('plan_id'), body.get('plan_sha256'))
+            request = {k: v for k, v in body.items() if k not in ('project', 'request_id')}
+            if set(body) != fields[route]: raise RuntimeFault('AGENT_FIELDS_INVALID')
+            return self.script_plans.prepare(token, body.get('request_id'), request)
         if '/video/' in route:
             plans = VideoPlans(self.store, self.project)
             if route.endswith('/receipt'):
@@ -43,13 +59,15 @@ class AgentAPI:
             value, _ = authorize(db, token, self.project)
             if route.endswith('/capabilities'):
                 enabled = self.plans_enabled and value['scope'] == 'agent_plan'
+                scripts = self.script_plans is not None and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
-                        'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt']
-                                     + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else []),
+                        'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt']
+                                     + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
+                                     + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan'] if scripts else []),
                         'unavailable': ['prepare_plan', 'approve_plan', 'submit_plan',
                                         'script_content', 'media_preview', 'shot_repair'],
-                        'mutations_allowed': enabled, 'approval_authority': 'local_administrator',
-                        'script_plan_available': False}
+                        'mutations_allowed': enabled or scripts, 'approval_authority': 'local_administrator',
+                        'script_plan_available': scripts}
             if route.endswith('/status'):
                 return self.scheduler.status()
             columns = 't.id,t.revision,t.state,t.input_digest,t.configuration_digest'
@@ -127,8 +145,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {'error': 'LOCAL_ORIGIN_DENIED'})
                 return
             lengths = self.headers.get_all('Content-Length', [])
+            limit = 65536 if self.path == '/v1/agent/script/prepare' else 8192
             if (self.headers.get('Transfer-Encoding') or len(lengths) != 1
-                    or not lengths[0].isdigit() or not 0 < int(lengths[0]) <= 8192
+                    or not lengths[0].isdigit() or not 0 < int(lengths[0]) <= limit
                     or self.headers.get_content_type() != 'application/json'):
                 raise RuntimeFault('AGENT_REQUEST_INVALID')
             raw = self.rfile.read(int(lengths[0]))

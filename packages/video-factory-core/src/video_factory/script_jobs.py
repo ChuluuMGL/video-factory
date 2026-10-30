@@ -150,27 +150,66 @@ class ScriptJobs:
                 return {'project':values['project'],'task':values['task'],'revision':row['revision'],'state':row['state'],'replayed':True}
         value=self.prepare(user,**values)
         if value['plan_sha256']!=expected_plan:raise RuntimeFault('SCRIPT_PLAN_CHANGED')
-        plan=value['plan'];project,task,revision=plan['project'],plan['task'],plan['revision']
         with self.store.connect() as db:
-            binding=self.bridge._binding(db,project)
-            if fingerprint(binding)!=plan['binding_sha256'] or meta(db,'script:profile:'+project)!=plan['profile']:
-                raise RuntimeFault('SCRIPT_PLAN_CHANGED')
-            active_native=meta(db,'native:config:'+project)
-            active_native=active_native if active_native and active_native.get('enabled') else None
-            if fingerprint(active_native)!=plan['native_config_sha256']:
-                raise RuntimeFault('SCRIPT_NATIVE_CONFIGURATION_CHANGED')
-            if plan['native_source']:
-                from .feishu_native_review import source_key as native_source_key
-                source=meta(db,native_source_key(project,task))
-                if source and source['record_id']!=plan['native_source']['record_id']:
-                    raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CONFLICT')
-            source_revision=plan['native_source']['source_revision'] if plan['native_source'] else expected_plan
-            result=self.store._create_task(db,plan['actor'],project,task,{'sku_id':plan['sku']['sku_id'],'script':plan['brief'],'source_revision':source_revision},revision-1)
-            db.execute("UPDATE tasks SET state='script_queued' WHERE project=? AND id=? AND revision=?",(project,task,revision))
-            save(db,key(project,task,revision),{'plan':plan,'plan_sha256':expected_plan,'state':'queued','expires_at':time.time()+3600,'provider_id':None})
-            if plan['native_source']:
-                save(db,native_source_key(project,task),{'record_id':plan['native_source']['record_id']})
+            return self._enqueue(db,value,expires_at=time.time()+3600)
+
+    def _fence_prepared(self,db,plan):
+        """Fence local facts after authenticated external reads, within the commit."""
+        project,task,revision=plan['project'],plan['task'],plan['revision']
+        binding=self.bridge._binding(db,project)
+        setup=meta(db,'setup:project:'+project)
+        config=db.execute('SELECT digest FROM projects WHERE id=?',(project,)).fetchone()
+        deployment=db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()[0]
+        if (fingerprint(binding)!=plan['binding_sha256'] or meta(db,'script:profile:'+project)!=plan['profile']
+                or not config or config[0]!=plan['configuration_digest'] or deployment!=plan['deployment']
+                or not setup or plan['sku'] not in setup['configuration']['project']['products']):
+            raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+        secret=db.execute('SELECT revision FROM vault WHERE alias=?',(plan['profile']['credential_ref'][7:],)).fetchone()
+        if not secret or secret[0]!=plan['profile']['credential_revision']:raise RuntimeFault('SCRIPT_CREDENTIAL_CHANGED')
+        previous=db.execute('SELECT revision,state FROM tasks WHERE project=? AND id=? ORDER BY revision DESC LIMIT 1',(project,task)).fetchone()
+        if (previous['revision'] if previous else 0)!=revision-1:raise RuntimeFault('TASK_REVISION_CONFLICT')
+        if previous and previous['state'] not in ('rejected','accepted','failed'):raise RuntimeFault('PREVIOUS_REVISION_NOT_CLOSED')
+        active_native=meta(db,'native:config:'+project)
+        active_native=active_native if active_native and active_native.get('enabled') else None
+        if fingerprint(active_native)!=plan['native_config_sha256']:raise RuntimeFault('SCRIPT_NATIVE_CONFIGURATION_CHANGED')
+        if plan['native_source']:
+            from .feishu_native_review import source_key as native_source_key
+            source=meta(db,native_source_key(project,task))
+            if source and source['record_id']!=plan['native_source']['record_id']:raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CONFLICT')
+
+    def _enqueue(self,db,prepared,*,expires_at,agent_plan_id=None):
+        """Internal commit shared by freshly authenticated submit and Agent plans.
+
+        Caller owns authentication, paid approval and the transaction. Never expose
+        this helper as an API accepting a client-supplied plan.
+        """
+        plan=prepared['plan'];expected_plan=prepared['plan_sha256']
+        if fingerprint(plan)!=expected_plan:raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+        project,task,revision=plan['project'],plan['task'],plan['revision']
+        if meta(db,key(project,task,revision)):raise RuntimeFault('SCRIPT_SUBMIT_CONFLICT')
+        self._fence_prepared(db,plan)
+        if expires_at<=time.time():raise RuntimeFault('SCRIPT_APPROVAL_EXPIRED')
+        source_revision=plan['native_source']['source_revision'] if plan['native_source'] else expected_plan
+        result=self.store._create_task(db,plan['actor'],project,task,{'sku_id':plan['sku']['sku_id'],'script':plan['brief'],'source_revision':source_revision},revision-1)
+        db.execute("UPDATE tasks SET state='script_queued' WHERE project=? AND id=? AND revision=?",(project,task,revision))
+        job={'plan':plan,'plan_sha256':expected_plan,'state':'queued','expires_at':expires_at,'provider_id':None}
+        if agent_plan_id is not None:job['agent_plan_id']=agent_plan_id
+        save(db,key(project,task,revision),job)
+        if plan['native_source']:
+            from .feishu_native_review import source_key as native_source_key
+            save(db,native_source_key(project,task),{'record_id':plan['native_source']['record_id']})
         return {**result,'state':'script_queued','provider_requests':0}
+
+    def _fence_execution(self, db, plan):
+        """Recheck mutable project facts at the irreversible provider boundary."""
+        project = plan['project']
+        setup = meta(db, 'setup:project:' + project)
+        config = db.execute('SELECT digest FROM projects WHERE id=?', (project,)).fetchone()
+        deployment = db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()
+        if (not setup or plan['sku'] not in setup['configuration']['project']['products']
+                or not config or config[0] != plan['configuration_digest']
+                or not deployment or deployment[0] != plan['deployment']):
+            raise RuntimeFault('SCRIPT_PLAN_CHANGED')
 
     def step(self,token,project,task,revision,master_key):
         from .dispatch import authorize
@@ -183,6 +222,7 @@ class ScriptJobs:
             if job['state']!='queued':return {'state':row['state'],'provider_requests':0,'automatic_resubmit':False}
             if job['expires_at']<time.time():raise RuntimeFault('SCRIPT_APPROVAL_EXPIRED')
             plan=job['plan'];settings=meta(db,'script:profile:'+project)
+            self._fence_execution(db, plan)
             binding=self.bridge._binding(db,project)
             setup=meta(db,'setup:project:'+project)
             if (settings!=plan['profile'] or fingerprint(binding)!=plan['binding_sha256'] or not setup
@@ -213,6 +253,7 @@ class ScriptJobs:
             authorize(db,token,project)
             latest=meta(db,key(project,task,revision));row=self.store._current(db,project,task,revision)
             if latest!=job or row['state']!='script_queued':raise RuntimeFault('SCRIPT_INTENT_ALREADY_CLAIMED')
+            self._fence_execution(db, plan)
             if meta(db,'script:profile:'+project)!=settings:raise RuntimeFault('SCRIPT_PLAN_CHANGED')
             current_native=meta(db,'native:config:'+project)
             current_native=current_native if current_native and current_native.get('enabled') else None
