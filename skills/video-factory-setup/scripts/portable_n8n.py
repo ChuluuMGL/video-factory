@@ -316,7 +316,7 @@ def ready(url):
         return False
 
 
-def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200):
+def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200, *, welcome_session=None):
     if type(dependency_timeout) is not int or not 60 <= dependency_timeout <= 7200:
         raise Fault('DEPENDENCY_TIMEOUT_MUST_BE_60_TO_7200_SECONDS')
     if mode not in ('node', 'docker') or not 1024 <= port <= 65535:
@@ -333,9 +333,22 @@ def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=
         if plan_path.exists():
             if json.loads(plan_path.read_text(encoding='utf-8')) != plan:
                 raise Fault('INSTALL_PLAN_CHANGED_USE_ORIGINAL_PARAMETERS')
-        elif any(p.name != '.provision.lock' for p in root.iterdir()):
-            raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
         else:
+            allowed = {'.provision.lock'}
+            if welcome_session is not None:
+                from portable_session import WelcomeSession, source_digest
+                if (not isinstance(welcome_session, WelcomeSession)
+                        or welcome_session.root != root
+                        or welcome_session.data.get('route') != {'node':'2','docker':'3'}[mode]
+                        or welcome_session.data.get('port') != port
+                        or welcome_session.data.get('source_sha256') != source_digest()
+                        or json.loads(welcome_session.path.read_text(encoding='utf-8')) != welcome_session.data
+                        or any(p.name not in ('session.json','.provision.lock')
+                               for p in welcome_session.directory.iterdir())):
+                    raise Fault('WELCOME_INSTALL_SCOPE_CHANGED')
+                allowed.add('welcome-state')
+            if any(p.name not in allowed for p in root.iterdir()):
+                raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
             private_write(plan_path, plan)
         # New installs must not take over an existing listener, even if not n8n.
         with socket.socket() as probe:
@@ -674,7 +687,7 @@ def _welcome(root, dependency_timeout, session):
             return number
         port=session.data.get('port') or (json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else ask_value('本机端口 [5678]: ',port_value,'5678'))
         session.remember('port',port)
-        saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout)
+        saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout,welcome_session=session)
         local_control(root,'start')
         url=saved['origin']
         print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')

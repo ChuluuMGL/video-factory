@@ -179,7 +179,21 @@ phase='install'
 acceptance_started=time.monotonic()
 try:
     print('Installing isolated '+mode+' n8n',flush=True)
-    install_local(root,mode,15678,managed_node=mode=='node')
+    from portable_n8n import welcome
+    from portable_session import inspect_session
+    # Start with the actual new-install welcome, including its checkpoint.
+    # Stop only when it reaches hidden n8n credentials; CI creates its own owner below.
+    def bootstrap_install(*args,**kwargs):
+        return install_local(*args,**kwargs,managed_node=mode=='node')
+    with patch('builtins.input',side_effect=['2' if mode=='node' else '3','15678']), \
+         patch('portable_n8n.install_local',side_effect=bootstrap_install), \
+         patch('portable_n8n.secret',side_effect=Fault('CI_OWNER_SETUP_REQUIRED')):
+        try: welcome(root)
+        except Fault as error: assert str(error)=='CI_OWNER_SETUP_REQUIRED'
+        else: raise AssertionError('Expected first owner boundary')
+    assert inspect_session(root)['phase']=='n8n-auth'
+    assert health('http://127.0.0.1:15678')
+
     assert install_local(root,mode,15678)['installed']
     if mode=='docker':
         compose=json.loads((root/'compose.json').read_text(encoding='utf-8'))
@@ -242,7 +256,7 @@ try:
     assert offline_handoff['network_requests']==0
     onboarding_receipt={'schema':'vf-install-acceptance-v1','mode':mode,'platform':sys.platform,
                         'evidence_kind':'automated_real_n8n_synthetic_feishu',
-                        'new_binding':True,'interruption_resume':'passed','fresh_process_handoff':'passed',
+                        'new_binding':True,'fresh_install_welcome':'passed','interruption_resume':'passed','fresh_process_handoff':'passed',
                         'encrypted_feishu_credential_reused':True,'paid_calls':0,
                         'welcome_elapsed_seconds':round(time.monotonic()-welcome_started,3),
                         'install_start_to_welcome_seconds':round(time.monotonic()-acceptance_started,3),

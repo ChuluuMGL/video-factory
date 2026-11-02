@@ -12,11 +12,46 @@ from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[2] / 'skills/video-factory-setup/scripts'
 sys.path.insert(0, str(SCRIPTS))
-from portable_n8n import Fault, private_write, welcome
+from portable_n8n import Fault, private_write, welcome, install_local
 from portable_session import WelcomeSession, inspect_session
 
 
 class SessionTests(unittest.TestCase):
+    def test_new_install_accepts_only_its_verified_welcome_checkpoint(self):
+        for mode,route in [('node','2'),('docker','3')]:
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as d:
+                root=Path(d); session=WelcomeSession(root)
+                session.remember('route',route);session.remember('port',15678)
+                # Stopping at the socket gate proves no dependency install occurred.
+                with patch('portable_n8n.socket.socket') as socket:
+                    socket.return_value.__enter__.return_value.bind.side_effect=OSError()
+                    with self.assertRaisesRegex(Fault,'PORT_IN_USE'):
+                        install_local(root,mode,15678,welcome_session=session)
+                self.assertTrue((root/'install-plan.json').exists())
+                self.assertTrue(session.path.exists())
+
+    def test_new_install_preserves_foreign_files_and_requires_explicit_session(self):
+        for extra,provided in [(False,False),(True,True)]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as d:
+                root=Path(d);session=WelcomeSession(root)
+                session.remember('route','2');session.remember('port',15678)
+                if extra:(root/'existing-business.txt').write_text('preserve',encoding='utf-8')
+                with patch('portable_n8n.socket.socket') as socket:
+                    with self.assertRaisesRegex(Fault,'INSTALL_DIRECTORY_NOT_EMPTY'):
+                        install_local(root,'node',15678,welcome_session=session if provided else None)
+                    socket.assert_not_called()
+                self.assertFalse((root/'install-plan.json').exists())
+                self.assertTrue(session.path.exists())
+                if extra:self.assertEqual((root/'existing-business.txt').read_text(),'preserve')
+
+    def test_new_install_rejects_checkpoint_for_other_mode_or_port(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);session=WelcomeSession(root)
+            session.remember('route','3');session.remember('port',15678)
+            with self.assertRaisesRegex(Fault,'WELCOME_INSTALL_SCOPE_CHANGED'):
+                install_local(root,'node',15678,welcome_session=session)
+            self.assertFalse((root/'install-plan.json').exists())
+
     def test_resume_pins_code_before_input_or_network(self):
         with tempfile.TemporaryDirectory() as d:
             s = WelcomeSession(d); s.remember('route','1'); s.finish()

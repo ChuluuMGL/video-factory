@@ -101,7 +101,7 @@ class WelcomeSession:
                 'manual_steps': ['n8n_owner_and_api_key', 'feishu_app_permissions_and_base',
                                  'hidden_credential_input', 'designated_owner_acceptance'],
                 'task_identity_contract': {'source': 'portable-n8n-feishu',
-                    'required': ['project', 'base', 'table', 'record_id', 'task_id', 'revision'],
+                    'required': ['project', 'base', 'table', 'record_id', 'task', 'revision'],
                     'core_task_mapping': 'not_configured', 'agent_http_api': 'not_available_on_this_route'}}
 
 
