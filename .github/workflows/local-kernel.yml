@@ -6,6 +6,7 @@ on:
       - 'packages/video-factory-core/**'
       - '.github/workflows/local-kernel.yml'
       - 'scripts/install_local_kernel.py'
+      - '.github/scripts/local-install-smoke.py'
   workflow_dispatch:
 
 permissions:
@@ -46,3 +47,11 @@ jobs:
           python scripts/install_local_kernel.py --root "$RUNNER_TEMP/vf-independent-local" --package /tmp/vf-local-wheels/*.whl
           "$RUNNER_TEMP/vf-independent-local/vf-local" status
           "$RUNNER_TEMP/vf-independent-local/vf-local" plan --request-id cloud-install-smoke
+          python .github/scripts/local-install-smoke.py "$RUNNER_TEMP/vf-independent-local"
+      - name: Retain n8n-free installation receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: local-kernel-${{ matrix.os }}
+          path: .runtime/local-kernel-evidence/
+          retention-days: 14
