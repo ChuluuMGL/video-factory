@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import uuid
+from unittest.mock import patch
 import base64
 import struct
 import zlib
@@ -175,6 +176,7 @@ mode=sys.argv[1] if len(sys.argv)>1 else 'node'
 root=Path(tempfile.mkdtemp(prefix='vf 测试 n8n-',dir=os.environ.get('RUNNER_TEMP')))
 process=None
 phase='install'
+acceptance_started=time.monotonic()
 try:
     print('Installing isolated '+mode+' n8n',flush=True)
     install_local(root,mode,15678,managed_node=mode=='node')
@@ -209,6 +211,49 @@ try:
     if mode=='docker':
         fixture_origin=f'http://host.docker.internal:{fixture.server_port}'
     credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}})}}}
+    # Exercise the shipped welcome through a fresh binding directory against
+    # real n8n. Only human typing and Feishu are synthetic; no paid provider.
+    from portable_n8n import welcome
+    from portable_session import inspect_session
+    welcome_root=root/'fresh-operator-binding'
+    welcome_started=time.monotonic()
+    before_provider=(state['model_calls'],state['video_calls'],state.get('image_calls',0))
+    with patch('builtins.input',side_effect=['1',api_origin,'onboarding','baseFixture','tableFixture','cli_fixture']), \
+         patch('portable_n8n.secret',side_effect=[key,'synthetic-feishu-secret']), \
+         patch('portable_n8n.verify_setup',side_effect=Fault('CI_SIMULATED_DISCONNECT')):
+        try: welcome(welcome_root)
+        except Fault as error: assert str(error)=='CI_SIMULATED_DISCONNECT'
+        else: raise AssertionError('Expected interrupted welcome')
+    interrupted=inspect_session(welcome_root)
+    assert interrupted['phase']=='feishu' and interrupted['status']=='paused_or_failed'
+    with patch('builtins.input',side_effect=['n','n','n','n']), \
+         patch('portable_n8n.secret',side_effect=[key]) as hidden_input, \
+         patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)):
+        resumed=welcome(welcome_root,resume=True)
+    assert hidden_input.call_count==1,'RESUME_MUST_REUSE_ENCRYPTED_FEISHU_CREDENTIAL'
+    assert resumed['setup_session']['attempts']==2 and not resumed['production_ready']
+    assert before_provider==(state['model_calls'],state['video_calls'],state.get('image_calls',0))
+    handoff_process=subprocess.run([sys.executable,str(ROOT/'skills/video-factory-setup/scripts/portable_n8n.py'),
+                                   '--root',str(welcome_root),'handoff-check'],
+                                  input='',capture_output=True,text=True,timeout=30)
+    assert handoff_process.returncode==0
+    offline_handoff=json.loads(handoff_process.stdout)
+    assert offline_handoff['project']=='onboarding' and offline_handoff['live_state']=='not_checked'
+    assert offline_handoff['network_requests']==0
+    onboarding_receipt={'schema':'vf-install-acceptance-v1','mode':mode,'platform':sys.platform,
+                        'evidence_kind':'automated_real_n8n_synthetic_feishu',
+                        'new_binding':True,'interruption_resume':'passed','fresh_process_handoff':'passed',
+                        'encrypted_feishu_credential_reused':True,'paid_calls':0,
+                        'welcome_elapsed_seconds':round(time.monotonic()-welcome_started,3),
+                        'install_start_to_welcome_seconds':round(time.monotonic()-acceptance_started,3),
+                        'human_operator':'not_tested','account_preparation_time':'not_measured',
+                        'real_device_login_restart':'not_tested','provider_generation':'not_tested',
+                        'manual_inputs_simulated':{'first_attempt_nonsecret':6,'first_attempt_hidden':2,
+                                                   'resume_nonsecret':4,'resume_hidden':1}}
+    print(json.dumps(onboarding_receipt),flush=True)
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        evidence=ROOT/'ci-install-evidence';evidence.mkdir(exist_ok=True)
+        (evidence/'welcome.json').write_text(json.dumps(onboarding_receipt,indent=2))
     # Execute against the actual server, where n8n exposes DataTable proxies.
     # CLI `n8n execute` lacks that module. These hooks exist only in the synthetic
     # CI fixture; the product does not expose a paid-model webhook.

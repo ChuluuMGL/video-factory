@@ -44,6 +44,13 @@ jobs:
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
       - name: Real native n8n install, API import and Feishu writeback fixture
         run: python .github/scripts/portable-n8n-smoke.py node
+      - name: Retain redacted installation timing and manual-step evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: install-welcome-${{ matrix.os }}
+          path: ci-install-evidence/*.json
+          if-no-files-found: ignore
   docker:
     name: Docker n8n actual integration
     runs-on: ubuntu-24.04
@@ -57,3 +64,10 @@ jobs:
           python-version: '3.12'
       - name: Real Docker n8n install, API import and Feishu writeback fixture
         run: python .github/scripts/portable-n8n-smoke.py docker
+      - name: Retain redacted installation timing and manual-step evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: install-welcome-docker
+          path: ci-install-evidence/*.json
+          if-no-files-found: ignore
