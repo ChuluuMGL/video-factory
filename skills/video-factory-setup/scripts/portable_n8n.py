@@ -316,7 +316,7 @@ def ready(url):
         return False
 
 
-def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200):
+def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=1200, *, welcome_session=None):
     if type(dependency_timeout) is not int or not 60 <= dependency_timeout <= 7200:
         raise Fault('DEPENDENCY_TIMEOUT_MUST_BE_60_TO_7200_SECONDS')
     if mode not in ('node', 'docker') or not 1024 <= port <= 65535:
@@ -333,9 +333,22 @@ def install_local(root, mode, port=5678, managed_node=False, dependency_timeout=
         if plan_path.exists():
             if json.loads(plan_path.read_text(encoding='utf-8')) != plan:
                 raise Fault('INSTALL_PLAN_CHANGED_USE_ORIGINAL_PARAMETERS')
-        elif any(p.name != '.provision.lock' for p in root.iterdir()):
-            raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
         else:
+            allowed = {'.provision.lock'}
+            if welcome_session is not None:
+                from portable_session import WelcomeSession, source_digest
+                if (not isinstance(welcome_session, WelcomeSession)
+                        or welcome_session.root != root
+                        or welcome_session.data.get('route') != {'node':'2','docker':'3'}[mode]
+                        or welcome_session.data.get('port') != port
+                        or welcome_session.data.get('source_sha256') != source_digest()
+                        or json.loads(welcome_session.path.read_text(encoding='utf-8')) != welcome_session.data
+                        or any(p.name not in ('session.json','.provision.lock')
+                               for p in welcome_session.directory.iterdir())):
+                    raise Fault('WELCOME_INSTALL_SCOPE_CHANGED')
+                allowed.add('welcome-state')
+            if any(p.name not in allowed for p in root.iterdir()):
+                raise Fault('INSTALL_DIRECTORY_NOT_EMPTY_EXISTING_FILES_PRESERVED')
             private_write(plan_path, plan)
         # New installs must not take over an existing listener, even if not n8n.
         with socket.socket() as probe:
@@ -479,8 +492,25 @@ def local_control(root, action):
 
 def verify_setup(api, root, project, template, credentials):
     """Run a zero-model setup workflow through a temporary authenticated hook."""
+    # Serialize temporary checks independently from provision()'s resource lock.
+    # An unknown execution must not become a second schema mutation on resume.
+    with locked(Path(root) / '.setup-check'):
+        return _verify_setup(api, root, project, template, credentials)
+
+
+def _verify_setup(api, root, project, template, credentials):
     from n8n_workflows import setup_hook
-    hook_path = 'vf-setup-' + identifier(project)
+    identifier(project)
+    root = Path(root)
+    pattern = re.compile(r'binding-' + re.escape(project) + r'-[0-9a-f]{8}\.json$')
+    for previous in root.glob('binding-' + project + '-*.json'):
+        if not pattern.fullmatch(previous.name):
+            continue
+        state = json.loads(previous.read_text(encoding='utf-8'))
+        execution = state.get('setup_execution')
+        if state.get('pending') or execution is not None and execution.get('phase') != 'complete':
+            raise Fault('SETUP_EXECUTION_UNKNOWN_RECONCILE_IN_N8N')
+    hook_path = 'vf-setup-' + project
     token = secrets.token_urlsafe(32)
     credentials = {**credentials, 'httpHeaderAuth': {'type':'httpHeaderAuth',
                    'data': {'name':'X-VF-Setup', 'value':token}}}
@@ -490,10 +520,18 @@ def verify_setup(api, root, project, template, credentials):
     unique = project + '-' + secrets.token_hex(4)
     saved = provision(api, root, unique, template, credentials)
     workflow_id = saved['workflow']
+    path = root / ('binding-' + unique + '.json')
+    state = json.loads(path.read_text(encoding='utf-8'))
+    state['verified_disabled'] = False
+    state['setup_execution'] = {'phase': 'activation_pending', 'receipt_verified': False,
+                                'hook_disabled': False}
+    private_write(path, state)
     activated = False
     try:
         activated = True  # Mark intent before POST: timeout is also deactivated.
         api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
+        state['setup_execution']['phase'] = 'execution_pending'
+        private_write(path, state)
         request = Request(api.url+'/webhook/'+hook_path, method='POST',data=b'{}',
                           headers={'X-VF-Setup':token,'Content-Type':'application/json'})
         try:
@@ -514,12 +552,19 @@ def verify_setup(api, root, project, template, credentials):
         entries = value if isinstance(value,list) else [value]
         if not entries or any(not isinstance(item,dict) or not (item.get('base_read')=='verified' or item.get('schema_change')=='accepted') for item in entries):
             raise Fault('SETUP_CHECK_RECEIPT_INVALID')
+        state['setup_execution'].update(phase='receipt_verified', receipt_verified=True)
+        private_write(path, state)
         return {'workflow':workflow_id,'result':value,'provider_requests':0}
     finally:
         if activated:
             api.request('POST','/api/v1/workflows/'+workflow_id+'/deactivate',{})
-            if api.request('GET','/api/v1/workflows/'+workflow_id).get('active'):
+            if api.request('GET','/api/v1/workflows/'+workflow_id).get('active') is not False:
                 raise Fault('TEMPORARY_SETUP_HOOK_STILL_ACTIVE_DISABLE_IN_N8N')
+            state['verified_disabled'] = True
+            state['setup_execution']['hook_disabled'] = True
+            if state['setup_execution']['receipt_verified']:
+                state['setup_execution']['phase'] = 'complete'
+            private_write(path, state)
 
 
 def provider_secret(prompt, ask_secret):
@@ -638,7 +683,24 @@ def ask_choice(prompt, choices, default=None):
         print('请选择 '+ '/'.join(choices)+'；输入 :quit 保存退出。')
 
 
-def welcome(root, dependency_timeout=1200):
+def welcome(root, dependency_timeout=1200, resume=False, new_project=False):
+    from portable_session import WelcomeSession
+    root = Path(root).resolve()
+    with locked(root / 'welcome-state'):
+        session = WelcomeSession(root, resume=resume, new_project=new_project)
+        try:
+            result = _welcome(root, dependency_timeout, session)
+        except BaseException:
+            session.finish()
+            raise
+        session.finish(success=True)
+        result['setup_session'] = {'attempts': session.data['attempts'],
+                                   'interactive_seconds': session.data['interactive_seconds'],
+                                   'source_sha256': session.data['source_sha256']}
+        return result
+
+
+def _welcome(root, dependency_timeout, session):
     console_utf8()
     import platform
     from n8n_workflows import probe_workflow, schema_workflow
@@ -647,20 +709,26 @@ def welcome(root, dependency_timeout=1200):
     print('1. 已有 n8n（本机或服务器）  2. 新装本机 Node.js n8n  3. 新装 Docker n8n  4. n8n Cloud')
     root=Path(root)
     print('输入 :quit 可退出；已完成的安装和项目配置会保留。')
-    choice=ask_choice('选择 1/2/3/4: ',('1','2','3','4'))
+    choice=session.data.get('route') or session.remember('route',ask_choice('选择 1/2/3/4: ',('1','2','3','4')))
+    session.phase('instance')
     if choice in ('2','3'):
         previous=root/'local.json'
         def port_value(value):
             number=int(value)
             if not 1024<=number<=65535:raise ValueError()
             return number
-        port=json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else ask_value('本机端口 [5678]: ',port_value,'5678')
-        saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout)
+        port=session.data.get('port') or (json.loads(previous.read_text(encoding='utf-8'))['port'] if previous.exists() else ask_value('本机端口 [5678]: ',port_value,'5678'))
+        session.remember('port',port)
+        saved=install_local(root,'node' if choice=='2' else 'docker',port,dependency_timeout=dependency_timeout,welcome_session=session)
         local_control(root,'start')
         url=saved['origin']
         print('n8n 已启动：'+url+'。首次请在 n8n 编辑器设置自己的账号并创建 API Key。')
     else:
-        url=ask_value('已有 n8n 地址: ',origin)
+        url=session.data.get('origin') or ask_value('已有 n8n 地址: ',origin)
+    session.remember('origin',url)
+    session.complete('instance')
+    session.phase('n8n-auth')
+    print('连接目标：'+url+'；需要此 n8n 实例的管理 API Key，不是模型 Key。')
     for attempt in range(3):
         key=secret('n8n API Key（隐藏输入，本轮验证后复用；:quit 退出）: ')
         if key==':quit':raise Fault('SETUP_PAUSED_CONFIG_PRESERVED')
@@ -669,8 +737,15 @@ def welcome(root, dependency_timeout=1200):
         except Fault as error:
             if str(error)!='N8N_API_PERMISSION_REQUIRED' or attempt==2:raise
             print('API Key 未通过只读认证，请核对实例和权限后重新输入。已有配置保留。')
-    project=ask_value('项目标识（字母、数字、短横线；续接用原标识）: ',identifier)
+    session.complete('n8n-auth')
+    session.phase('project')
     bindings=root/'bindings'
+    def project_value(value):
+        value=identifier(value)
+        if session.data.get('new_project') and (bindings/('project-'+value+'.json')).exists():
+            raise Fault('PROJECT_ALREADY_EXISTS_CHOOSE_NEW_IDENTIFIER')
+        return value
+    project=session.data.get('project') or session.remember('project',ask_value('项目标识（字母、数字、短横线；续接用原标识）: ',project_value))
     path=bindings/('project-'+project+'.json')
     if path.exists():
         config=json.loads(path.read_text(encoding='utf-8'))
@@ -683,12 +758,22 @@ def welcome(root, dependency_timeout=1200):
         app=ask_value('飞书 App ID: ',identifier)
         with locked(bindings):
             private_write(path,{'origin':url,'base':base,'table':table,'app':app})
+    session.data.pop('new_project',None)
+    session.save()
+    session.complete('project')
+    session.phase('feishu')
+    from portable_session import inspect_session
+    if inspect_session(root)['pending_resource_receipts']:
+        raise Fault('WELCOME_PENDING_RESOURCE_RECONCILE_BEFORE_RESUME')
     credentials=project_credentials(api,bindings,project,app,['feishu'])
     selected={'httpCustomAuth':credentials['feishu']}
     receipt=verify_setup(api,bindings,project+'-probe',probe_workflow(base,table),selected)
     print('飞书读取检查完成。')
+    session.complete('feishu')
+    session.phase('schema')
     if ask_choice('为这张表补齐审核字段（保留原字段与选项）？y/N: ',('y','n'),'n')=='y':
         receipt['schema']=verify_setup(api,bindings,project+'-schema',schema_workflow(base,table),selected)
+    session.phase('models')
     roles=[]
     print('接下来可导入脚本、视频和恢复流程，均保持关闭，不会调用模型。')
     if ask_choice('配置脚本流程？y/N: ',('y','n'),'n')=='y':
@@ -723,16 +808,20 @@ def welcome(root, dependency_timeout=1200):
     if roles:
         credentials=project_credentials(api,bindings,project,app,['feishu',*roles])
         receipt['flows']=configure_flows(api,bindings,project,base,table,credentials)
+    session.complete('models')
+    session.phase('background')
     if choice=='2' and ask_choice('为这套新装 n8n 配置后台自启？桌面登录后启动，Linux root 开机启动。y/N: ',('y','n'),'n')=='y':
         from portable_service import install
         receipt['background']=install(root,'n8n')
     elif choice=='3':
         print('Docker 容器已设置 unless-stopped；请让 Docker Desktop/Engine 随系统启动。')
     receipt.update(project=project,production_ready=False,next='接入和关闭状态的流程已保存；人工审核在飞书。下一步配置指定负责人并做零费用确认验收，不会自动开启收费。')
-    private_write(bindings/('handoff-'+project+'.json'),{'project':project,'origin':url,'base':base,'table':table,
+    session.phase('handoff')
+    private_write(bindings/('handoff-'+project+'.json'),{'installation':session.handoff(),'project':project,'origin':url,'base':base,'table':table,
         'credentials_saved_in':'n8n','production_ready':False,'next':receipt['next'],
         'background':receipt.get('background',{'managed':False,'reason':'existing_instance_or_not_selected'})})
     print('交接记录已保存：'+str(bindings/('handoff-'+project+'.json')))
+    session.complete('handoff')
     return receipt
 
 
@@ -742,7 +831,14 @@ def main(argv=None):
     parser.add_argument('--root', type=Path, default=Path.home() / '.video-factory/n8n')
     parser.add_argument('--dependency-timeout', type=int, default=1200, help='原生 npm 安装时限（秒，60–7200）；超时保留目录，可原地续接')
     commands = parser.add_subparsers(dest='command', required=True)
-    commands.add_parser('welcome')
+    welcome_command=commands.add_parser('welcome')
+    welcome_modes=welcome_command.add_mutually_exclusive_group()
+    welcome_modes.add_argument('--new-project',action='store_true',help='保留前次交接，在同一实例新增项目；需先完成前次配置')
+    welcome_modes.add_argument('--resume',action='store_true',help='核对原目录及脚本摘要，复用原路线、地址和项目')
+    commands.add_parser('handoff-check',help='离线读取安装阶段与未知资源回执，不连接服务或调用模型')
+    task_check=commands.add_parser('task-check',help='显式运行零模型诊断流程，只读原飞书任务；会在 n8n 留下关闭的诊断流程')
+    for field in ('project','record','task'):task_check.add_argument('--'+field,required=True)
+    task_check.add_argument('--revision',type=int)
     owner=commands.add_parser('approval-setup',help='配置飞书指定负责人确认流程，默认零费用验收')
     for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
         owner.add_argument('--'+name,required=True)
@@ -790,7 +886,18 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == 'welcome':
-            value = welcome(args.root,args.dependency_timeout)
+            value = welcome(args.root,args.dependency_timeout,args.resume,args.new_project)
+        elif args.command == 'handoff-check':
+            from portable_session import inspect_session
+            value = inspect_session(args.root)
+        elif args.command == 'task-check':
+            from portable_task_inspection import inspect_task
+            identifier(args.project)
+            config=json.loads((args.root/'bindings'/('project-'+args.project+'.json')).read_text(encoding='utf-8'))
+            url=origin(config['origin'])
+            print('只读原任务；在此 n8n 创建临时诊断流程并关闭：'+url)
+            api=API(url,secret('n8n API Key（隐藏输入）: '));api.preflight()
+            value=inspect_task(api,args.root,args.project,args.record,args.task,args.revision)
         elif args.command == 'approval-setup':
             from portable_approval import configure_approval
             api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()

@@ -80,3 +80,9 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 代客户安装、远程输入失效、旧服务器隔离、第三方平台身份核对或客户自己的 Codex 接管时，读取 [客户远程安装与接管](references/customer-remote.md)。沿用授权 SSH/API，先盘点既有网站与数据库。使用 [交接模板](references/handoff.md) 给客户保存准确运行版本、目录、入口、启用状态和待验步骤；不把官网或常驻员工网页当作飞书日常入口。
 
 源码候选新增 `seedance-novai`，仅对应核实过的 `https://xinghezhiyun.com` 企业版，独立凭据且 `auto_asset=false`；只读认证通过，真实生成闭环未验。`portable_catalog.py` 提供单 SKU 快照模块，尚未接入 `welcome` 的自动建表与事件分发。两项均不在 a41 固定包，不向旧安装器虚构可用命令。详细范围见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
+
+## 欢迎续接候选
+
+当前源码的 `portable_n8n.py welcome --resume` 按原目录和脚本摘要复用安装路线、实例和项目；`handoff-check` 离线回读阶段与未知创建/执行回执，不能代替实时状态。临时检查超时或停用回读失败时，先核对 n8n 原执行及工作流；不要删除检查点或重复补字段。新增项目使用 `welcome --new-project`，保留旧交接。先核对实际包支持的参数，a41 不因文档更新自动具备新命令。具体操作和非作者验收准备见 [安装续接说明](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/INSTALL_RESUME_ACCEPTANCE.md)。Workflow Agent 沿用实际来源、项目、任务和版本，不把便携 n8n 的记录 ID 当成本机内核 task ID。
+
+需回读原任务时，支持的源码候选可用 `task-check`，但它会创建并短暂启用 n8n 诊断流程，须在授权实例使用；只读飞书原记录、不调用模型。明确 project/record/task，已知版本加 `--revision`。不能把记录 ID 当任务号，不能把结果存在性当真人验收。

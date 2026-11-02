@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import uuid
+from unittest.mock import patch
 import base64
 import struct
 import zlib
@@ -30,7 +31,7 @@ def png_chunk(kind,body):
     return struct.pack('!I',len(body))+kind+body+struct.pack('!I',zlib.crc32(kind+body))
 generated_image_bytes=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('!IIBBBBB',2048,2048,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(bytes(2048*(2048*3+1))))+png_chunk(b'IEND',b'')
 def task_fields():
-    return {'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
+    return {'任务编号':'CI_INSTALL_TASK_1','审核目标版本':state.get('revision',1),'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
             '审核意见':state['feedback'],'视频任务ID':state['job'],
             '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
@@ -175,9 +176,24 @@ mode=sys.argv[1] if len(sys.argv)>1 else 'node'
 root=Path(tempfile.mkdtemp(prefix='vf 测试 n8n-',dir=os.environ.get('RUNNER_TEMP')))
 process=None
 phase='install'
+acceptance_started=time.monotonic()
 try:
     print('Installing isolated '+mode+' n8n',flush=True)
-    install_local(root,mode,15678,managed_node=mode=='node')
+    from portable_n8n import welcome
+    from portable_session import inspect_session
+    # Start with the actual new-install welcome, including its checkpoint.
+    # Stop only when it reaches hidden n8n credentials; CI creates its own owner below.
+    def bootstrap_install(*args,**kwargs):
+        return install_local(*args,**kwargs,managed_node=mode=='node')
+    with patch('builtins.input',side_effect=['2' if mode=='node' else '3','15678']), \
+         patch('portable_n8n.install_local',side_effect=bootstrap_install), \
+         patch('portable_n8n.secret',side_effect=Fault('CI_OWNER_SETUP_REQUIRED')):
+        try: welcome(root)
+        except Fault as error: assert str(error)=='CI_OWNER_SETUP_REQUIRED'
+        else: raise AssertionError('Expected first owner boundary')
+    assert inspect_session(root)['phase']=='n8n-auth'
+    assert health('http://127.0.0.1:15678')
+
     assert install_local(root,mode,15678)['installed']
     if mode=='docker':
         compose=json.loads((root/'compose.json').read_text(encoding='utf-8'))
@@ -209,6 +225,49 @@ try:
     if mode=='docker':
         fixture_origin=f'http://host.docker.internal:{fixture.server_port}'
     credentials={'httpCustomAuth':{'type':'httpCustomAuth','data':{'json':json.dumps({'body':{'app_id':'cli_fixture','app_secret':'synthetic-feishu-secret'}})}}}
+    # Exercise the shipped welcome through a fresh binding directory against
+    # real n8n. Only human typing and Feishu are synthetic; no paid provider.
+    from portable_n8n import welcome
+    from portable_session import inspect_session
+    welcome_root=root/'fresh-operator-binding'
+    welcome_started=time.monotonic()
+    before_provider=(state['model_calls'],state['video_calls'],state.get('image_calls',0))
+    with patch('builtins.input',side_effect=['1',api_origin,'onboarding','baseFixture','tableFixture','cli_fixture']), \
+         patch('portable_n8n.secret',side_effect=[key,'synthetic-feishu-secret']), \
+         patch('portable_n8n.verify_setup',side_effect=Fault('CI_SIMULATED_DISCONNECT')):
+        try: welcome(welcome_root)
+        except Fault as error: assert str(error)=='CI_SIMULATED_DISCONNECT'
+        else: raise AssertionError('Expected interrupted welcome')
+    interrupted=inspect_session(welcome_root)
+    assert interrupted['phase']=='feishu' and interrupted['status']=='paused_or_failed'
+    with patch('builtins.input',side_effect=['n','n','n','n']), \
+         patch('portable_n8n.secret',side_effect=[key]) as hidden_input, \
+         patch('n8n_workflows.probe_workflow',side_effect=lambda b,t:probe_workflow(b,t,feishu_origin=fixture_origin)):
+        resumed=welcome(welcome_root,resume=True)
+    assert hidden_input.call_count==1,'RESUME_MUST_REUSE_ENCRYPTED_FEISHU_CREDENTIAL'
+    assert resumed['setup_session']['attempts']==2 and not resumed['production_ready']
+    assert before_provider==(state['model_calls'],state['video_calls'],state.get('image_calls',0))
+    handoff_process=subprocess.run([sys.executable,str(ROOT/'skills/video-factory-setup/scripts/portable_n8n.py'),
+                                   '--root',str(welcome_root),'handoff-check'],
+                                  input='',capture_output=True,text=True,encoding='utf-8',timeout=30)
+    assert handoff_process.returncode==0
+    offline_handoff=json.loads(handoff_process.stdout)
+    assert offline_handoff['project']=='onboarding' and offline_handoff['live_state']=='not_checked'
+    assert offline_handoff['network_requests']==0
+    onboarding_receipt={'schema':'vf-install-acceptance-v1','mode':mode,'platform':sys.platform,
+                        'evidence_kind':'automated_real_n8n_synthetic_feishu',
+                        'new_binding':True,'fresh_install_welcome':'passed','interruption_resume':'passed','fresh_process_handoff':'passed',
+                        'encrypted_feishu_credential_reused':True,'paid_calls':0,
+                        'welcome_elapsed_seconds':round(time.monotonic()-welcome_started,3),
+                        'install_start_to_welcome_seconds':round(time.monotonic()-acceptance_started,3),
+                        'human_operator':'not_tested','account_preparation_time':'not_measured',
+                        'real_device_login_restart':'not_tested','provider_generation':'not_tested',
+                        'manual_inputs_simulated':{'first_attempt_nonsecret':6,'first_attempt_hidden':2,
+                                                   'resume_nonsecret':4,'resume_hidden':1}}
+    print(json.dumps(onboarding_receipt),flush=True)
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        evidence=ROOT/'ci-install-evidence';evidence.mkdir(exist_ok=True)
+        (evidence/'welcome.json').write_text(json.dumps(onboarding_receipt,indent=2))
     # Execute against the actual server, where n8n exposes DataTable proxies.
     # CLI `n8n execute` lacks that module. These hooks exist only in the synthetic
     # CI fixture; the product does not expose a paid-model webhook.
@@ -297,8 +356,9 @@ try:
             assert not api.request('GET','/api/v1/workflows/'+workflow_id)['active']
         return hook_status,hook_body
     phase='probe execution'
+    tokens_before=state['token_calls']
     execute(saved['workflow'])
-    assert state['token_calls']==1
+    assert state['token_calls']==tokens_before+1
     phase='schema prepare and repeat'
     state['fields']=[{'field_id':'fldStatus','field_name':'状态','type':3,
                       'property':{'options':[{'id':'optExisting','name':'Existing customer option','color':2}]}},
@@ -325,6 +385,29 @@ try:
     phase='script execution'
     execute(saved['workflow'])
     assert state['model_calls']==1 and state['status']=='脚本待审核' and state['script']=='Synthetic reviewable script',state
+    phase='same task inspection after synthetic script'
+    from portable_task_inspection import inspect_task,task_workflow
+    writes_before=state['writes'];calls_before=state['model_calls']
+    with patch('portable_task_inspection.task_workflow',side_effect=lambda p,b,t,r,k,v:task_workflow(p,b,t,r,k,v,feishu_origin=fixture_origin)):
+        observed=inspect_task(api,welcome_root,'onboarding','recFixture','CI_INSTALL_TASK_1',1)
+    entries=observed['result'] if isinstance(observed['result'],list) else [observed['result']]
+    snapshot=entries[0]
+    assert snapshot['identity']=={'source':'portable-n8n-feishu','project':'onboarding','base':'baseFixture','table':'tableFixture',
+                                  'record_id':'recFixture','task':'CI_INSTALL_TASK_1','revision':1}
+    assert snapshot['status']=='脚本待审核' and snapshot['result_presence']['script'] is True
+    assert snapshot['provider_requests']==0 and snapshot['writes_to_task']==0
+    assert state['writes']==writes_before and state['model_calls']==calls_before
+    assert not api.request('GET','/api/v1/workflows/'+observed['workflow'])['active']
+    setup_receipts=[json.loads(p.read_text(encoding='utf-8')) for p in (welcome_root/'bindings').glob('binding-onboarding-*.json')]
+    assert setup_receipts and all(r.get('setup_execution',{}).get('phase')=='complete' for r in setup_receipts)
+    assert all(r['setup_execution']['receipt_verified'] and r['setup_execution']['hook_disabled'] for r in setup_receipts)
+    assert inspect_session(welcome_root)['pending_resource_receipts']==[]
+    onboarding_receipt['temporary_setup_execution_receipts']='complete_and_hooks_disabled'
+    onboarding_receipt['same_task_readback']={'task':'CI_INSTALL_TASK_1','revision':1,'status':'脚本待审核',
+                                             'script_present':True,'task_writes':0,'new_model_calls':0,
+                                             'core_agent_mapping':'not_configured'}
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        (evidence/'welcome.json').write_text(json.dumps(onboarding_receipt,indent=2))
     phase='sequential replay'
     execute(saved['workflow'])
     assert state['model_calls']==1,state
@@ -425,7 +508,9 @@ try:
         claims=list(pool.map(claim,range(6)))
     assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==8 and all(not w['active'] for w in all_workflows)
+    expected_workflows=set(hooks)|{unrelated['id'],owned['workflow'],resumed['workflow'],observed['workflow']}
+    assert {w['id'] for w in all_workflows}==expected_workflows
+    assert all(not w['active'] for w in all_workflows)
     assert owned['workflow'] in {w['id'] for w in all_workflows},'UPGRADED_WORKFLOW_ID_MUST_SURVIVE'
     assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
@@ -471,8 +556,8 @@ try:
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y','n']):
-            resumed=portable.welcome(root/'guided-setup')
+        with patch('builtins.input',side_effect=['n','y','y','n']):
+            resumed=portable.welcome(root/'guided-setup',resume=True)
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
         assert not resumed['production_ready']
