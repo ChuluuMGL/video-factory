@@ -1,6 +1,6 @@
 # PR #86：独立安装最短验收单（未发布候选）
 
-给没有参与开发的人使用；本单准备完毕不等于真人验收通过。候选固定为 `49e7d374af7b95dd240adafdafb0e7670172ce3d`，不是 main、a41 或可随时变化的分支。完整指纹见 [候选清单](acceptance/PR86_CANDIDATE.json)。先由实施人员核对 PR #86 的新候选云端结果；旧 `e8e8649` 的通过记录不覆盖首次 welcome 安装修复。
+给没有参与开发的人使用；本单准备完毕不等于真人验收通过。候选固定为 `22b4c8f26ce98d77bde3097e9bf233ebfb3996bb`，不是 main、a41 或可随时变化的分支。完整指纹见 [候选清单](acceptance/PR86_CANDIDATE.json)。先由实施人员核对 PR #86 的新候选云端结果；旧 r1 的通过记录不覆盖临时检查执行结果未知的保护；使用本 r2 对应的新 CI 证据。
 
 本清单、候选指纹和审查记录由实施人员单独附给操作者；它们是后续文档，不在上述固定运行提交中。运行提交自带原 INSTALL_RESUME_ACCEPTANCE.md。不要为了取得新版文档切换运行代码；本单的固定指纹也须由实施人员通过可信渠道核对。
 
@@ -12,7 +12,7 @@
 
 ## 复制给自己的 Agent
 
-> 请按 Video Factory PR86-install-resume-r1 做零模型独立安装验收。只使用下面固定提交的完整仓库与 Skill，先核对提交和候选指纹；读取本单及同目录 INSTALL_RESUME_ACCEPTANCE.md。检查我的系统、Python 和已有 n8n，给出对应路线。使用新的空私有目录，不接管任何生产实例。每条命令和网页步骤计数，隐藏输入只计次数不保存内容。不能代我设置密码、同意平台授权或确认费用。到“为这张表补齐审核字段？”时先输入 :quit 保存退出；重新开启一个 Agent 对话，用原目录做 handoff-check，再 welcome --resume。字段补齐只对我的专用空测试表执行；所有模型配置和自启本轮选否。最后按下方原任务回读步骤验收，返回证据表。遇到未知资源、来源变更、权限或身份不匹配停止，不重装、不清回执、不提交模型。
+> 请按 Video Factory PR86-install-resume-r2 做零模型独立安装验收。只使用下面固定提交的完整仓库与 Skill，先核对提交和候选指纹；读取本单及同目录 INSTALL_RESUME_ACCEPTANCE.md。检查我的系统、Python 和已有 n8n，给出对应路线。使用新的空私有目录，不接管任何生产实例。每条命令和网页步骤计数，隐藏输入只计次数不保存内容。不能代我设置密码、同意平台授权或确认费用。到“为这张表补齐审核字段？”时先输入 :quit 保存退出；重新开启一个 Agent 对话，用原目录做 handoff-check，再 welcome --resume。字段补齐只对我的专用空测试表执行；所有模型配置和自启本轮选否。最后按下方原任务回读步骤验收，返回证据表。遇到未知资源、来源变更、权限或身份不匹配停止，不重装、不清回执、不提交模型。
 
 ## 操作顺序
 
@@ -21,12 +21,12 @@
    ```sh
    git clone https://github.com/ChuluuMGL/video-factory.git vf-pr86-r1
    cd vf-pr86-r1
-   git checkout --detach 49e7d374af7b95dd240adafdafb0e7670172ce3d
+   git checkout --detach 22b4c8f26ce98d77bde3097e9bf233ebfb3996bb
    git rev-parse HEAD
    git rev-parse HEAD:skills/video-factory-setup
    ```
 
-   Skill tree 必须为 `5860a2b80574822ac8680261bac666c860d473b2`。可信来源与确切提交仍需核对，摘要本身不是发布者签名。源码候选没有独立发行包；不要从最新 main 拼接脚本。
+   Skill tree 必须为 `b2ad3c689a62416a57734c22f1e9a29921016dcb`。可信来源与确切提交仍需核对，摘要本身不是发布者签名。源码候选没有独立发行包；不要从最新 main 拼接脚本。
 
 2. **首次配置并有意退出。** 从仓库目录运行以下命令。Mac/Linux 将占位路径换为新的绝对目录并使用 `python3`；Windows 使用 `py -3.12` 和实际 Windows 路径。全程使用同一个目录。
 
