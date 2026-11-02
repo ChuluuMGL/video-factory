@@ -1,0 +1,17 @@
+{
+  "schema": "vf-source-candidate-pin-v1",
+  "candidate": "PR86-install-resume-r1",
+  "repository": "https://github.com/ChuluuMGL/video-factory",
+  "source_commit": "49e7d374af7b95dd240adafdafb0e7670172ce3d",
+  "skill_tree_git_oid": "5860a2b80574822ac8680261bac666c860d473b2",
+  "scripts_sha256": "344ef9eed86a75c24071344182e71472f8c777e686bd65ce3e0736e0b82c460c",
+  "release": false,
+  "production_ready": false,
+  "previous_candidate": "e8e86498bf65cf024e5f5d6cb84f84cc391039c6",
+  "previous_candidate_limitation": "fresh welcome Node/Docker checkpoint collision; superseded",
+  "runtime_validation": "require cloud results for this exact script tree; see PR86",
+  "independent_operator_install": "not_run",
+  "second_reviewer": "not_run",
+  "customer_resources_changed": false,
+  "paid_calls": 0
+}
