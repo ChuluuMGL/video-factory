@@ -235,7 +235,7 @@ try:
     assert before_provider==(state['model_calls'],state['video_calls'],state.get('image_calls',0))
     handoff_process=subprocess.run([sys.executable,str(ROOT/'skills/video-factory-setup/scripts/portable_n8n.py'),
                                    '--root',str(welcome_root),'handoff-check'],
-                                  input='',capture_output=True,text=True,timeout=30)
+                                  input='',capture_output=True,text=True,encoding='utf-8',timeout=30)
     assert handoff_process.returncode==0
     offline_handoff=json.loads(handoff_process.stdout)
     assert offline_handoff['project']=='onboarding' and offline_handoff['live_state']=='not_checked'
@@ -342,8 +342,9 @@ try:
             assert not api.request('GET','/api/v1/workflows/'+workflow_id)['active']
         return hook_status,hook_body
     phase='probe execution'
+    tokens_before=state['token_calls']
     execute(saved['workflow'])
-    assert state['token_calls']==1
+    assert state['token_calls']==tokens_before+1
     phase='schema prepare and repeat'
     state['fields']=[{'field_id':'fldStatus','field_name':'状态','type':3,
                       'property':{'options':[{'id':'optExisting','name':'Existing customer option','color':2}]}},

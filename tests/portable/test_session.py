@@ -23,7 +23,7 @@ class SessionTests(unittest.TestCase):
             with patch('portable_session.source_digest', return_value='changed'), patch('builtins.input') as ask:
                 with self.assertRaisesRegex(Fault, 'SOURCE_CHANGED'): welcome(d,resume=True)
                 ask.assert_not_called()
-            self.assertEqual(json.loads(s.path.read_text())['attempts'],1)
+            self.assertEqual(json.loads(s.path.read_text(encoding='utf-8'))['attempts'],1)
 
     def test_original_directory_and_explicit_resume_required(self):
         with tempfile.TemporaryDirectory() as d:
@@ -57,8 +57,8 @@ class SessionTests(unittest.TestCase):
                 self.assertEqual(ask.call_count,4)
             self.assertEqual(result['setup_session']['attempts'],2)
             self.assertFalse(result['production_ready'])
-            for p in root.rglob('*.json'):self.assertNotIn('NEVER_SAVE_THIS',p.read_text())
-            handoff=json.loads((root/'bindings/handoff-fixture.json').read_text())
+            for p in root.rglob('*.json'):self.assertNotIn('NEVER_SAVE_THIS',p.read_text(encoding='utf-8'))
+            handoff=json.loads((root/'bindings/handoff-fixture.json').read_text(encoding='utf-8'))
             self.assertEqual(handoff['installation']['task_identity_contract']['core_task_mapping'],'not_configured')
 
     def test_pending_creation_is_reported_without_retry_or_secret_output(self):
@@ -90,7 +90,7 @@ class SessionTests(unittest.TestCase):
             s=WelcomeSession(d);s.remember('project','fixture');s.finish()
             before=s.path.read_bytes()
             process=subprocess.run([sys.executable,str(SCRIPTS/'portable_n8n.py'),'--root',d,'handoff-check'],
-                                   input='',capture_output=True,text=True,timeout=20)
+                                   input='',capture_output=True,text=True,encoding='utf-8',timeout=20)
             self.assertEqual(process.returncode,0,process.stdout)
             value=json.loads(process.stdout)
             self.assertEqual(value['project'],'fixture')
