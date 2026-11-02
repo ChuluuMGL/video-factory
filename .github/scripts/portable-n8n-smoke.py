@@ -489,7 +489,9 @@ try:
         claims=list(pool.map(claim,range(6)))
     assert sum(len(rows) for rows in claims)==1,claims
     all_workflows=api.request('GET','/api/v1/workflows')['data']
-    assert len(all_workflows)==8 and all(not w['active'] for w in all_workflows)
+    expected_workflows=set(hooks)|{unrelated['id'],owned['workflow'],resumed['workflow'],observed['workflow']}
+    assert {w['id'] for w in all_workflows}==expected_workflows
+    assert all(not w['active'] for w in all_workflows)
     assert owned['workflow'] in {w['id'] for w in all_workflows},'UPGRADED_WORKFLOW_ID_MUST_SURVIVE'
     assert api.request('GET','/api/v1/workflows/'+unrelated['id'])==unrelated_before
     for receipt in (root/'bindings').glob('*.json'):
@@ -535,8 +537,8 @@ try:
             first=portable.welcome(root/'guided-setup')
         assert len(guided_prompts)==4,guided_prompts
         guided_prompts.clear()
-        with patch('builtins.input',side_effect=['1',api_origin,'guided','n','y','y','n']):
-            resumed=portable.welcome(root/'guided-setup')
+        with patch('builtins.input',side_effect=['n','y','y','n']):
+            resumed=portable.welcome(root/'guided-setup',resume=True)
         assert len(guided_prompts)==1 and 'n8n API Key' in guided_prompts[0],guided_prompts
         assert first['flows']==resumed['flows']
         assert not resumed['production_ready']
