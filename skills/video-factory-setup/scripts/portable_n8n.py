@@ -492,8 +492,25 @@ def local_control(root, action):
 
 def verify_setup(api, root, project, template, credentials):
     """Run a zero-model setup workflow through a temporary authenticated hook."""
+    # Serialize temporary checks independently from provision()'s resource lock.
+    # An unknown execution must not become a second schema mutation on resume.
+    with locked(Path(root) / '.setup-check'):
+        return _verify_setup(api, root, project, template, credentials)
+
+
+def _verify_setup(api, root, project, template, credentials):
     from n8n_workflows import setup_hook
-    hook_path = 'vf-setup-' + identifier(project)
+    identifier(project)
+    root = Path(root)
+    pattern = re.compile(r'binding-' + re.escape(project) + r'-[0-9a-f]{8}\.json$')
+    for previous in root.glob('binding-' + project + '-*.json'):
+        if not pattern.fullmatch(previous.name):
+            continue
+        state = json.loads(previous.read_text(encoding='utf-8'))
+        execution = state.get('setup_execution')
+        if state.get('pending') or execution is not None and execution.get('phase') != 'complete':
+            raise Fault('SETUP_EXECUTION_UNKNOWN_RECONCILE_IN_N8N')
+    hook_path = 'vf-setup-' + project
     token = secrets.token_urlsafe(32)
     credentials = {**credentials, 'httpHeaderAuth': {'type':'httpHeaderAuth',
                    'data': {'name':'X-VF-Setup', 'value':token}}}
@@ -503,10 +520,18 @@ def verify_setup(api, root, project, template, credentials):
     unique = project + '-' + secrets.token_hex(4)
     saved = provision(api, root, unique, template, credentials)
     workflow_id = saved['workflow']
+    path = root / ('binding-' + unique + '.json')
+    state = json.loads(path.read_text(encoding='utf-8'))
+    state['verified_disabled'] = False
+    state['setup_execution'] = {'phase': 'activation_pending', 'receipt_verified': False,
+                                'hook_disabled': False}
+    private_write(path, state)
     activated = False
     try:
         activated = True  # Mark intent before POST: timeout is also deactivated.
         api.request('POST','/api/v1/workflows/'+workflow_id+'/activate',{})
+        state['setup_execution']['phase'] = 'execution_pending'
+        private_write(path, state)
         request = Request(api.url+'/webhook/'+hook_path, method='POST',data=b'{}',
                           headers={'X-VF-Setup':token,'Content-Type':'application/json'})
         try:
@@ -527,12 +552,19 @@ def verify_setup(api, root, project, template, credentials):
         entries = value if isinstance(value,list) else [value]
         if not entries or any(not isinstance(item,dict) or not (item.get('base_read')=='verified' or item.get('schema_change')=='accepted') for item in entries):
             raise Fault('SETUP_CHECK_RECEIPT_INVALID')
+        state['setup_execution'].update(phase='receipt_verified', receipt_verified=True)
+        private_write(path, state)
         return {'workflow':workflow_id,'result':value,'provider_requests':0}
     finally:
         if activated:
             api.request('POST','/api/v1/workflows/'+workflow_id+'/deactivate',{})
-            if api.request('GET','/api/v1/workflows/'+workflow_id).get('active'):
+            if api.request('GET','/api/v1/workflows/'+workflow_id).get('active') is not False:
                 raise Fault('TEMPORARY_SETUP_HOOK_STILL_ACTIVE_DISABLE_IN_N8N')
+            state['verified_disabled'] = True
+            state['setup_execution']['hook_disabled'] = True
+            if state['setup_execution']['receipt_verified']:
+                state['setup_execution']['phase'] = 'complete'
+            private_write(path, state)
 
 
 def provider_secret(prompt, ask_secret):

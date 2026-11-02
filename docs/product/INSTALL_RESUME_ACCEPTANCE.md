@@ -72,3 +72,10 @@ python scripts/portable_n8n.py --root /absolute/private/vf task-check \
 必须同时匹配项目绑定的 Base/table、record ID 和「任务编号」；不会搜索同名任务作为替代。显式 `--revision` 还需匹配「审核目标版本」；原表没有此版本字段时省略该参数，结果记 `revision: null`，Agent 不得据此准备付费计划。输出是 `{identity: {source,project,base,table,record_id,task,revision},status,result_presence}`，只报告脚本/视频存在性，不输出正文、视频地址、密钥或原始日志。状态回读不等于已验证真人审核。
 
 四平台 CI 在假脚本写回后回读 `CI_INSTALL_TASK_1` 的同一 record/版本/状态与脚本存在性，核对没有额外写任务或模型调用，诊断工作流已关闭。这是便携来源的定位适配，尚未接入 #82 的 HTTP Agent API，不可将 `core_task_mapping: not_configured` 当作已完成跨来源映射。
+
+
+## 临时检查结果未知时
+
+候选续接除资源创建回执外，还保存临时检查的激活、执行、有效回执及停用回读阶段。只有收到有效结果且明确读回 `active=false` 才完成检查。响应超时、无效结果、激活失败或停用回读不确定时，后续同类检查在创建新凭据/流程前停止；向导的离线交接也会列出待核对项。仅关闭 Webhook 不代表执行已经结束或补字段没有发生。
+
+看到 `SETUP_EXECUTION_UNKNOWN_RECONCILE_IN_N8N`，按回执里的原 workflow ID 查 n8n 执行历史、原表字段和当前启用状态；不要清空回执、换目录或再次运行补字段绕过保护。本候选不自动判定未知执行失败，也未提供自动解除待核对状态的命令。核对及恢复处理仍需明确、可审查的方案。本轮改动不调用模型，不升级客户已安装版本；新的源码摘要不可混用于旧冻结候选。

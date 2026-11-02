@@ -137,8 +137,11 @@ def inspect_session(root):
                           'live_status': 'not_checked'})
         for name in names:
             p = bindings / (name + '.json')
-            if p.exists() and json.loads(p.read_text(encoding='utf-8')).get('pending'):
-                pending.append(name)
+            if p.exists():
+                receipt = json.loads(p.read_text(encoding='utf-8'))
+                execution = receipt.get('setup_execution')
+                if receipt.get('pending') or execution is not None and execution.get('phase') != 'complete':
+                    pending.append(name)
     return {'schema': SCHEMA, 'project': project, 'phase': data['phase'],
             'source_matches': data.get('source_sha256') == source_digest(),
             'status': data.get('status') if data.get('status') in ('in_progress','configured_not_accepted','paused_or_failed') else 'unknown',

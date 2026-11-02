@@ -398,6 +398,11 @@ try:
     assert snapshot['provider_requests']==0 and snapshot['writes_to_task']==0
     assert state['writes']==writes_before and state['model_calls']==calls_before
     assert not api.request('GET','/api/v1/workflows/'+observed['workflow'])['active']
+    setup_receipts=[json.loads(p.read_text(encoding='utf-8')) for p in (welcome_root/'bindings').glob('binding-onboarding-*.json')]
+    assert setup_receipts and all(r.get('setup_execution',{}).get('phase')=='complete' for r in setup_receipts)
+    assert all(r['setup_execution']['receipt_verified'] and r['setup_execution']['hook_disabled'] for r in setup_receipts)
+    assert inspect_session(welcome_root)['pending_resource_receipts']==[]
+    onboarding_receipt['temporary_setup_execution_receipts']='complete_and_hooks_disabled'
     onboarding_receipt['same_task_readback']={'task':'CI_INSTALL_TASK_1','revision':1,'status':'脚本待审核',
                                              'script_present':True,'task_writes':0,'new_model_calls':0,
                                              'core_agent_mapping':'not_configured'}
