@@ -9,6 +9,8 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## 开始前
 
+用户明确选择“不依赖 n8n、本地假模型试用”时，优先检查当前候选是否包含 `scripts/install_local_kernel.py` 和 `vfctl local`；按源码仓库的 `docs/product/LOCAL_FAKE_INSTALL.md` 使用全新私有目录安装。此候选只覆盖脚本排队、审核、修订、停止重启；无需 n8n、飞书或模型密钥，不创建生产连接，也不授予员工本机 owner 权限。a41 固定包不含此入口，缺失时明确说明，不能退而替用户安装 n8n 或启动旧系统。以下 n8n 问卷仅用于用户选择的既有发行路线。
+
 0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：现有 n8n 在哪里、飞书应用/Base 是否已有、产品执行服务打算放在哪里。这个脚本只识别环境，不安装软件、不读取密钥、不扫描远端。已有 n8n 时先保留原实例与凭据，不创建第二套 n8n。安装结束按 [交接模板](references/handoff.md) 报告。
 1. 读取 [操作流程](references/operations.md)，定位用户请求属于安装、续接、新项目、检查还是恢复。沿用当前会话已授权的对象和动作；缺少确切主机、目录或客户/项目时先做独立的只读检查，不猜测目标。
 2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。按识别结果告知当前可执行的路线和缺口。**服务器完整栈部署**在 Ubuntu 24.04 x86_64 主机执行，要求 Python 3.12 + venv、root 和本地 Docker/Compose；远程连接须核对可信 SSH 主机指纹。已有本机 Node.js/Docker n8n、其他服务器 n8n 或 n8n Cloud 时，可先只读检查 API 和飞书环境；a37 可使用下方便携向导配置已有实例；不要运行完整栈命令覆盖已有 n8n。接入与验收按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 完成并验收。

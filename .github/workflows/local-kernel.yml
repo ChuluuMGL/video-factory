@@ -5,6 +5,7 @@ on:
     paths:
       - 'packages/video-factory-core/**'
       - '.github/workflows/local-kernel.yml'
+      - 'scripts/install_local_kernel.py'
   workflow_dispatch:
 
 permissions:
@@ -38,3 +39,10 @@ jobs:
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_agent_plans.py' -v
       - name: Exercise delegated script plans and original-row fences
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_agent_script_plans.py' -v
+      - name: Install and exercise n8n-free local fake profile
+        run: |
+          python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_sandbox.py' -v
+          python -m pip wheel --no-deps --wheel-dir /tmp/vf-local-wheels ./packages/video-factory-core
+          python scripts/install_local_kernel.py --root "$RUNNER_TEMP/vf-independent-local" --package /tmp/vf-local-wheels/*.whl
+          "$RUNNER_TEMP/vf-independent-local/vf-local" status
+          "$RUNNER_TEMP/vf-independent-local/vf-local" plan --request-id cloud-install-smoke

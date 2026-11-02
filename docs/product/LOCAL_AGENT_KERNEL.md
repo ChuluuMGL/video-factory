@@ -2,6 +2,8 @@
 
 关联 [#80](https://github.com/ChuluuMGL/video-factory/issues/80) 与 [#81](https://github.com/ChuluuMGL/video-factory/issues/81)。本文是开发候选说明，不在客户安装文档白名单内，不改变 a41 固定包、官网安装入口或现有项目。
 
+2026-11-02：新增独立 [无 n8n 假模型安装候选](LOCAL_FAKE_INSTALL.md)，通过 `vfctl local` 初始化私有 SQLite 并复用本调度器。它不改变下述 `vfctl up` 的真实执行开关，也不提供飞书或付费入口；通用 up 在该假模型账本上拒绝付费执行和计划授权。以下“无自动安装”指原 up 命令；新安装候选的支持边界见新指南。
+
 ## 本次范围
 
 - `vfctl up`：在 macOS/Linux 前台运行一个指定项目的 SQLite 内核与 loopback HTTP 服务，默认只读。
