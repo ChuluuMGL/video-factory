@@ -31,7 +31,7 @@ def png_chunk(kind,body):
     return struct.pack('!I',len(body))+kind+body+struct.pack('!I',zlib.crc32(kind+body))
 generated_image_bytes=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('!IIBBBBB',2048,2048,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(bytes(2048*(2048*3+1))))+png_chunk(b'IEND',b'')
 def task_fields():
-    return {'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
+    return {'任务编号':'CI_INSTALL_TASK_1','审核目标版本':state.get('revision',1),'执行编号':state.get('execution'),'状态':state['status'],'商品资料':'A synthetic product',
             '脚本':state['script'],'脚本历史':state.get('history',''),'视频链接':state.get('video_link'),
             '审核意见':state['feedback'],'视频任务ID':state['job'],
             '参考图链接':state.get('references','https://media.example.invalid/reference.png'),
@@ -370,6 +370,24 @@ try:
     phase='script execution'
     execute(saved['workflow'])
     assert state['model_calls']==1 and state['status']=='脚本待审核' and state['script']=='Synthetic reviewable script',state
+    phase='same task inspection after synthetic script'
+    from portable_task_inspection import inspect_task,task_workflow
+    writes_before=state['writes'];calls_before=state['model_calls']
+    with patch('portable_task_inspection.task_workflow',side_effect=lambda p,b,t,r,k,v:task_workflow(p,b,t,r,k,v,feishu_origin=fixture_origin)):
+        observed=inspect_task(api,welcome_root,'onboarding','recFixture','CI_INSTALL_TASK_1',1)
+    entries=observed['result'] if isinstance(observed['result'],list) else [observed['result']]
+    snapshot=entries[0]
+    assert snapshot['identity']=={'source':'portable-n8n-feishu','project':'onboarding','base':'baseFixture','table':'tableFixture',
+                                  'record_id':'recFixture','task':'CI_INSTALL_TASK_1','revision':1}
+    assert snapshot['status']=='脚本待审核' and snapshot['result_presence']['script'] is True
+    assert snapshot['provider_requests']==0 and snapshot['writes_to_task']==0
+    assert state['writes']==writes_before and state['model_calls']==calls_before
+    assert not api.request('GET','/api/v1/workflows/'+observed['workflow'])['active']
+    onboarding_receipt['same_task_readback']={'task':'CI_INSTALL_TASK_1','revision':1,'status':'脚本待审核',
+                                             'script_present':True,'task_writes':0,'new_model_calls':0,
+                                             'core_agent_mapping':'not_configured'}
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        (evidence/'welcome.json').write_text(json.dumps(onboarding_receipt,indent=2))
     phase='sequential replay'
     execute(saved['workflow'])
     assert state['model_calls']==1,state

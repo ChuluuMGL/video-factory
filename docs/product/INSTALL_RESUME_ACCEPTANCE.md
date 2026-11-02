@@ -55,3 +55,18 @@ Agent 先读私有交接与对应版本，再回读同一个任务。原任务�
 四平台已有实际 n8n CI 增加全新绑定目录的 welcome 中断/续接：使用真实 n8n API 保存加密测试凭据，模拟断开后只重输 n8n Key，复用原飞书凭据，对假飞书做读取检查，并由另一 CLI 进程读取交接。`install-welcome-*` artifact 只包含脱敏时间/步骤统计，不上传私有交接、日志或凭据。结果明确 `human_operator: not_tested`、`real_device_login_restart: not_tested`、真实付费调用 0。
 
 这属于独立 CI 机器上的自动化准备，不是非作者安装或客户业务验收。只有本次 head 的云端记录可以支持本次候选，旧 a41 的通过记录不复用为本次证据。
+
+## 同一任务的零模型回读
+
+源码候选提供显式诊断命令（不是启动生成）：
+
+```sh
+python scripts/portable_n8n.py --root /absolute/private/vf task-check \
+  --project test_project --record recExample --task TASK_1 --revision 1
+```
+
+使用原项目中已保存的飞书凭据，本轮只隐藏输入 n8n Key。该命令会在 n8n 创建独立、受鉴权的临时诊断工作流，执行后回读关闭状态并保留回执；因此需要工作流创建/启停权限，不是纯 GET 管理操作。对飞书只有 token 认证与指定记录读取，没有任务写入或模型请求。它不适合未经许可直接运行在客户实例。
+
+必须同时匹配项目绑定的 Base/table、record ID 和「任务编号」；不会搜索同名任务作为替代。显式 `--revision` 还需匹配「审核目标版本」；原表没有此版本字段时省略该参数，结果记 `revision: null`，Agent 不得据此准备付费计划。输出是 `{identity: {source,project,base,table,record_id,task,revision},status,result_presence}`，只报告脚本/视频存在性，不输出正文、视频地址、密钥或原始日志。状态回读不等于已验证真人审核。
+
+四平台 CI 在假脚本写回后回读 `CI_INSTALL_TASK_1` 的同一 record/版本/状态与脚本存在性，核对没有额外写任务或模型调用，诊断工作流已关闭。这是便携来源的定位适配，尚未接入 #82 的 HTTP Agent API，不可将 `core_task_mapping: not_configured` 当作已完成跨来源映射。

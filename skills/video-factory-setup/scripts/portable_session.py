@@ -124,10 +124,10 @@ def inspect_session(root):
             if config.get('origin') != data.get('origin'): raise Fault('PROJECT_ORIGIN_CHANGED')
         # Only this project's recognized roles; do not sweep other projects.
         names = ['credentials-' + project, 'ledger-' + project]
-        pattern = re.compile(r'binding-' + re.escape(project) + r'-(probe|schema|script|video-submit|video-poll|image|recover-image|recover)(?:-([0-9a-f]{8}))?$')
+        pattern = re.compile(r'binding-' + re.escape(project) + r'-(probe|schema|script|video-submit|video-poll|image|recover-image|recover|task-check)(?:-([0-9a-f]{8}))?$')
         for p in sorted(bindings.glob('binding-' + project + '-*.json')):
             match = pattern.fullmatch(p.stem)
-            if not match or match[2] and match[1] not in ('probe','schema'): continue
+            if not match or match[2] and match[1] not in ('probe','schema','task-check'): continue
             names.append(p.stem)
             b = json.loads(p.read_text(encoding='utf-8'))
             if b.get('origin') != data.get('origin'): raise Fault('PROJECT_ORIGIN_CHANGED')

@@ -791,6 +791,9 @@ def main(argv=None):
     welcome_modes.add_argument('--new-project',action='store_true',help='保留前次交接，在同一实例新增项目；需先完成前次配置')
     welcome_modes.add_argument('--resume',action='store_true',help='核对原目录及脚本摘要，复用原路线、地址和项目')
     commands.add_parser('handoff-check',help='离线读取安装阶段与未知资源回执，不连接服务或调用模型')
+    task_check=commands.add_parser('task-check',help='显式运行零模型诊断流程，只读原飞书任务；会在 n8n 留下关闭的诊断流程')
+    for field in ('project','record','task'):task_check.add_argument('--'+field,required=True)
+    task_check.add_argument('--revision',type=int)
     owner=commands.add_parser('approval-setup',help='配置飞书指定负责人确认流程，默认零费用验收')
     for name in ('url','project','base','table','app','tenant','billing-owner','billing-account','configuration'):
         owner.add_argument('--'+name,required=True)
@@ -842,6 +845,14 @@ def main(argv=None):
         elif args.command == 'handoff-check':
             from portable_session import inspect_session
             value = inspect_session(args.root)
+        elif args.command == 'task-check':
+            from portable_task_inspection import inspect_task
+            identifier(args.project)
+            config=json.loads((args.root/'bindings'/('project-'+args.project+'.json')).read_text(encoding='utf-8'))
+            url=origin(config['origin'])
+            print('只读原任务；在此 n8n 创建临时诊断流程并关闭：'+url)
+            api=API(url,secret('n8n API Key（隐藏输入）: '));api.preflight()
+            value=inspect_task(api,args.root,args.project,args.record,args.task,args.revision)
         elif args.command == 'approval-setup':
             from portable_approval import configure_approval
             api=API(args.url,secret('n8n API Key（隐藏输入）: '));api.preflight()

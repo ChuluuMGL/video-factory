@@ -84,3 +84,5 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 ## 欢迎续接候选
 
 当前源码的 `portable_n8n.py welcome --resume` 按原目录和脚本摘要复用安装路线、实例和项目；`handoff-check` 离线回读阶段与未知创建回执，不能代替实时状态。新增项目使用 `welcome --new-project`，保留旧交接。先核对实际包支持的参数，a41 不因文档更新自动具备新命令。具体操作和非作者验收准备见 [安装续接说明](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/INSTALL_RESUME_ACCEPTANCE.md)。Workflow Agent 沿用实际来源、项目、任务和版本，不把便携 n8n 的记录 ID 当成本机内核 task ID。
+
+需回读原任务时，支持的源码候选可用 `task-check`，但它会创建并短暂启用 n8n 诊断流程，须在授权实例使用；只读飞书原记录、不调用模型。明确 project/record/task，已知版本加 `--revision`。不能把记录 ID 当任务号，不能把结果存在性当真人验收。
