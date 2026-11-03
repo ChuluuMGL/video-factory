@@ -164,6 +164,8 @@ with tempfile.TemporaryDirectory(prefix='vf-feishu-') as temporary:
         issued=automation.issue(store,token,project,1)
         assert automation.queue(store,issued['token'],project)['items']==[{'id':'queued_task','revision':1,'state':'awaiting_script_review'}]
         if postgres:
+            from video_factory.feishu_native_review import NativeReview
+            assert NativeReview(store,client_factory=lambda _:None).process_one(project)['status']=='idle'
             output=state/'feishu-queue-token';output.write_text(issued['token']);output.chmod(0o600)
             output=state/'feishu-connection.json';output.write_bytes((root/'connection.json').read_bytes());output.chmod(0o600)
         with store.connect() as db:

@@ -107,6 +107,7 @@ class SetupAdmin:
                   'script_check': {'action','token','session','secret'},
                   'base_results': {'action','token','session','operation','expected_plan','event','step'},
                   'native_review': {'action','token','session','operation','expected_plan'},
+                  'production_entry': {'action','token','session','operation','approvers','cost_enabled','expected_plan'},
                   'execution_key': {'action','token','session'}, 'revoke_execution': {'action','token','key_id'}}
         if not isinstance(payload, dict) or set(payload) != fields.get(payload.get('action'), set()):
             raise RuntimeFault('SETUP_ADMIN_FIELDS_INVALID')
@@ -124,6 +125,19 @@ class SetupAdmin:
             if operation == 'enable': return helper.enable(payload['token'], project, payload['expected_plan'])
             if operation == 'status': return helper.status(payload['token'], project)
             raise RuntimeFault('FEISHU_NATIVE_ACTION_INVALID')
+        if action == 'production_entry':
+            from .feishu_production_setup import ProductionSetup
+            project = inspect_project(self.store, payload['token'], payload['session'])['project']
+            helper = ProductionSetup(self.store, self.master_key)
+            operation = payload['operation']
+            if operation == 'status': return helper.status(payload['token'], project)
+            if operation == 'pause': return helper.pause(payload['token'], project)
+            if operation == 'plan':
+                return helper.prepare(payload['token'], project, payload['approvers'], payload['cost_enabled'])
+            if operation == 'enable':
+                return helper.enable(payload['token'], project, payload['approvers'],
+                                     payload['cost_enabled'], payload['expected_plan'])
+            raise RuntimeFault('PRODUCTION_SETUP_ACTION_INVALID')
         if action == 'base_results':
             from .base_results import BaseResults
             project = inspect_project(self.store, payload['token'], payload['session'])['project']
@@ -160,12 +174,12 @@ class SetupAdmin:
 def rpc(stack, payload):
     # The container's result (including a short-lived token on open) is consumed
     # in memory by the local OS administrator, never printed by the wizard.
-    if payload.get('action') in ('base_results', 'native_review', 'script_check'):
+    if payload.get('action') in ('base_results', 'native_review', 'script_check', 'production_entry'):
         project = payload['session']['configuration']['project']['id']
         from .runner import directory as runner_directory, compose as runner_compose
         from .workspace import compose as workspace_compose
         has_runner = (runner_directory(stack, project)/'runner.json').exists()
-        if payload['action'] in ('native_review','script_check') and not has_runner:
+        if payload['action'] in ('native_review','script_check','production_entry') and not has_runner:
             raise RuntimeFault('FEISHU_NATIVE_RUNNER_REQUIRED')
         companion = runner_compose if has_runner else workspace_compose
         raw = companion(stack, project, 'exec', '-T', 'executor', 'python', '-m', 'video_factory.setup_admin',

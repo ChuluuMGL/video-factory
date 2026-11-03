@@ -48,6 +48,8 @@ def main(argv=None):
     register_results(commands)
     from .feishu_native_cli import register as register_native, cli as native_cli
     register_native(commands)
+    from .feishu_production_cli import register as register_base_production, cli as base_production_cli
+    register_base_production(commands)
     from .production_setup import register as register_production, cli as production_cli
     register_production(commands)
     register_runtime(commands)
@@ -105,6 +107,8 @@ def main(argv=None):
         return results_cli(args)
     if args.command == 'feishu-review':
         return native_cli(args)
+    if args.command == 'feishu-production':
+        return base_production_cli(args)
     if args.command == 'workspace':
         return workspace_cli(args)
     if args.command == 'runner':
