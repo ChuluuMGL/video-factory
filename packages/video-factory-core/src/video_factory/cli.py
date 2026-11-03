@@ -44,6 +44,8 @@ def main(argv=None):
     register_local(commands)
     from .local_setup import register as register_business_setup, cli as business_setup_cli
     register_business_setup(commands)
+    from .local_run import register as register_run_entry, cli as run_entry_cli
+    register_run_entry(commands)
     from .local_native_cli import register as register_local_native, cli as local_native_cli
     register_local_native(commands)
     from .local_sandbox import register as register_sandbox, cli as sandbox_cli
@@ -107,6 +109,8 @@ def main(argv=None):
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command in ('local-run', 'agent'):
+        return run_entry_cli(args)
     if args.command == 'local-setup':
         return business_setup_cli(args)
     if args.command == 'local-feishu':

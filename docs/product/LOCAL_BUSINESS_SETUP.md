@@ -77,3 +77,29 @@ vfctl local-setup --root "$HOME/vf-business" \
 云端测试覆盖原子回滚、凭据不覆盖、项目隔离、配置漂移、错误主密钥、绑定失败续接、CLI 退出撤销会话和本机素材校验。测试使用模拟身份/接口，不替代真实飞书和真实模型验收。
 
 非作者按同一候选安装后，分别记录：安装成功、配置成功、飞书授权/绑定、费用审批、脚本审核、视频回写。手动停止后重启核对历史任务和结果，无重复提交；真实退出登录/重启及自动启动仍需单独记录，不能用 CI 代替。
+
+## 同版本启动与 Codex 入口候选
+
+新业务安装同时交付 `vf-setup`、`vf-run`、`vf-agent`。原安装不会因只更新文档而增加命令；先核对同版本安装器与 wheel。
+
+配置与绑定完成后，负责人在自己的终端执行：
+
+```sh
+~/VideoFactory/vf-run inspect --plan /绝对路径/project.json
+~/VideoFactory/vf-run start --plan /绝对路径/project.json --expect-plan 刚返回的plan_sha256
+```
+
+密码由终端隐藏输入。默认只读，不启动飞书接收器、不执行任务。前台返回的 `connection` 路径可供同一受控环境中的 Codex 使用：
+
+```sh
+~/VideoFactory/vf-agent --connection /实际返回路径/connection.json capabilities
+~/VideoFactory/vf-agent --connection /实际返回路径/connection.json tasks
+```
+
+CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定回环地址的 Agent 路由，没有管理员审批、任意 URL 或 Shell 入口。连接最长两小时；Ctrl-C 正常停止，立即撤销本次创建的权限并清理临时文件。再次启动保留原账本；崩溃留下的凭据到期失效，不自动续期。
+
+**允许提出计划：**两条负责人命令都加 `--allow-plans`。启动时本人通过官方飞书授权页验证提交身份。Agent 可查看项目资料、准备脚本修订和视频计划；尚未开启调度时不会生成。接线不把管理员密码、用户 token 或模型 Key 放进 Codex 上下文。
+
+**允许执行已批准任务：**先完成原表接线，核对当前待处理任务清单，再在 inspect/start 都加 `--execute-approved`，start 另加 `--dedicated-app`。这个动作可能推进清单中已获准的真实模型任务，不能当作免费试用开关；真实使用需事先明确费用与调用范围。每个脚本/视频计划仍须负责人独立批准，脚本审核通过不等于视频费用批准。负责人使用 `vf-run approve-script/approve-video --plan ... --plan-id ... --plan-sha256 ... --accept-provider-charges`；撤销使用对应 `revoke-script/revoke-video`，不能撤回已经提交给供应商的请求。Agent 不拥有这些管理员动作。
+
+这限制的是项目 API 权限，不能防住拥有服务器同一 OS 账户任意 Shell 权限的人。同事正式接入应使用独立 OS 账户或受限通道，只交付其专用连接权限；不要把管理员目录或 root SSH 当成 Agent 凭据。目前为前台启动，关闭终端即停止；开机自启和独立真人安装仍单独验收。
