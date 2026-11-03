@@ -171,6 +171,74 @@ class LocalBusinessFlowTests(unittest.TestCase):
         out = Path('.runtime/local-kernel-evidence'); out.mkdir(parents=True, exist_ok=True)
         (out/'business-flow.json').write_text(json.dumps(receipt, indent=2) + '\n')
 
+    def reject_video(self):
+        self.generate(1)
+        self.remote.record_fields['状态'] = ['脚本通过']
+        self.event('脚本待审核', '脚本通过', 'evt_script_accept')
+        self.tick()
+        videos = VideoPlans(self.store, self.project)
+        plan = videos.prepare(self.planner, 'generated_one', 1, 'video_first')
+        videos.owner(self.admin, 'approve', plan['plan_id'], plan['plan_sha256'])
+        videos.submit(self.planner, plan['plan_id'], plan['plan_sha256'])
+        for _ in range(8): self.tick()
+        self.assertEqual(self.state(), 'awaiting_video_review')
+        self.remote.record_fields.update({'状态': ['视频退回'], '审核意见': 'Replace the closing shot'})
+        self.event('视频待审核', '视频退回', 'evt_video_reject')
+        self.tick()
+        self.assertEqual(self.state(), 'rejected')
+        self.remote.record_fields['source_revision'] = 'source_two'
+
+    def test_video_rejection_replans_same_row_and_requires_new_approvals(self):
+        self.reject_video()
+        # The remote label alone cannot turn a video rejection into a script one.
+        self.remote.record_fields['状态'] = ['脚本退回']
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_NATIVE_REVIEW_STATE_CONFLICT'):
+            self.plans.prepare(self.planner, 'wrong_stage', {'record': 'recFixture', 'expected_revision': 1})
+        self.remote.record_fields['状态'] = ['视频退回']
+        original_update = self.remote.update_record
+        def update_clearing_empty_fields(base, table, record, fields):
+            result = original_update(base, table, record, fields)
+            if fields.get('视频') == []:
+                self.remote.record_fields.pop('视频', None)
+                self.remote.record_fields.pop('视频摘要', None)
+            return result
+        self.remote.update_record = update_clearing_empty_fields
+        self.restart_scheduler()
+        self.generate(2)
+        self.assertIn('Replace the closing shot', self.provider.calls[-1][1])
+        self.assertNotIn('视频', self.remote.record_fields)
+        self.assertNotIn('视频摘要', self.remote.record_fields)
+        versions = self.store.inspect_task(self.admin, self.project, 'generated_one')['versions']
+        self.assertIsNotNone(versions[0]['artifact'])
+        self.assertEqual(versions[0]['state'], 'rejected')
+        self.remote.record_fields['状态'] = ['脚本通过']
+        self.event('脚本待审核', '脚本通过', 'evt_script_two_accept')
+        self.tick()
+        next_video = VideoPlans(self.store, self.project).prepare(self.planner, 'generated_one', 2, 'video_second')
+        with self.assertRaisesRegex(RuntimeFault, 'OWNER_APPROVAL_REQUIRED'):
+            VideoPlans(self.store, self.project).submit(self.planner, next_video['plan_id'], next_video['plan_sha256'])
+        self.restart_scheduler()
+        for _ in range(3): self.tick()
+        self.assertEqual(self.video.calls, 1)
+        self.assertEqual(len(self.provider.calls), 2)
+
+    def test_video_revision_status_drift_blocks_provider_and_writeback(self):
+        self.reject_video()
+        plan = self.plans.prepare(self.planner, 'video_rework', {'record': 'recFixture', 'expected_revision': 1})
+        self.plans.owner(self.admin, 'approve', plan['plan_id'], plan['plan_sha256'])
+        self.plans.submit(self.planner, plan['plan_id'], plan['plan_sha256'])
+        self.remote.record_fields['状态'] = ['脚本退回']
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_NATIVE_SOURCE_CHANGED'):
+            self.jobs.step(self.execution, self.project, 'generated_one', 2, self.key)
+        self.assertEqual(len(self.provider.calls), 1)
+        self.remote.record_fields['状态'] = ['视频退回']
+        self.jobs.step(self.execution, self.project, 'generated_one', 2, self.key)
+        self.remote.record_fields['状态'] = ['视频通过']
+        with self.assertRaisesRegex(RuntimeFault, 'FEISHU_NATIVE_REMOTE_REVIEW_CONFLICT'):
+            self.native.sync(self.project, self.root, lambda db: self.store.authorize(db, self.admin, 'admin'))
+        self.assertEqual(self.remote.record_fields['状态'], ['视频通过'])
+        self.assertEqual(self.video.calls, 1)
+
 
 if __name__ == '__main__':
     unittest.main()
