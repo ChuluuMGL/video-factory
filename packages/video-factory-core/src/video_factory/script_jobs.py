@@ -8,14 +8,15 @@ import re
 import time
 from .runtime_store import RuntimeFault,canonical,fingerprint,identifier
 from .feishu_bridge import FeishuBridge,meta,save,plain_text
-from .script_provider import ScriptProvider,MODEL
+from .script_provider import ScriptProvider
 
 
 def key(project,task,revision):return 'script:job:'+fingerprint([project,task,revision])
 
 
-def profile(store,token,project,credential_ref,billing_owner):
+def profile(store,token,project,credential_ref,billing_owner,provider='deepseek',model=None):
     identifier(project);identifier(billing_owner)
+    selected=ScriptProvider(provider,model)
     if not isinstance(credential_ref,str) or not re.fullmatch(r'secret:[A-Za-z0-9_-]{1,96}',credential_ref):
         raise RuntimeFault('SCRIPT_CREDENTIAL_REFERENCE_REQUIRED')
     with store.connect() as db:
@@ -23,9 +24,11 @@ def profile(store,token,project,credential_ref,billing_owner):
         setup=meta(db,'setup:project:'+project)
         secret=db.execute('SELECT revision FROM vault WHERE alias=?',(credential_ref[7:],)).fetchone()
         if not setup or not secret:raise RuntimeFault('SCRIPT_PROJECT_AND_SECRET_REQUIRED')
-        value={'model':MODEL,'credential_ref':credential_ref,'credential_revision':secret[0],'billing_owner':billing_owner}
+        value={'provider':selected.provider,'model':selected.model,'credential_ref':credential_ref,
+               'credential_revision':secret[0],'billing_owner':billing_owner}
         save(db,'script:profile:'+project,value);store.audit(db,actor,'script_provider_configured',project)
-    return {'project':project,'model':MODEL,'credential_saved':True,'provider_requests':0}
+    return {'project':project,'provider':selected.provider,'model':selected.model,
+            'credential_saved':True,'provider_requests':0}
 
 
 class ScriptJobs:
@@ -34,7 +37,7 @@ class ScriptJobs:
         self.bridge=FeishuBridge(store,**({'client_factory':client_factory} if client_factory else {}))
         self.source_client_factory=source_client_factory
         self.native_app_client_factory=native_app_client_factory
-        self.provider=provider or ScriptProvider()
+        self.provider=provider
 
     def prepare_record(self, user, project, record, expected_revision=0):
         """Prepare one explicitly selected original Base row, never a table scan."""
@@ -228,7 +231,9 @@ class ScriptJobs:
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
-        try:result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
+        try:
+            client=self.provider or ScriptProvider(settings.get('provider','deepseek'),settings['model'])
+            result=client.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
         except Exception as error:
             allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
                      'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'}
