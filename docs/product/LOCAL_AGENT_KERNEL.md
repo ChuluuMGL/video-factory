@@ -22,7 +22,19 @@
 vfctl up --root /absolute/private/runtime --project test_project
 ```
 
-默认端口 8788，仅监听 `127.0.0.1`，无自动安装、自启动、后台守护或真实飞书接入。Ctrl-C/SIGTERM 停止；正常停止等待当前执行结束后才释放锁。强制终止时由既有账本的提交意图保护未知结果。重新启动同一目录保留游标及任务回执。
+默认端口 8788，仅监听 `127.0.0.1`，无自动安装、自启动或后台守护。真实飞书需下面的独立显式配置。Ctrl-C/SIGTERM 停止；正常停止等待当前执行结束后才释放锁。强制终止时由既有账本的提交意图保护未知结果。重新启动同一目录保留游标及任务回执。
+
+## 本地飞书原表接线候选（未发布）
+
+2026-11-03 源码新增 `local-feishu configure-app/plan/enable/status` 与 `up --feishu-native`。这不是现有 fake-only ZIP 的转换开关；必须使用独立业务 SQLite 目录，原假模型目录拒绝接入。
+
+先用既有 `feishu bind` 绑定精确测试 Base/任务表、字段与真实提交人/审核人。`local-feishu` 要求 `--root`、`--project`、私有 `--admin-token-file` 和 `--master-key-file`。`configure-app` 另需 `--app-id`、`--app-secret-file`、`--dedicated-app`，只允许新应用配置，不能覆盖已有绑定。密钥不出现在命令输出。应用必须专用于此项目事件接收，不能与另一个长连接接收器共用。
+
+`plan` 只读核对应用权限、原表 schema、事件订阅，并返回计划摘要；`enable --expect-plan <摘要> --dedicated-app` 才补充审核字段和订阅该 Base。仍须在飞书后台发布记录变更事件权限。`status` 只说明配置，不证明事件送达。
+
+`up --feishu-native` 必须同时提供原有明确执行参数。它在同一 runtime 锁内管理官方 SDK 长连接子进程，以原有执行权限推进已批准任务，再将脚本/视频同步到原任务行。审核事件每次重新核验项目权限、上下文和真实操作者；不提供手工注入事件入口。接收进程停止后不继续调度；停止主进程会回收接收进程。`receiver_running_delivery_unverified` 不等于真实事件验收。
+
+写回丢失响应时保留意图，重启后先回读原行；无法核对时显示 `FEISHU_RECONCILIATION_REQUIRED`，不重复付费请求。实际原表审核、附件回写、重启和真人安装证据仍需逐项取得。新建项目/SKU/模型配置的简易引导与本候选的安装整合尚未完成，不以管理员开发工具替代最终简易安装验收。
 
 明确执行候选需要同时提供 `--execute-approved`、`--execution-key-file`、`--master-key-file` 和 `--media-root`。凭据只从已有私有文件读取，不放进参数值、聊天或输出。执行密钥必须是该项目既有的 `approved_execution` 凭据；不会自动创建或续期执行权限。启动执行模式可能消费原账本中已批准任务的模型费用，因此不能用于未经核对的真实目录。
 
@@ -63,7 +75,7 @@ Video Factory 保存执行事实及产物；Workflow Agent 保存讨论和方案
 
 ## 尚未接入与验证
 
-- 飞书事件、审核处理和结果写回没有接入此本机生命周期；现有容器接收器仍保持原限制。原表费用计划入口依赖单独审查的 #37。
+- 飞书事件、审核处理和结果写回新增显式本地接线候选；真实原表端到端验收尚未完成，不能以容器历史结果替代。原表费用计划入口仍依赖单独审查的 #37。
 - 本机向导、依赖安装、媒体工具检查、login/logout/开机自启、Windows、多个项目服务、迁移旧安装均不在本 PR。
 - 不改变已发布模型支持范围；不合并未验收的其他模型 adapter。
 - 新增 Ubuntu/macOS CI 使用合成数据、内存假 provider 和本机回环 fixture。验证真实 CLI 子进程、锁、SQLite、HTTP 权限、重启续接与付费意图保护，不需要服务器/SSH/GitHub Secrets。

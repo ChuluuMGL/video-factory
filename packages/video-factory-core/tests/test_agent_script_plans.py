@@ -293,6 +293,19 @@ class ScriptPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'NATIVE_SOURCE_CONFLICT'):
             self.prepare(request={'record': 'recDifferent', 'expected_revision': 0})
 
+    def test_native_rejected_single_select_array_revises_exact_original_record(self):
+        source = self.native()
+        first = self.prepare(request={'record': 'recFixture', 'expected_revision': 0})
+        self.approve(first); self.submit(first); self.step()
+        self.store.review(self.admin, 'native_rejection', self.project, 'generated_one', 1,
+                          'script', 'reject', 'Shorten the ending')
+        source.fields.update(status=['脚本退回'], version='source_two')
+        second = self.prepare('native_revised', {'record': 'recFixture', 'expected_revision': 1})
+        self.approve(second); self.submit(second); self.step(2)
+        self.assertEqual(len(self.provider.calls), 2)
+        self.assertIn('Shorten the ending', self.provider.calls[1][1])
+        self.assertEqual(self.plans.receipt(self.reader, second['plan_id'])['task_state'], 'awaiting_script_review')
+
     def test_credential_config_and_sku_drift_block_old_approval(self):
         plan = self.prepare(); self.approve(plan)
         self.store.put_secret(self.admin, 'script', 'synthetic-new-secret', self.key)

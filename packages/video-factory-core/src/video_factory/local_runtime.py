@@ -5,6 +5,8 @@ from pathlib import Path
 import signal
 import sys
 import threading
+import subprocess
+from contextlib import contextmanager, nullcontext
 
 from . import automation
 from .agent_api import AgentAPI, AgentServer
@@ -35,6 +37,8 @@ def register(commands):
     up.add_argument('--agent-script-plans', action='store_true', help='enable delegated Feishu script plans; does not approve fees')
     up.add_argument('--script-user-token-file', type=Path)
     up.add_argument('--script-open-id', help='pin the configured Feishu submitter; validated against live identity')
+    up.add_argument('--feishu-native', action='store_true',
+                    help='receive real Feishu reviews and write results to the explicitly bound original table')
     key = commands.add_parser('agent-key', help='save a scoped Agent token to a new private file; read-only by default')
     key.add_argument('--root', type=Path, default=default_root())
     key.add_argument('--project', required=True)
@@ -75,14 +79,22 @@ def configured_script_plans(store, project, enabled, token_file, open_id):
 
 def serve(store, project, port, stop, *, execution_token=None, master_key=None,
           media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None,
-          dispatch=None):
+          dispatch=None, native_files=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise RuntimeFault('PORT_INVALID')
     with runtime_lock(store.root):
+        if native_files and dispatch is not None:
+            raise RuntimeFault('LOCAL_NATIVE_CUSTOM_DISPATCH_DENIED')
+        if native_files:
+            from .local_native_events import context
+            context(store, project, execution_token, master_key)
+            from .dispatch import dispatch_with_results
+            dispatch = dispatch_with_results
         scheduler = Scheduler(store, project, execution_token=execution_token, master_key=master_key,
                               media_root=media_root, interval=interval, **({'dispatch': dispatch} if dispatch else {}))
         with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler,
-                         plans_enabled=plans_enabled, script_plans=script_plans)) as server:
+                         plans_enabled=plans_enabled, script_plans=script_plans)) as server, \
+                (native_receiver(store, project, native_files, scheduler) if native_files else nullcontext()):
             thread = threading.Thread(target=scheduler.run, args=(stop,), name='vf-local-scheduler')
             thread.start()
             try:
@@ -97,6 +109,36 @@ def serve(store, project, port, stop, *, execution_token=None, master_key=None,
                 thread.join()
 
 
+@contextmanager
+def native_receiver(store, project, files, scheduler):
+    execution_file, master_file = files
+    process = subprocess.Popen([sys.executable, '-m', 'video_factory.local_native_events',
+                                '--root', str(store.root), '--project', project,
+                                '--execution-key-file', str(execution_file),
+                                '--master-key-file', str(master_file)],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+    original = scheduler.dispatch
+    def checked(*args, **kwargs):
+        if process.poll() is not None:
+            raise RuntimeFault('LOCAL_FEISHU_RECEIVER_STOPPED')
+        return original(*args, **kwargs)
+    scheduler.dispatch = checked
+    scheduler._update(feishu_events='receiver_running_delivery_unverified',
+                      feishu_writeback='enabled_requires_readback')
+    try:
+        yield
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        scheduler._update(feishu_events='stopped')
+
+
 def cli(args):
     emit = lambda value: print(json.dumps(value, ensure_ascii=False, sort_keys=True), flush=True)
     try:
@@ -107,7 +149,7 @@ def cli(args):
         store = RuntimeStore(args.root)
         with store.connect() as db:
             fake_profile = db.execute("SELECT 1 FROM meta WHERE key='local:fake-only:v1'").fetchone()
-        if fake_profile and (args.command != 'up' or args.execute_approved or args.agent_plans or args.agent_script_plans):
+        if fake_profile and (args.command != 'up' or args.execute_approved or args.agent_plans or args.agent_script_plans or args.feishu_native):
             raise RuntimeFault('LOCAL_FAKE_PROFILE_NO_PAID_OR_OWNER_PLAN_ROUTE')
         if args.command == 'agent-script-plan':
             if args.action == 'approve' and not args.accept_provider_charges:
@@ -142,6 +184,8 @@ def cli(args):
             emit({k: receipt[k] for k in ('project', 'scope', 'expires_at', 'key_id')})
             return 0
         supplied = (args.execution_key_file, args.master_key_file, args.media_root)
+        if args.feishu_native and not args.execute_approved:
+            raise RuntimeFault('LOCAL_FEISHU_EXECUTION_INPUTS_REQUIRED')
         if args.execute_approved and not all(supplied):
             raise RuntimeFault('LOCAL_EXECUTION_INPUTS_REQUIRED')
         if not args.execute_approved and any(supplied):
@@ -157,7 +201,8 @@ def cli(args):
                 signal.signal(sig, lambda *_: stop.set())
             serve(store, args.project, args.port, stop, execution_token=token, master_key=key,
                   media_root=args.media_root, interval=args.interval, plans_enabled=args.agent_plans,
-                  script_plans=scripts, on_ready=emit)
+                  script_plans=scripts, on_ready=emit,
+                  native_files=(args.execution_key_file, args.master_key_file) if args.feishu_native else None)
         finally:
             for sig, handler in previous.items():
                 signal.signal(sig, handler)
