@@ -11,7 +11,7 @@ from video_factory.review_service import open_media
 from video_factory.runtime_store import RuntimeFault, canonical
 from video_factory.feishu_bridge import save
 from video_factory.feishu_native_sync import item_key
-from test_feishu_native_review import NativeReviewTests
+import test_feishu_native_review as review_fixture
 
 
 class RelocationTests(unittest.TestCase):
@@ -68,7 +68,10 @@ class RelocationTests(unittest.TestCase):
         with self.assertRaises(RuntimeFault): self.read()
 
 
-class ReviewReplayAfterRelocation(NativeReviewTests):
+class ReviewReplayAfterRelocation(unittest.TestCase):
+    setUp = review_fixture.NativeReviewTests.setUp
+    tearDown = review_fixture.NativeReviewTests.tearDown
+    event = review_fixture.NativeReviewTests.event
     def test_unchanged_artifact_keeps_accepted_video_event_idempotent(self):
         media=self.store.root/'media';media.mkdir(mode=0o700)
         data=b'synthetic-review-media';path=media/'clip.mp4';path.write_bytes(data);path.chmod(0o600)
