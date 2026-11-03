@@ -51,7 +51,7 @@ vfctl local-setup --root "$HOME/vf-business" \
   --enable-native <刚核对的计划哈希> --dedicated-app
 ```
 
-这一步会按计划修改测试表审核字段/订阅，不调用模型。它不发放执行密钥，也不代表已开始后台调度。执行仍按 [本机内核](https://github.com/ChuluuMGL/video-factory/blob/codex/local-business-setup/docs/product/LOCAL_AGENT_KERNEL.md) 显式配置项目执行权限与每条费用审批；脚本通过不授权视频费用。本候选尚未整合自动启动、执行权限和非作者一键安装验收。
+这一步会按计划修改测试表审核字段/订阅，不调用模型。它不发放执行密钥，也不代表已开始后台调度。执行仍按 [本机内核](https://github.com/ChuluuMGL/video-factory/blob/codex/local-business-setup/docs/product/LOCAL_AGENT_KERNEL.md) 显式配置项目执行权限与每条费用审批；脚本通过不授权视频费用。同版本限时启动和执行权限见下文；开机自启及非作者独立安装仍待验收。
 
 ## 续接与新增项目
 
@@ -103,3 +103,9 @@ CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定�
 **允许执行已批准任务：**先完成原表接线，核对当前待处理任务清单，再在 inspect/start 都加 `--execute-approved`，start 另加 `--dedicated-app`。这个动作可能推进清单中已获准的真实模型任务，不能当作免费试用开关；真实使用需事先明确费用与调用范围。每个脚本/视频计划仍须负责人独立批准，脚本审核通过不等于视频费用批准。负责人使用 `vf-run approve-script/approve-video --plan ... --plan-id ... --plan-sha256 ... --accept-provider-charges`；撤销使用对应 `revoke-script/revoke-video`，不能撤回已经提交给供应商的请求。Agent 不拥有这些管理员动作。
 
 这限制的是项目 API 权限，不能防住拥有服务器同一 OS 账户任意 Shell 权限的人。同事正式接入应使用独立 OS 账户或受限通道，只交付其专用连接权限；不要把管理员目录或 root SSH 当成 Agent 凭据。目前为前台启动，关闭终端即停止；开机自启和独立真人安装仍单独验收。
+
+## 同核心版本的成片搬迁
+
+业务安装包的停机备份可以保存已登记成片。恢复到全新目录时保留任务、成片摘要、原审核事件及原始路径描述；私有映射索引只把对应成片定位到新目录中的同摘要文件。读取仍验证权限、符号链接和文件摘要，不按文件名猜测来源。
+
+这是同核心版本的离线恢复，不是跨版本升级。原商品参考图、私有项目计划仍须单独保留；恢复不启动调度、不恢复临时授权、不调用模型，也不替代人工审核。操作入口及安装包版本以安装包 BUSINESS_BUNDLE.md 为准。
