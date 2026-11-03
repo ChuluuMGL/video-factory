@@ -17,7 +17,7 @@ from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, e
 from video_factory.script_provider import MODEL
 
 BINDING = {'tenant_key': 'tenant_fixture', 'base_token': 'bascnFixture', 'table_id': 'tblFixture',
-           'fields': {'task': 'fldTask', 'sku_id': 'fldSku', 'script': 'fldScript', 'source_revision': 'fldVersion'},
+           'fields': {'task': 'fldTask', 'sku_id': 'fldSkuId', 'script': 'fldScript', 'source_revision': 'fldVersion'},
            'submitters': ['ou_fixture'], 'reviewers': ['ou_fixture']}
 
 

@@ -19,6 +19,8 @@ def main():
     p = argparse.ArgumentParser(description='Video Factory 本地假模型版安装（无需 n8n / Docker）')
     p.add_argument('--root', type=Path, required=True, help='全新目录；父目录须已存在')
     p.add_argument('--project', default='local_trial')
+    p.add_argument('--mode', choices=('fake-only', 'business'), default='fake-only',
+                   help='business installs the terminal setup launcher without a fake ledger')
     p.add_argument('--package', type=Path, help='已核对的本地 wheel；默认使用当前源码包')
     p.add_argument('--wheelhouse', type=Path, help='可选完整离线依赖目录')
     args = p.parse_args()
@@ -36,7 +38,7 @@ def main():
     wheels = args.wheelhouse.resolve(strict=True) if args.wheelhouse else None
     if wheels and not wheels.is_dir(): p.error('wheelhouse 必须是目录')
     root.mkdir(mode=0o700)
-    receipt = {'schema': 1, 'mode': 'fake-only', 'project': args.project, 'phase': 'created',
+    receipt = {'schema': 1, 'mode': args.mode, 'project': args.project, 'phase': 'created',
                'n8n_installed': False, 'production_ready': False, 'real_model_calls': 0,
                'package_sha256': hashlib.sha256(package.read_bytes()).hexdigest() if package.is_file() else None,
                'package_kind': 'wheel' if package.is_file() else 'source-candidate'}
@@ -58,14 +60,28 @@ def main():
         pip = [str(python), '-m', 'pip', '--disable-pip-version-check', 'install', '--no-input', '--no-compile']
         if wheels: pip += ['--no-index', '--find-links', str(wheels)]
         subprocess.run(pip + [str(package)], env=env, check=True)
-        checkpoint('initializing_local_ledger')
         cli = root / 'environment/bin/vfctl'
-        subprocess.run([str(cli), 'local', 'install', '--root', str(root / 'data'), '--project', args.project], env=env, check=True)
-        launcher = '#!/bin/sh\nset -eu\nif [ "$#" -eq 0 ]; then set -- up; fi\nexec ' + shlex.quote(str(cli)) + ' local "$@" --root ' + shlex.quote(str(root / 'data')) + ' --project ' + shlex.quote(args.project) + '\n'
+        if args.mode == 'business':
+            checkpoint('preparing_business_setup')
+            command = [str(python), '-I', '-c',
+                       'from video_factory.cli import main; raise SystemExit(main())', 'local-setup']
+            launcher = '#!/bin/sh\nset -eu\nexec ' + ' '.join(shlex.quote(v) for v in command)
+            launcher += ' "$@" --root ' + shlex.quote(str(root / 'business')) + '\n'
+            launcher_name = 'vf-setup'
+        else:
+            checkpoint('initializing_local_ledger')
+            subprocess.run([str(cli), 'local', 'install', '--root', str(root / 'data'), '--project', args.project], env=env, check=True)
+            launcher = '#!/bin/sh\nset -eu\nif [ "$#" -eq 0 ]; then set -- up; fi\nexec ' + shlex.quote(str(cli)) + ' local "$@" --root ' + shlex.quote(str(root / 'data')) + ' --project ' + shlex.quote(args.project) + '\n'
+            launcher_name = 'vf-local'
         # Fixed root/project come last; callers cannot target another ledger through this wrapper.
-        fd = os.open(root / 'vf-local', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
+        fd = os.open(root / launcher_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
         with os.fdopen(fd, 'w') as out: out.write(launcher)
         checkpoint('installed')
+        if args.mode == 'business':
+            print(json.dumps({'installed': True, 'mode': 'business', 'configuration_complete': False,
+                              'setup': str(root / 'vf-setup'), 'required_arguments': ['--plan', '<private-plan.json>', '--interactive', '--bind'],
+                              'production_ready': False, 'real_model_calls': 0}, ensure_ascii=False))
+            return 0
         print(json.dumps({'installed': True, 'mode': 'fake-only', 'n8n_required': False,
                           'start': str(root / 'vf-local'), 'status': [str(root / 'vf-local'), 'status'],
                           'stop': 'Ctrl-C; restart with the same vf-local', 'production_ready': False}, ensure_ascii=False))

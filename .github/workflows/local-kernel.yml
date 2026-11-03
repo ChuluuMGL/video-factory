@@ -54,6 +54,10 @@ jobs:
           "$RUNNER_TEMP/vf-independent-local/vf-local" status
           "$RUNNER_TEMP/vf-independent-local/vf-local" plan --request-id cloud-install-smoke
           python .github/scripts/local-install-smoke.py "$RUNNER_TEMP/vf-independent-local"
+      - name: Install and exercise the separate business setup launcher
+        run: |
+          python scripts/install_local_kernel.py --mode business --root "$RUNNER_TEMP/vf-business-install" --package /tmp/vf-local-wheels/*.whl
+          python .github/scripts/local-business-install-smoke.py "$RUNNER_TEMP/vf-business-install"
       - name: Retain n8n-free installation receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

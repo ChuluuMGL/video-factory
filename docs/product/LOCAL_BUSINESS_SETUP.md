@@ -14,7 +14,15 @@ Agent 可以帮助查找组织、Base、表和字段 ID，整理非秘密 JSON�
 
 ## 首次配置
 
-先安装本候选 wheel 到私有 Python 环境，使用该环境的 `vfctl`。在自己的目录准备一个仅本人可访问的计划目录：
+候选源码安装器现支持 `--mode business`：
+
+```sh
+python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFactory" --package /绝对路径/已校验的候选.whl
+```
+
+这会安装独立 Python 环境并生成 `~/VideoFactory/vf-setup`，不创建假模型账本。执行 `~/VideoFactory/vf-setup --plan /绝对路径/project.json --interactive --bind` 进入下面的问答，业务数据固定在 `~/VideoFactory/business`。尚未发布一键下载入口，必须使用同版本安装器和 wheel。
+
+也可直接用已安装候选环境的 `vfctl`。在自己的目录准备一个仅本人可访问的计划目录：
 
 ```sh
 mkdir -m 700 "$HOME/vf-local-config"
