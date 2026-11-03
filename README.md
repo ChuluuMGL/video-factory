@@ -1,5 +1,7 @@
 # Video Factory
 
+**本机业务 Setup 候选：**新增终端问答与 Agent 非秘密计划入口，配置独立项目、SKU、DeepSeek、MiniMax 和已有飞书测试表，支持原计划续接且不覆盖旧凭据。见[业务配置向导](docs/product/LOCAL_BUSINESS_SETUP.md)。尚未发布；真实闭环、自动启动和独立安装仍需验收。
+
 > 通过 Agent Skill，在自己的 n8n 上搭建视频工作流。
 >
 > 默认连接飞书 Base 与 n8n，同一客户可持续新增项目。

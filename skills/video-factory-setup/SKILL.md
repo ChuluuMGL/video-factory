@@ -82,3 +82,7 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 代客户安装、远程输入失效、旧服务器隔离、第三方平台身份核对或客户自己的 Codex 接管时，读取 [客户远程安装与接管](references/customer-remote.md)。沿用授权 SSH/API，先盘点既有网站与数据库。使用 [交接模板](references/handoff.md) 给客户保存准确运行版本、目录、入口、启用状态和待验步骤；不把官网或常驻员工网页当作飞书日常入口。
 
 源码候选新增 `seedance-novai`，仅对应核实过的 `https://xinghezhiyun.com` 企业版，独立凭据且 `auto_asset=false`；只读认证通过，真实生成闭环未验。`portable_catalog.py` 提供单 SKU 快照模块，尚未接入 `welcome` 的自动建表与事件分发。两项均不在 a41 固定包，不向旧安装器虚构可用命令。详细范围见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
+
+## 本机业务配置候选（未发行）
+
+在明确安装对应候选核心 wheel 后，使用 `vfctl local-setup` 创建或续接独立业务目录。先读 [业务配置向导](../../docs/product/LOCAL_BUSINESS_SETUP.md)。不要把假模型目录改成真实项目，不调用完整栈向导，不把客户配置写入仓库。Agent 整理非秘密计划；本人通过隐藏 TTY/0600 文件输入密钥，飞书官方授权单独完成。`--native-plan` 只读准备；核对准确表及订阅范围后才用 `--enable-native` 与专用应用确认启用。配置、绑定、原表审核启用、任务费用审批、实际运行分别报告；不得把配置保存当作真实生成验收。
