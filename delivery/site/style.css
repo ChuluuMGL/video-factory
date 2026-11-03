@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-serif: ui-serif, "Songti SC", SimSun, "Noto Serif SC", Georgia, serif;
   --bg: #02040a;
   --ink: #fff;
   --muted: #d1d5dc;
@@ -29,6 +30,7 @@ nav a:hover { color: #93c5fd; }
 .hero { display: grid; grid-template-columns: 1.15fr 1fr; align-items: center; gap: 48px; padding: 80px 0 64px; }
 .brand-home { display: inline-block; margin-bottom: 30px; font-size: 16px; color: var(--muted); text-decoration: none; }
 .eyebrow { font-size: 16px; font-weight: 600; color: #93c5fd; margin: 0 0 18px; }
+h1, h2, h3 { font-family: var(--font-serif); }
 h1 { font-size: clamp(1.9rem, 7.8vw, 4.5rem); line-height: 1.2; letter-spacing: -.03em; font-weight: 500; margin: 0 0 28px; }
 h1 em { color: var(--accent); font-style: normal; }
 .lead { color: var(--muted); font-size: 20px; line-height: 1.6; max-width: 29em; margin: 0 0 32px; }
