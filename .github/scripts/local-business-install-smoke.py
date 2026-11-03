@@ -34,13 +34,40 @@ with tempfile.TemporaryDirectory() as tmp:
     assert result.returncode == 0, result.stdout + result.stderr
     second = json.loads(result.stdout); assert second['reused'] and not second['paid_execution_enabled']
     assert not second['feishu_binding_verified']
+    # A synthetic binding, explicitly not a live Feishu acceptance claim.
+    installed_python = str(root / 'environment/bin/python')
+    bind_fixture = "from pathlib import Path; import json,sys; from video_factory.runtime_store import RuntimeStore; from video_factory.feishu_bridge import save; s=RuntimeStore(Path(sys.argv[1])); p=json.load(open(sys.argv[2])); db=s.connect(); c=db.__enter__(); save(c,'feishu:binding:'+p['project'],p['binding']); db.__exit__(None,None,None)"
+    subprocess.run([installed_python, '-I', '-c', bind_fixture, str(root / 'business'), plan_path], check=True, timeout=30)
+    run_args = ['--plan', plan_path, '--password-file', password, '--port', '0']
+    inspected = subprocess.run([str(root / 'vf-run'), 'inspect', *run_args], capture_output=True, text=True, timeout=30)
+    assert inspected.returncode == 0, inspected.stdout + inspected.stderr
+    start_hash = json.loads(inspected.stdout)['plan_sha256']
+    import signal
+    for attempt in range(2):
+        service = subprocess.Popen([str(root / 'vf-run'), 'start', *run_args, '--expect-plan', start_hash], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            import select
+            assert select.select([service.stdout], [], [], 15)[0], 'startup readiness timeout'
+            ready = json.loads(service.stdout.readline()); assert not ready['execution_enabled']
+            client = [str(root / 'vf-agent'), '--connection', ready['connection']]
+            status = subprocess.run([*client, 'status'], capture_output=True, text=True, timeout=30)
+            assert status.returncode == 0 and json.loads(status.stdout)['state'] == 'read_only', status.stdout
+            denied = subprocess.run([*client, 'status', '--json', '{"project":"another"}'], capture_output=True, text=True, timeout=30)
+            assert denied.returncode == 2 and 'AGENT_FIELDS_INVALID' in denied.stdout
+        finally:
+            service.send_signal(signal.SIGTERM)
+            out, err = service.communicate(timeout=10)
+        assert service.returncode == 0, out + err
+        assert json.loads(out)['session_grants_revoked']
+        assert not Path(ready['connection']).exists()
     plan['products'][0]['name'] = 'changed'; Path(plan_path).write_text(json.dumps(plan))
     result = subprocess.run(base, capture_output=True, text=True, timeout=30)
     assert result.returncode == 2 and 'LOCAL_SETUP_CHANGED_USE_NEW_PROJECT' in result.stdout
     assert (root / 'business/runtime.sqlite3').is_file()
     receipt = {'installed_business_launcher': True, 'new_configuration': True, 'restart_resume': True,
                'changed_plan_rejected': True, 'fake_ledger_created': False, 'model_calls': 0,
-               'live_feishu_tested': False, 'human_installation_tested': False}
+               'installed_run_and_agent': True, 'readonly_start_stop_restart': True, 'cross_project_client_rejected': True,
+               'session_credentials_removed': True, 'live_feishu_tested': False, 'human_installation_tested': False}
     target = Path('.runtime/local-kernel-evidence'); target.mkdir(parents=True, exist_ok=True)
     (target / 'business-install.json').write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt))

@@ -76,10 +76,18 @@ def main():
         # Fixed root/project come last; callers cannot target another ledger through this wrapper.
         fd = os.open(root / launcher_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
         with os.fdopen(fd, 'w') as out: out.write(launcher)
+        if args.mode == 'business':
+            for name, subcommand in (('vf-run', 'local-run'), ('vf-agent', 'agent')):
+                command = [str(python), '-I', '-c',
+                           'from video_factory.cli import main; raise SystemExit(main())', subcommand]
+                text = '#!/bin/sh\nset -eu\nexec ' + ' '.join(shlex.quote(v) for v in command) + ' \"$@\"'
+                if name == 'vf-run': text += ' --root ' + shlex.quote(str(root / 'business'))
+                fd = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
+                with os.fdopen(fd, 'w') as out: out.write(text + '\n')
         checkpoint('installed')
         if args.mode == 'business':
             print(json.dumps({'installed': True, 'mode': 'business', 'configuration_complete': False,
-                              'setup': str(root / 'vf-setup'), 'required_arguments': ['--plan', '<private-plan.json>', '--interactive', '--bind'],
+                              'setup': str(root / 'vf-setup'), 'run': str(root / 'vf-run'), 'agent': str(root / 'vf-agent'), 'required_arguments': ['--plan', '<private-plan.json>', '--interactive', '--bind'],
                               'production_ready': False, 'real_model_calls': 0}, ensure_ascii=False))
             return 0
         print(json.dumps({'installed': True, 'mode': 'fake-only', 'n8n_required': False,

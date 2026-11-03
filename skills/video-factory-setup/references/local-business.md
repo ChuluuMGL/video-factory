@@ -9,3 +9,13 @@
 5. 中断后使用原计划和原目录续接，已保存 Key 自动复用。配置不一致、主密钥丢失或解密失败时停止，不删除账本、不重建来绕过错误。
 
 配置成功、真实绑定、原表审核启用、执行权限、费用审批和实际模型生成分别记录。本向导不调用模型、不发放执行权限、不自动启动调度。脚本模型目前为 DeepSeek，视频为 MiniMax-H3；其他便携 n8n 模型不自动等于本地内核支持。真实飞书闭环、自动启动及独立人员安装仍需验收。
+
+## 已安装候选的运行与外部 Codex
+
+同版本业务安装新增 `vf-run` 和 `vf-agent`。本人先运行 `vf-run inspect --plan <原计划>`，核对返回摘要后运行 `vf-run start --plan <原计划> --expect-plan <摘要>`。默认只读；正常停止用 Ctrl-C，最长两小时，到期不续权。
+
+Codex 只使用返回的连接路径：`vf-agent --connection <connection.json> capabilities`，然后 `tasks/status`。请求 JSON 只包含非秘密参数；不要读取或输出相邻 token 文件。不要让模型运行管理员批准命令或收集管理员密码。`--allow-plans` 必须由负责人在 inspect/start 同时明确选择；本人官方飞书授权后可准备计划。`prepare-script` 使用 `record/request_id/expected_revision`，`submit-script` 使用 `plan_id/plan_sha256`；未获负责人批准必须停止，不尝试绕过。
+
+执行是独立开关 `--execute-approved`，必须核对当前待处理任务及费用，完成原表接线并确认专用应用。它可能执行已经批准的模型任务，不是免费演示。管理员用隐藏输入独立批准/撤销精确摘要，Agent CLI 没有审批、Shell、任意地址或跨项目入口。
+
+项目 API 权限不等于同一 OS 账户的 Shell 隔离。同事正式接入需独立账户或受限通道，不给管理员目录或 root。前台启动与自动启动分别验收；CI 或助手代操作不能替代同事本人验收。
