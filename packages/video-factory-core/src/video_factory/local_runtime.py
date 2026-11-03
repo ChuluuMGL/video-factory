@@ -74,12 +74,13 @@ def configured_script_plans(store, project, enabled, token_file, open_id):
 
 
 def serve(store, project, port, stop, *, execution_token=None, master_key=None,
-          media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None):
+          media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None,
+          dispatch=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise RuntimeFault('PORT_INVALID')
     with runtime_lock(store.root):
         scheduler = Scheduler(store, project, execution_token=execution_token, master_key=master_key,
-                              media_root=media_root, interval=interval)
+                              media_root=media_root, interval=interval, **({'dispatch': dispatch} if dispatch else {}))
         with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler,
                          plans_enabled=plans_enabled, script_plans=script_plans)) as server:
             thread = threading.Thread(target=scheduler.run, args=(stop,), name='vf-local-scheduler')
@@ -104,6 +105,10 @@ def cli(args):
         if os.environ.get('VF_CONTAINER_MODE') == '1' or os.environ.get('VF_DATABASE_URL_FILE'):
             raise RuntimeFault('LOCAL_SQLITE_ENVIRONMENT_REQUIRED')
         store = RuntimeStore(args.root)
+        with store.connect() as db:
+            fake_profile = db.execute("SELECT 1 FROM meta WHERE key='local:fake-only:v1'").fetchone()
+        if fake_profile and (args.command != 'up' or args.execute_approved or args.agent_plans or args.agent_script_plans):
+            raise RuntimeFault('LOCAL_FAKE_PROFILE_NO_PAID_OR_OWNER_PLAN_ROUTE')
         if args.command == 'agent-script-plan':
             if args.action == 'approve' and not args.accept_provider_charges:
                 raise RuntimeFault('AGENT_EXPLICIT_PROVIDER_CHARGES_REQUIRED')

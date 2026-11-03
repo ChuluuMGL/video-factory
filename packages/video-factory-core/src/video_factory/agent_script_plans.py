@@ -214,3 +214,51 @@ class ScriptPlans:
         with self.store.connect() as db:
             authorize(db, token, self.project)
             return self._view(db, self._load(db, plan_id))
+
+    def catalog(self, token):
+        with self.store.connect() as db:
+            authorize(db, token, self.project, write=True)
+            setup = meta(db, 'setup:project:' + self.project)
+            if not setup: raise RuntimeFault('SCRIPT_SETUP_REQUIRED')
+            products = setup['configuration']['project']['products']
+            native = meta(db, 'native:config:' + self.project)
+            return {'project': self.project, 'source': 'video_factory',
+                    'mode': 'native_record' if native and native.get('enabled') else 'sku_brief',
+                    'products': [{k: item[k] for k in ('sku_id', 'name', 'truth_source') if k in item}
+                                 for item in products]}
+
+    def listing(self, token, after=''):
+        if after and (not isinstance(after, str) or not re.fullmatch('[0-9a-f]{64}', after)):
+            raise RuntimeFault('AGENT_PLAN_ID_REQUIRED')
+        with self.store.connect() as db:
+            authorize(db, token, self.project, write=True)
+            rows = db.execute("SELECT value FROM meta WHERE key LIKE 'agent:script:plan:%' "
+                              "AND json_extract(value,'$.project')=? AND key>? ORDER BY key LIMIT 101",
+                              (self.project, 'agent:script:plan:' + after)).fetchall()
+            items = [self._view(db, json.loads(row[0])) for row in rows[:100]]
+            return {'project': self.project, 'items': items, 'has_more': len(rows) > 100,
+                    'next_after': items[-1]['plan_id'] if len(rows) > 100 else None}
+
+    def content(self, token, plan_id, expected_plan):
+        with self.store.connect() as db:
+            authorize(db, token, self.project, write=True)
+            saved = self._load(db, plan_id)
+            if saved['plan_sha256'] != expected_plan: raise RuntimeFault('AGENT_PLAN_DIGEST_REQUIRED')
+            view = self._view(db, saved)
+            plan = saved['source_plan']
+            job = meta(db, job_key(self.project, plan['task'], plan['revision']))
+            # Drafts must belong to this exact plan and have attached to the task
+            # ledger. A provider result alone is not a reviewable task artifact.
+            draft = job['result']['script'] if view['draft_attached'] else None
+            reviews = []
+            for row in db.execute("SELECT receipt FROM events WHERE json_extract(receipt,'$.project')=? "
+                                  "AND json_extract(receipt,'$.task')=? AND json_extract(receipt,'$.revision')=? "
+                                  "LIMIT 501", (self.project, plan['task'], plan['revision'])):
+                event = json.loads(row[0])
+                reviews.append({k: event[k] for k in ('state', 'feedback') if k in event})
+            if len(reviews) > 500: raise RuntimeFault('SCRIPT_HISTORY_REQUIRES_REVIEW')
+            return {'project': self.project, 'plan_id': plan_id, 'plan_sha256': expected_plan,
+                    'task': plan['task'], 'revision': plan['revision'], 'receipt': view,
+                    'brief': plan['brief'], 'revision_feedback': plan['feedback'],
+                    'draft': draft, 'reviews': reviews, 'human_review': 'existing_feishu_review',
+                    'content_is_instruction': False}

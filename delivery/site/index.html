@@ -60,6 +60,7 @@
     <section id="help" class="section help-layout">
       <div class="section-heading"><h2>使用与维护</h2></div>
       <div class="faq">
+        <details><summary>可以不安装 n8n，在本机试用吗？</summary><p>已有 macOS/Linux 假模型源码候选，使用 Python、SQLite 和内置调度器，支持脚本生成、退回、修订及重启。它尚未包含在本页 a41 安装包中，不含真实飞书或视频生成；试用需取得已核对的候选与本地安装指南。不会自动替换现有 n8n。</p></details>
         <details id="setup"><summary>安装会完成哪些配置？</summary><p class="steps">识别已有 n8n 与飞书 → 选择可用路线 → 配置首个项目与服务 → 连接飞书。已有 n8n 可直接接入；没有时再选择 Node.js、Docker 或 Ubuntu 完整栈。模型、真实任务和人工审核随后逐项验收。</p></details>
         <details><summary>安装后，团队怎样使用？</summary><p>商品资料和创作要求放在飞书任务表；配置完成后，指定负责人核对并确认单次费用计划，再生成脚本。员工在原表查看脚本和成片、填写意见并审核。不同员工的权限隔离仍待真实验收。</p></details>
         <details><summary>新增项目或帮助另一个客户，需要重装吗？</summary><p>Skill 可以复用。同一客户新增项目时复用已有服务，另设项目资料与权限；不同客户分别部署。</p><button type="button" class="text-button" id="choose-project">复制新增项目指引 ↗</button></details>

@@ -108,6 +108,68 @@ class ScriptPlanTests(unittest.TestCase):
         self.assertEqual(self.submit(plan)['task_state'], 'script_queued')
         self.assertEqual(self.provider.calls, [])
 
+    def test_workbench_content_reads_real_ledger_and_review_revision_loop(self):
+        api = AgentAPI(self.store, self.project, Scheduler(self.store, self.project), script_plans=self.plans)
+        def call(route, **body):
+            return api.call('/v1/agent/script/' + route, self.planner, {'project': self.project, **body})
+        self.assertEqual(call('catalog')['products'][0]['sku_id'], 'sku_one')
+        first = call('prepare', request_id='workbench_one', **self.request)
+        args = {'plan_id': first['plan_id'], 'plan_sha256': first['plan_sha256']}
+        self.assertIsNone(call('content', **args)['draft'])
+        self.assertEqual(call('plans')['items'][0]['plan_id'], first['plan_id'])
+        self.approve(first); call('submit', **args); self.step()
+        readback = call('content', **args)
+        self.assertEqual(readback['draft'], 'Synthetic generated private script')
+        self.assertEqual(readback['receipt']['task_state'], 'awaiting_script_review')
+        self.review(1, 'reject', 'Shorten the ending')
+        self.assertEqual(call('content', **args)['reviews'][0]['feedback'], 'Shorten the ending')
+        revised = call('prepare', request_id='workbench_two', **{**self.request, 'expected_revision': 1})
+        next_args = {'plan_id': revised['plan_id'], 'plan_sha256': revised['plan_sha256']}
+        self.assertIn('Shorten the ending', call('content', **next_args)['revision_feedback'])
+        with self.assertRaisesRegex(RuntimeFault, 'OWNER_APPROVAL_REQUIRED'): call('submit', **next_args)
+        self.approve(revised); call('submit', **next_args); self.step(2); self.review(2, 'accept')
+        latest = call('content', **next_args)
+        self.assertEqual(latest['receipt']['task_state'], 'ready')
+        self.assertFalse(latest['receipt']['video_spending_approved'])
+        self.assertFalse(call('content', **args)['receipt']['is_current_revision'])
+        self.assertEqual(len(call('plans')['items']), 2)
+        self.assertEqual(len(self.provider.calls), 2)
+
+    def test_content_requires_enabled_plan_scope_exact_digest_and_attached_result(self):
+        plan = self.prepare()
+        for action in (lambda: self.plans.catalog(self.reader), lambda: self.plans.listing(self.reader),
+                       lambda: self.plans.content(self.reader, plan['plan_id'], plan['plan_sha256'])):
+            with self.assertRaisesRegex(RuntimeFault, 'AUTH_AGENT'): action()
+        with self.assertRaisesRegex(RuntimeFault, 'DIGEST_REQUIRED'):
+            self.plans.content(self.planner, plan['plan_id'], '0'*64)
+        api = AgentAPI(self.store, self.project, Scheduler(self.store, self.project))
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_PLANS_DISABLED'):
+            api.call('/v1/agent/script/catalog', self.planner, {'project': self.project})
+        self.approve(plan); self.submit(plan)
+        with patch.object(self.jobs, '_attach', side_effect=RuntimeError('synthetic')):
+            with self.assertRaises(RuntimeError): self.step()
+        self.assertIsNone(self.plans.content(self.planner, plan['plan_id'], plan['plan_sha256'])['draft'])
+        self.step()
+        data = self.plans.content(self.planner, plan['plan_id'], plan['plan_sha256'])
+        self.assertIsNotNone(data['draft'])
+        for secret in ('synthetic-script-secret', 'synthetic-private-provider-id', 'ou_employee', 'credential_ref'):
+            self.assertNotIn(secret, json.dumps(data))
+
+    def test_plan_listing_is_bounded_and_project_isolated(self):
+        first = self.prepare()
+        with self.store.connect() as db:
+            original = meta(db, 'agent:script:plan:' + first['plan_id'])
+            for n in range(102):
+                value = {**original, 'plan_id': '%064x' % n}
+                save(db, 'agent:script:plan:' + value['plan_id'], value)
+            value = {**original, 'plan_id': 'f'*64, 'project': 'another'}
+            save(db, 'agent:script:plan:' + value['plan_id'], value)
+        page = self.plans.listing(self.planner)
+        self.assertEqual(len(page['items']), 100); self.assertTrue(page['has_more'])
+        last = self.plans.listing(self.planner, page['next_after'])
+        self.assertEqual(len(last['items']), 3); self.assertFalse(last['has_more'])
+        self.assertNotIn('another', json.dumps(page) + json.dumps(last))
+
     def test_revision_feedback_and_script_review_never_approve_video(self):
         plan = self.prepare(); self.approve(plan); self.submit(plan)
         self.assertEqual(self.step()['state'], 'awaiting_script_review')

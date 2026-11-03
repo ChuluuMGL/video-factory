@@ -34,6 +34,8 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 先看安装目标
 
+**不依赖 n8n 的本地假模型候选：** macOS/Linux 可通过独立 Python 环境运行 SQLite 内核和内置调度器，完成脚本生成、退回、修订及重启续接。见 [本地候选安装与验收](docs/product/LOCAL_FAKE_INSTALL.md)。该源码入口尚未发布到 a41，不含真实飞书、真实模型或视频生成；以下为现有 n8n 发行路线。
+
 完整 Skill 提供本机安装与已有 n8n 接入，Windows、Mac、Linux、Docker 的实际 n8n 自动化检查已通过。a40 增加多模型配置，Seedance 2.0 视频与 Seedream 图片已完成一次隔离生成、飞书回写和文件完整性检查；详见 [a40 验证记录](docs/product/DELIVERY_A40_RESULT.md)。当前公开版本为 [a41](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a41)，查询修复、匿名安装和官网检查见 [发行回执](docs/product/DELIVERY_A41_RESULT.md)；已有项目按[保留数据的升级指引](docs/product/PORTABLE_UPGRADE.md)操作。
 
 把完整 Skill 交给 Agent 后，**先选已有 n8n 的位置、飞书应用/Base 的准备情况，以及希望运行产品执行服务的位置**。有 n8n 就先盘点并保留，没 n8n 再选择安装方式；不要求一上来就租服务器。Skill 附带只读的 `scripts/choose_install_path.py`，用于把这些答案整理成当前可执行路线。
