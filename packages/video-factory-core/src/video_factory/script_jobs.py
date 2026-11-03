@@ -116,10 +116,14 @@ class ScriptJobs:
                 raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CONFLICT')
             raw_status=fields.get(names['status']) or ''
             status=select_text(raw_status) if raw_status else ''
-            if status != ('脚本退回' if expected_revision else ''):
+            # A video rejection closes the same revision, but must not be
+            # mistaken for a script rejection. Bind the actual review stage
+            # to the new plan and recheck it before provider I/O.
+            expected_status = ('视频退回' if previous['artifact'] else '脚本退回') if previous else ''
+            if (previous and previous['state'] != 'rejected') or status != expected_status:
                 raise RuntimeFault('SCRIPT_NATIVE_REVIEW_STATE_CONFLICT')
             native_source={'record_id':record['record_id'],'source_revision':source_revision,
-                           'script_digest':fingerprint(source_script)}
+                           'script_digest':fingerprint(source_script),'review_status':expected_status}
             with self.store.connect() as db:
                 if meta(db,'native:config:'+project)!=native:
                     raise RuntimeFault('SCRIPT_NATIVE_CONFIGURATION_CHANGED')
@@ -245,7 +249,7 @@ class ScriptJobs:
                     or plain_text(remote.get(names['sku_id']))!=plan['sku']['sku_id']
                     or plain_text(remote.get(names['source_revision']))!=source['source_revision']
                     or fingerprint(plain_text(remote.get(names['script'])))!=source['script_digest']
-                    or status!=('脚本退回' if revision>1 else '')):
+                    or status!=source.get('review_status', '脚本退回' if revision>1 else '')):
                 raise RuntimeFault('SCRIPT_NATIVE_SOURCE_CHANGED')
         secret=self.store.resolve_secret(settings['credential_ref'][7:],master_key)
         if not secret or any(c.isspace() for c in secret):raise RuntimeFault('SCRIPT_KEY_INVALID')
