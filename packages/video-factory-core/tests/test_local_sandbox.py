@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
-from video_factory.local_sandbox import install, plan, owner, fake_dispatch
+from video_factory.local_sandbox import install, plan, owner, fake_dispatch, fake_revision_text, status
 from video_factory.runtime_store import RuntimeStore, RuntimeFault
 from video_factory import automation
 from video_factory.scheduler import Scheduler
@@ -81,6 +81,44 @@ class LocalSandboxTests(unittest.TestCase):
             self.assertEqual((self.root / name).stat().st_mode & 0o777, 0o600)
             self.assertNotIn((self.root / name).read_text(), self.cli('status').stdout)
         self.assertNotEqual(self.cli('status', '--project', 'other').returncode, 0)
+
+    def test_structured_review_stays_in_ledger_not_in_generated_script(self):
+        plan(self.store, self.admin, 'local_trial', 'demo_021', 0, '合成场景', 'first')
+        self.tick()
+        notes = {'schema':'vf-script-notes-v1', 'plan_id':'a'*64, 'revision':1,
+                 'script_sha256':'b'*64, 'notes':[{'line':3, 'quote':'原文', 'comment':'减少产品特写'}]}
+        first = '请按意见修改。\n\n[VF_SCRIPT_NOTES_V1]\n' + json.dumps(notes, ensure_ascii=False)
+        self.store.review(self.admin, 'reject-1', 'local_trial', 'demo_021', 1, 'script', 'reject', first)
+        plan(self.store, self.admin, 'local_trial', 'demo_021', 1, '合成场景', 'second')
+        self.tick()
+        state = status(RuntimeStore(self.root), 'local_trial')
+        script = json.loads(state['tasks'][-1]['input'])['script']
+        self.assertIn('第 3 段：减少产品特写', script)
+        self.assertIn('假模型演练', script)
+        self.assertNotIn('VF_SCRIPT_NOTES', script)
+        self.assertNotIn('script_sha256', script)
+        self.assertEqual(state['reviews'][0]['feedback'], first)
+        second = '\n\n[VF_NOTE_STATUS_V1]\n' + json.dumps({
+            'schema':'vf-note-status-v1', 'feedback':'再次修改。',
+            'items':[{'status':'needs_changes', 'origin':notes['notes'][0]},
+                     {'status':'resolved', 'origin':{'line':2,'comment':'不再修改的旧意见'}}]}, ensure_ascii=False)
+        self.store.review(self.admin, 'reject-2', 'local_trial', 'demo_021', 2, 'script', 'reject', second)
+        plan(self.store, self.admin, 'local_trial', 'demo_021', 2, '合成场景', 'third')
+        self.tick()
+        state = status(RuntimeStore(self.root), 'local_trial')
+        script = json.loads(state['tasks'][-1]['input'])['script']
+        self.assertIn('减少产品特写', script)
+        self.assertNotIn('不再修改的旧意见', script)
+        self.assertNotIn('VF_NOTE_STATUS', script)
+        self.assertEqual(state['reviews'][-1]['feedback'], second)
+        self.assertEqual(state['real_model_calls'], 0)
+
+    def test_plain_feedback_preserved_and_malformed_envelopes_blocked(self):
+        self.assertEqual(fake_revision_text('自然一点\n保留结尾'), '自然一点\n保留结尾')
+        for value in ('\n\n[VF_SCRIPT_NOTES_V1]\n{', '\n\n[VF_SCRIPT_NOTES_V1]\n[]',
+                      '\n\n[VF_NOTE_STATUS_V1]\n{"schema":"vf-note-status-v1","items":[]}'):
+            with self.subTest(value=value), self.assertRaisesRegex(RuntimeFault, 'LOCAL_REVIEW_ENVELOPE_INVALID'):
+                fake_revision_text(value)
 
     def test_idempotency_and_stale_revision_and_paid_route_denied(self):
         p = plan(self.store, self.admin, 'local_trial', 'trial_001', 0, 'brief', 'same')

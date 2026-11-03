@@ -108,6 +108,48 @@ def plan(store, admin, project, task, revision, brief, request):
         return result
 
 
+def fake_revision_text(feedback):
+    """Render human review text only; the original event retains its full envelope.
+
+    This deterministic rehearsal does not claim to perform semantic rewriting.
+    Envelope parsing here grants no authority and never changes review state.
+    """
+    notes_mark = '\n\n[VF_SCRIPT_NOTES_V1]\n'
+    status_mark = '\n\n[VF_NOTE_STATUS_V1]\n'
+    comments = []
+    def add(note):
+        if (not isinstance(note, dict) or type(note.get('line')) is not int
+                or not 1 <= note['line'] <= 500
+                or not isinstance(note.get('comment'), str)
+                or not note['comment'].strip() or len(note['comment']) > 1000):
+            raise ValueError('invalid review note')
+        comments.append('第 %d 段：%s' % (note['line'], note['comment'].strip()))
+    try:
+        if status_mark in feedback:
+            if not feedback.startswith(status_mark): raise ValueError('invalid status envelope')
+            saved = json.loads(feedback[len(status_mark):])
+            if (saved.get('schema') != 'vf-note-status-v1'
+                    or not isinstance(saved.get('feedback'), str)
+                    or not isinstance(saved.get('items'), list) or not 1 <= len(saved['items']) <= 8):
+                raise ValueError('invalid status envelope')
+            for item in saved['items']:
+                if not isinstance(item, dict) or item.get('status') not in ('pending', 'needs_changes', 'resolved'):
+                    raise ValueError('invalid note status')
+                if item['status'] != 'resolved': add(item.get('origin'))
+            feedback = saved['feedback']
+            if status_mark in feedback: raise ValueError('nested status envelope')
+        if notes_mark in feedback:
+            feedback, encoded = feedback.rsplit(notes_mark, 1)
+            bundle = json.loads(encoded)
+            if (bundle.get('schema') != 'vf-script-notes-v1' or not isinstance(bundle.get('notes'), list)
+                    or not 1 <= len(bundle['notes']) <= 8):
+                raise ValueError('invalid notes envelope')
+            for note in bundle['notes']: add(note)
+        return '\n'.join([feedback, *comments])
+    except (ValueError, TypeError, AttributeError, KeyError) as error:
+        raise RuntimeFault('LOCAL_REVIEW_ENVELOPE_INVALID') from error
+
+
 def fake_dispatch(store, token, project, master_key, media_root, *, after=None, on_selected=None):
     # A deterministic fake model runs inside the same transaction as its result.
     # No real transport is constructed, so restart cannot duplicate a submission.
@@ -125,7 +167,7 @@ def fake_dispatch(store, token, project, master_key, media_root, *, after=None, 
                                  and r['revision'] == revision and r['state'] == 'rejected'), '')
                 if not feedback: raise RuntimeFault('LOCAL_REJECTION_MISSING')
             script = '[假模型脚本 v%d]\n%s\n%s' % (revision + 1, job['brief'],
-                      '按审核意见修订：' + feedback if feedback else '开场：日常场景。中段：产品演示。结尾：自然收束。')
+                      '按审核意见修订（假模型演练）：' + fake_revision_text(feedback) if feedback else '开场：日常场景。中段：产品演示。结尾：自然收束。')
             receipt = store._create_task(db, actor, project, task,
                          {'sku_id': 'synthetic_sku', 'script': script, 'source_revision': str(revision + 1)}, revision)
             job.update(status='completed', revision=receipt['revision'], script_sha256=fingerprint(script))
