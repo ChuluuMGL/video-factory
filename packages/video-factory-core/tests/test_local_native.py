@@ -85,7 +85,8 @@ class LocalNativeTests(unittest.TestCase):
             receive(object())
             reducer.return_value.enqueue_verified.assert_called_once_with('brand', {'schema': '2.0'})
             self.store.put_project(self.admin, 'brand', {'video_route': 'deferred',
-                                   'credential_ref': 'secret:fixture', 'billing_owner': 'changed'})
+                                   'credential_ref': 'secret:fixture', 'billing_owner': 'changed'},
+                                   expected_digest=expected['configuration_sha256'])
             with self.assertRaisesRegex(RuntimeFault, 'CONTEXT_CHANGED'):
                 receive(object())
             self.assertEqual(reducer.return_value.enqueue_verified.call_count, 1)

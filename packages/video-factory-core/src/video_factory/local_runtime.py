@@ -115,7 +115,8 @@ def native_receiver(store, project, files, scheduler):
     process = subprocess.Popen([sys.executable, '-m', 'video_factory.local_native_events',
                                 '--root', str(store.root), '--project', project,
                                 '--execution-key-file', str(execution_file),
-                                '--master-key-file', str(master_file)],
+                                '--master-key-file', str(master_file),
+                                '--parent-pid', str(os.getpid())],
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
     original = scheduler.dispatch

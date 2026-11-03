@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import threading
 
 from .dispatch import authorize
 from .feishu_bridge import meta
@@ -47,14 +48,28 @@ def main():
     parser.add_argument('--project', required=True)
     parser.add_argument('--execution-key-file', type=Path, required=True)
     parser.add_argument('--master-key-file', type=Path, required=True)
+    parser.add_argument('--parent-pid', type=int, required=True)
     args = parser.parse_args()
     identifier(args.project)
+    if args.parent_pid <= 1 or os.getppid() != args.parent_pid:
+        raise RuntimeFault('LOCAL_FEISHU_PARENT_REQUIRED')
     if os.environ.get('VF_DATABASE_URL_FILE') or os.environ.get('VF_CONTAINER_MODE') == '1':
         raise RuntimeFault('LOCAL_SQLITE_ENVIRONMENT_REQUIRED')
     store = RuntimeStore(args.root)
     token = secret_input(args.execution_key_file, '')
     key = secret_input(args.master_key_file, '')
     expected = context(store, args.project, token, key)
+    def watch_parent():
+        while True:
+            threading.Event().wait(1)
+            if os.getppid() != args.parent_pid:
+                os._exit(0)
+            try:
+                if context(store, args.project, token, key) != expected:
+                    os._exit(0)
+            except Exception:
+                os._exit(0)
+    threading.Thread(target=watch_parent, daemon=True).start()
     profile = expected['app_profile']
     import lark_oapi as lark
     handler = (lark.EventDispatcherHandler.builder('', '')
