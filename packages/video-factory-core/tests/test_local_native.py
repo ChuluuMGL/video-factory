@@ -114,6 +114,22 @@ class LocalNativeTests(unittest.TestCase):
             self.assertNotIn(self.execution, str(launch.call_args))
             self.assertEqual(scheduler.status()['feishu_events'], 'stopped')
 
+    def test_live_receiver_cannot_dispatch_after_binding_changes(self):
+        scheduler = self.scheduler()
+        dispatch = Mock(return_value={'status': 'idle'})
+        scheduler.dispatch = dispatch
+        child = Mock(); child.poll.return_value = None
+        with patch('video_factory.local_runtime.subprocess.Popen', return_value=child):
+            with native_receiver(self.store, 'brand', (self.root/'execution', self.root/'master'), scheduler):
+                with self.store.connect() as db:
+                    binding = meta(db, 'feishu:binding:brand')
+                    binding['table_id'] = 'tblDifferent'
+                    save(db, 'feishu:binding:brand', binding)
+                with self.assertRaisesRegex(RuntimeFault, 'CONTEXT_CHANGED'):
+                    scheduler.dispatch()
+                dispatch.assert_not_called()
+            child.terminate.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

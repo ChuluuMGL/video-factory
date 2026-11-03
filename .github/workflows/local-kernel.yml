@@ -42,6 +42,8 @@ jobs:
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_agent_script_plans.py' -v
       - name: Exercise local Feishu writeback recovery and receiver authority
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_native.py' -v
+      - name: Exercise continuous original-row business flow with synthetic providers
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_business_flow.py' -v
       - name: Install and exercise n8n-free local fake profile
         run: |
           python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_sandbox.py' -v

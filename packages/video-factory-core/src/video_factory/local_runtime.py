@@ -111,6 +111,8 @@ def serve(store, project, port, stop, *, execution_token=None, master_key=None,
 
 @contextmanager
 def native_receiver(store, project, files, scheduler):
+    from .local_native_events import context
+    expected = context(store, project, scheduler.token, scheduler.key)
     execution_file, master_file = files
     process = subprocess.Popen([sys.executable, '-m', 'video_factory.local_native_events',
                                 '--root', str(store.root), '--project', project,
@@ -123,6 +125,10 @@ def native_receiver(store, project, files, scheduler):
     def checked(*args, **kwargs):
         if process.poll() is not None:
             raise RuntimeFault('LOCAL_FEISHU_RECEIVER_STOPPED')
+        # The watchdog is asynchronous. Fence each dispatch as well so a live
+        # child cannot admit work against a changed binding or credential.
+        if context(store, project, scheduler.token, scheduler.key) != expected:
+            raise RuntimeFault('FEISHU_NATIVE_CONTEXT_CHANGED')
         return original(*args, **kwargs)
     scheduler.dispatch = checked
     scheduler._update(feishu_events='receiver_running_delivery_unverified',
