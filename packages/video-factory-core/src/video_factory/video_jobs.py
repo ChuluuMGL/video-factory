@@ -7,7 +7,7 @@ from .feishu_bridge import FeishuBridge,meta,save
 from .worker import Worker
 
 
-def configure(store,token,project,credential_ref,billing_owner,region,assets):
+def configure(store,token,project,credential_ref,billing_owner,region,assets,*,local_assets=False):
     identifier(project);identifier(billing_owner)
     if not re.fullmatch(r'secret:[A-Za-z0-9_-]{1,96}',credential_ref) or region not in ('global','cn'):
         raise RuntimeFault('VIDEO_PROFILE_INVALID')
@@ -16,7 +16,12 @@ def configure(store,token,project,credential_ref,billing_owner,region,assets):
         identifier(sku)
         if not isinstance(item,dict) or set(item)!={'assets_root','specification'}:raise RuntimeFault('VIDEO_ASSET_FIELDS_INVALID')
         p=PurePosixPath(item['assets_root'])
-        if not p.is_absolute() or not p.is_relative_to('/work') or '..' in p.parts:raise RuntimeFault('VIDEO_ASSETS_REQUIRE_WORK_DIRECTORY')
+        if not p.is_absolute() or '..' in p.parts or (not local_assets and not p.is_relative_to('/work')):
+            raise RuntimeFault('VIDEO_ASSETS_REQUIRE_WORK_DIRECTORY')
+        if local_assets:
+            from pathlib import Path
+            from .h3_provider import request_body
+            request_body('Local configuration validation', Path(item['assets_root']), item['specification'])
         spec=item['specification']
         if (not isinstance(spec,dict) or set(spec)!={'duration','references'} or type(spec['duration']) is not int
                 or not 4<=spec['duration']<=15 or not isinstance(spec['references'],list) or not 1<=len(spec['references'])<=9):raise RuntimeFault('H3_SPECIFICATION_INVALID')
