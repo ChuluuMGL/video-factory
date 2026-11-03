@@ -91,7 +91,8 @@ def dispatch_one(store,token,project,master_key,media_root,*,worker_factory=Work
     return {'project':project,'task':selected['id'],'revision':selected['revision'],'result':result,'automatic_resubmit':False}
 
 
-def dispatch_with_results(store, token, project, master_key, media_root):
+def dispatch_with_results(store, token, project, master_key, media_root, *,
+                          after=None, on_selected=None):
     from .feishu_native_sync import NativeSync
     from .feishu_native_review import NativeReview
     from .feishu_bridge import meta, save
@@ -108,7 +109,8 @@ def dispatch_with_results(store, token, project, master_key, media_root):
             import re
             code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'FEISHU_NATIVE_REVIEW_FAILED'
             native_review = {'status':'attention_required','error':code,'automatic_resubmit':False}
-    result = dispatch_one(store, token, project, master_key, media_root)
+    result = dispatch_one(store, token, project, master_key, media_root,
+                          after=after, on_selected=on_selected)
     result['native_review'] = native_review
     if native_context:
         try:

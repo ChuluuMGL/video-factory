@@ -43,7 +43,8 @@ class Scheduler:
         self._busy = threading.Lock()
         self._state_lock = threading.Lock()
         self._status = {'state': 'ready' if self.enabled else 'read_only',
-                        'last_tick_at': None, 'last_task': None, 'last_error': None}
+                        'last_tick_at': None, 'last_task': None, 'last_error': None,
+                        'feishu_events': 'not_connected', 'feishu_writeback': 'not_enabled'}
         with store.connect() as db:
             if not db.execute('SELECT 1 FROM projects WHERE id=?', (project,)).fetchone():
                 raise RuntimeFault('PROJECT_MISSING')
@@ -73,8 +74,7 @@ class Scheduler:
         with self._state_lock:
             return {'project': self.project, **self._status,
                     'execution_enabled': self.enabled,
-                    'requires_per_task_approval': True, 'automatic_resubmit': False,
-                    'feishu_events': 'not_connected', 'feishu_writeback': 'not_enabled'}
+                    'requires_per_task_approval': True, 'automatic_resubmit': False}
 
     def tick(self):
         if not self.enabled:
@@ -90,8 +90,11 @@ class Scheduler:
                                    after=after, on_selected=self._checkpoint)
             if 'next_after' in result:
                 self._checkpoint(result['next_after'])
-            self._update(state='waiting', last_task=result.get('task'),
-                         last_error='RECONCILIATION_REQUIRED' if result.get('blocked') else None)
+            pending_io = any(result.get(name, {}).get('status') == 'attention_required'
+                             for name in ('native_review', 'native_sync', 'base_results'))
+            self._update(state='attention_required' if pending_io else 'waiting', last_task=result.get('task'),
+                         last_error='FEISHU_RECONCILIATION_REQUIRED' if pending_io else
+                         'RECONCILIATION_REQUIRED' if result.get('blocked') else None)
         except Exception:
             # Never return exception text, provider bodies, credentials or paths.
             self._update(state='attention_required', last_error='SCHEDULER_STEP_FAILED')
