@@ -112,7 +112,7 @@ class LocalBusinessFlowTests(unittest.TestCase):
 
     def generate(self, revision):
         plan = self.plans.prepare(self.planner, 'script_' + str(revision),
-                                  {**self.request, 'expected_revision': revision - 1})
+                                  {'record': 'recFixture', 'expected_revision': revision - 1})
         with self.assertRaisesRegex(RuntimeFault, 'OWNER_APPROVAL_REQUIRED'):
             self.plans.submit(self.planner, plan['plan_id'], plan['plan_sha256'])
         self.plans.owner(self.admin, 'approve', plan['plan_id'], plan['plan_sha256'])

@@ -36,6 +36,8 @@ vfctl up --root /absolute/private/runtime --project test_project
 
 写回丢失响应时保留意图，重启后先回读原行；无法核对时显示 `FEISHU_RECONCILIATION_REQUIRED`，不重复付费请求。实际原表审核、附件回写、重启和真人安装证据仍需逐项取得。新建项目/SKU/模型配置的简易引导与本候选的安装整合尚未完成，不以管理员开发工具替代最终简易安装验收。
 
+调度前同步核对绑定、配置和凭据版本，不依赖接收进程的定时退出检查；接收进程仍存活也不能继续使用已变化的上下文。云端 `test_local_business_flow.py` 连续覆盖同一合成原表行：记录计划、假脚本、退回意见、第二版、审核人权限、独立视频费用批准、假视频、附件回写、视频审核与调度器重建。外部表、供应商、媒体解码均为测试替身；回执明确标记 `synthetic_service_integration_only`，不代表真实 SDK 事件、真人审核或安装包已验收。
+
 明确执行候选需要同时提供 `--execute-approved`、`--execution-key-file`、`--master-key-file` 和 `--media-root`。凭据只从已有私有文件读取，不放进参数值、聊天或输出。执行密钥必须是该项目既有的 `approved_execution` 凭据；不会自动创建或续期执行权限。启动执行模式可能消费原账本中已批准任务的模型费用，因此不能用于未经核对的真实目录。
 
 启动开关不是每任务批准。现有 Worker/ScriptJobs 仍核验版本、输入、配置、凭据版本和批准期限；只有已有任务的有效批准才能提交，结果不确定不重发。
