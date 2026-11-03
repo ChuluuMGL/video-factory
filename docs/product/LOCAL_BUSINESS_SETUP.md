@@ -51,7 +51,7 @@ vfctl local-setup --root "$HOME/vf-business" \
   --enable-native <刚核对的计划哈希> --dedicated-app
 ```
 
-这一步会按计划修改测试表审核字段/订阅，不调用模型。它不发放执行密钥，也不代表已开始后台调度。执行仍按 [本机内核](LOCAL_AGENT_KERNEL.md) 显式配置项目执行权限与每条费用审批；脚本通过不授权视频费用。本候选尚未整合自动启动、执行权限和非作者一键安装验收。
+这一步会按计划修改测试表审核字段/订阅，不调用模型。它不发放执行密钥，也不代表已开始后台调度。执行仍按 [本机内核](https://github.com/ChuluuMGL/video-factory/blob/codex/local-business-setup/docs/product/LOCAL_AGENT_KERNEL.md) 显式配置项目执行权限与每条费用审批；脚本通过不授权视频费用。本候选尚未整合自动启动、执行权限和非作者一键安装验收。
 
 ## 续接与新增项目
 
