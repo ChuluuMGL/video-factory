@@ -9,6 +9,8 @@ description: Install, configure, resume, inspect and repair a customer's self-ho
 
 ## 开始前
 
+用户明确选择“不依赖 n8n、本地假模型试用”时，优先检查当前候选是否包含 `scripts/install_local_kernel.py` 和 `vfctl local`；按源码仓库的 `docs/product/LOCAL_FAKE_INSTALL.md` 使用全新私有目录安装。此候选只覆盖脚本排队、审核、修订、停止重启；无需 n8n、飞书或模型密钥，不创建生产连接，也不授予员工本机 owner 权限。a41 固定包不含此入口，缺失时明确说明，不能退而替用户安装 n8n 或启动旧系统。以下 n8n 问卷仅用于用户选择的既有发行路线。
+
 0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：现有 n8n 在哪里、飞书应用/Base 是否已有、产品执行服务打算放在哪里。这个脚本只识别环境，不安装软件、不读取密钥、不扫描远端。已有 n8n 时先保留原实例与凭据，不创建第二套 n8n。安装结束按 [交接模板](references/handoff.md) 报告。
 1. 读取 [操作流程](references/operations.md)，定位用户请求属于安装、续接、新项目、检查还是恢复。沿用当前会话已授权的对象和动作；缺少确切主机、目录或客户/项目时先做独立的只读检查，不猜测目标。
 2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。按识别结果告知当前可执行的路线和缺口。**服务器完整栈部署**在 Ubuntu 24.04 x86_64 主机执行，要求 Python 3.12 + venv、root 和本地 Docker/Compose；远程连接须核对可信 SSH 主机指纹。已有本机 Node.js/Docker n8n、其他服务器 n8n 或 n8n Cloud 时，可先只读检查 API 和飞书环境；a37 可使用下方便携向导配置已有实例；不要运行完整栈命令覆盖已有 n8n。接入与验收按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 完成并验收。
@@ -80,3 +82,9 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 代客户安装、远程输入失效、旧服务器隔离、第三方平台身份核对或客户自己的 Codex 接管时，读取 [客户远程安装与接管](references/customer-remote.md)。沿用授权 SSH/API，先盘点既有网站与数据库。使用 [交接模板](references/handoff.md) 给客户保存准确运行版本、目录、入口、启用状态和待验步骤；不把官网或常驻员工网页当作飞书日常入口。
 
 源码候选新增 `seedance-novai`，仅对应核实过的 `https://xinghezhiyun.com` 企业版，独立凭据且 `auto_asset=false`；只读认证通过，真实生成闭环未验。`portable_catalog.py` 提供单 SKU 快照模块，尚未接入 `welcome` 的自动建表与事件分发。两项均不在 a41 固定包，不向旧安装器虚构可用命令。详细范围见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
+
+## 本机业务配置候选（未发行）
+
+在明确安装对应候选核心 wheel 后，使用 `vfctl local-setup` 创建或续接独立业务目录。先读 [业务配置向导](references/local-business.md)。不要把假模型目录改成真实项目，不调用完整栈向导，不把客户配置写入仓库。Agent 整理非秘密计划；本人通过隐藏 TTY/0600 文件输入密钥，飞书官方授权单独完成。`--native-plan` 只读准备；核对准确表及订阅范围后才用 `--enable-native` 与专用应用确认启用。配置、绑定、原表审核启用、任务费用审批、实际运行分别报告；不得把配置保存当作真实生成验收。
+
+同版本启动候选增加 `vf-run` / `vf-agent`，操作见上述业务配置指南。默认只读；允许计划、运行已批准任务、负责人逐项审批是独立步骤。Codex 仅用项目连接文件调用固定 Agent API，不接触管理员口令或用户 token；连接最长两小时，停止撤权。不要将同一 OS 账户的 Shell 访问误说成受到项目 API 权限保护。

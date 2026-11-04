@@ -1,5 +1,7 @@
 # Video Factory
 
+**本机业务 Setup 候选：**新增终端问答与 Agent 非秘密计划入口，配置独立项目、SKU、DeepSeek、MiniMax 和已有飞书测试表，支持原计划续接且不覆盖旧凭据。见[业务配置向导](docs/product/LOCAL_BUSINESS_SETUP.md)。尚未发布；真实闭环、自动启动和独立安装仍需验收。
+
 > 通过 Agent Skill，在自己的 n8n 上搭建视频工作流。
 >
 > 默认连接飞书 Base 与 n8n，同一客户可持续新增项目。
@@ -20,6 +22,8 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 
 ## 当前版本与使用范围
 
+开发候选：[#80 本机内核](https://github.com/ChuluuMGL/video-factory/issues/80)与 [#81 Workflow Agent 接入](https://github.com/ChuluuMGL/video-factory/issues/81)正在分阶段推进。新增源码命令与接口见[开发说明](docs/product/LOCAL_AGENT_KERNEL.md)，不在 a41 固定安装包中，尚不提供完整 Agent 创作或本机自助安装闭环。
+
 **MIT 开源测试版。固定版本与摘要以公开 Release 为准。**
 
 官网、源码、完整 Skill 和固定服务器安装包均可公开读取。无需 GitHub 登录；客户提供运行环境、飞书及模型账户。
@@ -31,6 +35,8 @@ Skill 是 AI 助手的操作指南；安装位置取决于所选路线，可为�
 详细范围：[云端验证](https://github.com/ChuluuMGL/video-factory/actions/runs/39175731136) · [当前状态](docs/product/STATUS.md)。
 
 ## 先看安装目标
+
+**不依赖 n8n 的本地假模型候选：** macOS/Linux 可通过独立 Python 环境运行 SQLite 内核和内置调度器，完成脚本生成、退回、修订及重启续接。见 [本地候选安装与验收](docs/product/LOCAL_FAKE_INSTALL.md)。该源码入口尚未发布到 a41，不含真实飞书、真实模型或视频生成；以下为现有 n8n 发行路线。
 
 完整 Skill 提供本机安装与已有 n8n 接入，Windows、Mac、Linux、Docker 的实际 n8n 自动化检查已通过。a40 增加多模型配置，Seedance 2.0 视频与 Seedream 图片已完成一次隔离生成、飞书回写和文件完整性检查；详见 [a40 验证记录](docs/product/DELIVERY_A40_RESULT.md)。当前公开版本为 [a41](https://github.com/ChuluuMGL/video-factory/releases/tag/v0.1.0a41)，查询修复、匿名安装和官网检查见 [发行回执](docs/product/DELIVERY_A41_RESULT.md)；已有项目按[保留数据的升级指引](docs/product/PORTABLE_UPGRADE.md)操作。
 

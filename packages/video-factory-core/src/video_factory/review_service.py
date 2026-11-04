@@ -89,9 +89,8 @@ class ReviewService:
 
 def open_media(media_root, artifact, expected_hash):
     media_root = private_directory(media_root)
-    path = Path(artifact['location'])
-    if not path.is_absolute() or not path.is_relative_to(media_root) or path.resolve() != path:
-        raise RuntimeFault('REVIEW_MEDIA_PATH_INVALID')
+    from .media_relocation import resolve_media_path
+    path = resolve_media_path(media_root, artifact, expected_hash)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     stream = os.fdopen(fd, 'rb')
     try:

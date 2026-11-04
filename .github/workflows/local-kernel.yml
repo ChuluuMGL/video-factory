@@ -1,0 +1,71 @@
+name: Local kernel contracts
+
+on:
+  pull_request:
+    paths:
+      - 'packages/video-factory-core/**'
+      - '.github/workflows/local-kernel.yml'
+      - 'scripts/install_local_kernel.py'
+      - '.github/scripts/local-install-smoke.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-kernel-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Local kernel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install candidate package (no deployment or provider credentials)
+        run: python -m pip install ./packages/video-factory-core
+      - name: Verify relocated media and unchanged Feishu review replay
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_media_relocation.py' -v
+      - name: Exercise local business setup, private credentials and failure recovery
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_setup.py' -v
+      - name: Exercise bounded owner startup and scoped external Agent client
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_run.py' -v
+      - name: Exercise local process, ledger and fake provider contracts
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_kernel.py' -v
+      - name: Exercise Agent plans, local owner approval and execution receipts
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_agent_plans.py' -v
+      - name: Exercise delegated script plans and original-row fences
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_agent_script_plans.py' -v
+      - name: Exercise local Feishu writeback recovery and receiver authority
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_native.py' -v
+      - name: Exercise continuous original-row business flow with synthetic providers
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_business_flow.py' -v
+      - name: Install and exercise n8n-free local fake profile
+        run: |
+          python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_sandbox.py' -v
+          python -m pip wheel --no-deps --wheel-dir /tmp/vf-local-wheels ./packages/video-factory-core
+          python scripts/install_local_kernel.py --root "$RUNNER_TEMP/vf-independent-local" --package /tmp/vf-local-wheels/*.whl
+          "$RUNNER_TEMP/vf-independent-local/vf-local" status
+          "$RUNNER_TEMP/vf-independent-local/vf-local" plan --request-id cloud-install-smoke
+          python .github/scripts/local-install-smoke.py "$RUNNER_TEMP/vf-independent-local"
+      - name: Install and exercise the separate business setup launcher
+        run: |
+          python scripts/install_local_kernel.py --mode business --root "$RUNNER_TEMP/vf-business-install" --package /tmp/vf-local-wheels/*.whl
+          python .github/scripts/local-business-install-smoke.py "$RUNNER_TEMP/vf-business-install"
+      - name: Retain n8n-free installation receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: local-kernel-${{ matrix.os }}
+          path: .runtime/local-kernel-evidence/
+          retention-days: 14
