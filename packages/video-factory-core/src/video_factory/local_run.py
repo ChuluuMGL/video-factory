@@ -45,7 +45,7 @@ def read_plan(path):
     return plan
 
 
-def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hours=2):
+def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hours=2, employee_config=None):
     if type(hours) is not int or not 1 <= hours <= 2: raise RuntimeFault('LOCAL_RUN_MAX_TWO_HOURS')
     with store.connect() as db:
         if not meta(db, 'local:setup:' + plan['project']): raise RuntimeFault('LOCAL_RUN_SETUP_REQUIRED')
@@ -66,11 +66,16 @@ def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hou
             owner = value.get('project') or value.get('plan', {}).get('project')
             if owner == project and row[0].startswith(('script:job:', 'worker:', 'agent:script:plan:', 'agent:video:plan:')):
                 jobs.append((row[0], fingerprint(value)))
+    employee = None
+    if employee_config:
+        from .employee_access import configuration
+        employee = configuration(employee_config, plan, allow_plans=allow_plans)
     value = {'schema': 'vf-local-start-v1', 'project': project, 'setup_sha256': fingerprint(plan),
              'binding_sha256': fingerprint(binding), 'native_sha256': fingerprint(native),
              'agent_scope': 'agent_plan' if allow_plans else 'agent_read',
              'execute_approved': execute, 'hours': hours, 'tasks': tasks, 'jobs': jobs,
-             'requires_per_task_approval': True, 'automatic_resubmit': False}
+             'requires_per_task_approval': True, 'automatic_resubmit': False,
+             'employee_access': {'configuration_sha256':fingerprint(employee), 'scope':'agent_plan' if employee['allow_plans'] else 'agent_read', 'expires_at':employee['expires_at']} if employee else None}
     return {**value, 'plan_sha256': fingerprint(value)}
 
 
@@ -99,11 +104,17 @@ def identity(store, plan, key, token_file):
 
 
 def run(store, admin, plan, key, args, *, emit, stop=None):
-    expected = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours)
+    expected = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
     if args.expect_plan != expected['plan_sha256']: raise RuntimeFault('LOCAL_RUN_START_PLAN_CHANGED')
     if args.execute_approved and not args.dedicated_app: raise RuntimeFault('LOCAL_FEISHU_DEDICATED_APP_REQUIRED')
     delegated = identity(store, plan, key, args.user_token_file) if args.allow_plans else None
     stop = stop or threading.Event()
+    employees = None
+    if getattr(args, 'employee_config', None):
+        from .employee_access import configuration, EmployeeAccess
+        config = configuration(args.employee_config, plan, allow_plans=args.allow_plans)
+        config['expires_at'] = min(config['expires_at'], __import__('time').time()+args.hours*3600)
+        employees = EmployeeAccess(store, admin, plan, config, key)
     with capabilities(store, admin, plan['project'], args.hours, args.allow_plans, args.execute_approved) as (agent, execution), \
             tempfile.TemporaryDirectory(prefix='agent-session-', dir=store.root) as directory:
         session = Path(directory); session.chmod(0o700)
@@ -117,21 +128,28 @@ def run(store, admin, plan, key, args, *, emit, stop=None):
             if not media.exists(): media.mkdir(mode=0o700)
             private_directory(media)
         def preflight():
-            current = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours)
+            current = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
             if current['plan_sha256'] != args.expect_plan: raise RuntimeFault('LOCAL_RUN_START_PLAN_CHANGED')
+            if employees: employees.start()
+            else:
+                from .employee_access import revoke_grants
+                with store.connect() as db: revoke_grants(db, plan['project'])
         def ready(value):
             connection = {'schema': 'vf-agent-connection-v1', 'project': plan['project'], 'port': value['port'],
                           'expires_at': agent['expires_at'], 'scope': agent['scope']}
             exclusive_write(session / 'connection.json', canonical(connection).encode())
             emit({**value, 'connection': str(session / 'connection.json'), 'expires_at': agent['expires_at'],
-                  'stop': 'Ctrl-C', 'owner_approval_exposed': False})
+                  'stop': 'Ctrl-C', 'owner_approval_exposed': False,
+                  'employee_origin': 'http://127.0.0.1:'+str(value['port']) if employees else None})
         timer = threading.Timer(args.hours * 3600, stop.set); timer.daemon = True; timer.start()
         try:
             serve(store, plan['project'], args.port, stop, execution_token=execution['token'] if execution else None,
                   master_key=key if execution else None, media_root=media if execution else None,
                   plans_enabled=args.allow_plans, script_plans=scripts, on_ready=ready, on_locked=preflight,
-                  native_files=(session / 'execution.token', store.root / 'master.key') if execution else None)
-        finally: timer.cancel(); stop.set()
+                  native_files=(session / 'execution.token', store.root / 'master.key') if execution else None, employee_access=employees)
+        finally:
+            timer.cancel(); stop.set()
+            if employees: employees.close()
     emit({'status': 'stopped', 'session_grants_revoked': True, 'project': plan['project']})
 
 
@@ -169,12 +187,14 @@ def agent_call(connection, operation, body):
 
 def register(commands):
     p = commands.add_parser('local-run', help='inspect or start an owner-approved, bounded business service')
-    p.add_argument('action', choices=('inspect','start','approve-script','approve-video','revoke-script','revoke-video'))
+    p.add_argument('action', choices=('inspect','start','approve-script','approve-video','revoke-script','revoke-video','employee-status','employee-suspend','employee-resume'))
     p.add_argument('--root', type=Path, required=True); p.add_argument('--plan', type=Path, required=True)
     p.add_argument('--password-file', type=Path); p.add_argument('--user-token-file', type=Path)
     p.add_argument('--allow-plans', action='store_true'); p.add_argument('--execute-approved', action='store_true')
     p.add_argument('--dedicated-app', action='store_true'); p.add_argument('--hours', type=int, default=2)
     p.add_argument('--port', type=int, default=8788); p.add_argument('--expect-plan')
+    p.add_argument('--employee-config', type=Path)
+    p.add_argument('--expected-employee-version', type=int); p.add_argument('--request-id')
     p.add_argument('--plan-id'); p.add_argument('--plan-sha256'); p.add_argument('--accept-provider-charges', action='store_true')
     p = commands.add_parser('agent', help='use one scoped local connection; never displays its credential')
     p.add_argument('operation', choices=tuple(ROUTES)); p.add_argument('--connection', type=Path, required=True)
@@ -193,8 +213,11 @@ def cli(args):
             raise RuntimeFault('LOCAL_SQLITE_ENVIRONMENT_REQUIRED')
         plan = read_plan(args.plan); store = RuntimeStore(args.root)
         admin = store.login('admin', secret_input(args.password_file, '本机管理员密码（隐藏输入）: '))['token']
+        if args.action.startswith('employee-'):
+            from .employee_access import manage
+            emit(manage(store, admin, plan['project'], args.action.removeprefix('employee-'), expected_version=args.expected_employee_version, request_id=args.request_id)); return 0
         key = secret_input(store.root / 'master.key', '').encode()
-        checked = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours)
+        checked = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
         if args.action == 'inspect': emit(checked); return 0
         if args.action != 'start':
             action, stage = args.action.split('-')
