@@ -55,7 +55,10 @@ def main():
     env = {k: os.environ[k] for k in ('PATH', 'HOME', 'LANG', 'TMPDIR', 'SYSTEMROOT') if k in os.environ}
     env.update(PYTHONNOUSERSITE='1', PIP_CONFIG_FILE=os.devnull)
     try:
-        venv.EnvBuilder(with_pip=True).create(root / 'environment')
+        # Standalone macOS Python resolves libpython relative to its executable.
+        # Copying that executable into the venv breaks its dylib lookup; retain
+        # the base interpreter through links, as `python -m venv` does on POSIX.
+        venv.EnvBuilder(with_pip=True, symlinks=True).create(root / 'environment')
         python = root / 'environment/bin/python'
         pip = [str(python), '-m', 'pip', '--disable-pip-version-check', 'install', '--no-input', '--no-compile']
         if wheels: pip += ['--no-index', '--find-links', str(wheels)]
