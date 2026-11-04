@@ -22,6 +22,8 @@ python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFacto
 
 这会安装独立 Python 环境并生成 `~/VideoFactory/vf-setup`，不创建假模型账本。执行 `~/VideoFactory/vf-setup --plan /绝对路径/project.json --interactive --bind` 进入下面的问答，业务数据固定在 `~/VideoFactory/business`。尚未发布一键下载入口，必须使用同版本安装器和 wheel。
 
+macOS/Linux 的独立环境通过符号链接使用安装时的基础 Python；请保留该 Python，不要在系统仍使用它时卸载。旧安装器在 uv 管理的 macOS Python 上可能因复制可执行文件后找不到 `libpython` 而中止；保留失败目录，取得包含修复的同版本安装包后选择全新目录重试。不要手改原 ZIP 或把部分安装标记为成功。
+
 也可直接用已安装候选环境的 `vfctl`。在自己的目录准备一个仅本人可访问的计划目录：
 
 ```sh

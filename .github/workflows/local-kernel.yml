@@ -62,6 +62,17 @@ jobs:
         run: |
           python scripts/install_local_kernel.py --mode business --root "$RUNNER_TEMP/vf-business-install" --package /tmp/vf-local-wheels/*.whl
           python .github/scripts/local-business-install-smoke.py "$RUNNER_TEMP/vf-business-install"
+      - name: Verify standalone macOS Python installation in a path with spaces
+        if: runner.os == 'macOS'
+        env:
+          UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/vf-managed-python
+        run: |
+          python -m pip install uv==0.11.0
+          uv python install 3.12.11
+          VF_PYTHON="$(uv python find --managed-python 3.12.11)"
+          "$VF_PYTHON" scripts/install_local_kernel.py --mode business --root "$RUNNER_TEMP/Video Factory standalone" --package /tmp/vf-local-wheels/*.whl
+          python .github/scripts/local-business-install-smoke.py "$RUNNER_TEMP/Video Factory standalone"
+          "$VF_PYTHON" -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); assert (p/"environment/bin/python").is_symlink(); assert not (p/"environment/bin/python").resolve().is_relative_to(p)' "$RUNNER_TEMP/Video Factory standalone"
       - name: Retain n8n-free installation receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
