@@ -75,7 +75,8 @@ def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hou
              'agent_scope': 'agent_plan' if allow_plans else 'agent_read',
              'execute_approved': execute, 'hours': hours, 'tasks': tasks, 'jobs': jobs,
              'requires_per_task_approval': True, 'automatic_resubmit': False,
-             'employee_access': {'configuration_sha256':fingerprint(employee), 'scope':'agent_plan' if employee['allow_plans'] else 'agent_read', 'expires_at':employee['expires_at']} if employee else None}
+             'employee_access': {'configuration_sha256':fingerprint(employee), 'scope':'agent_plan' if employee['allow_plans'] else 'agent_read', 'expires_at':employee['expires_at'],
+                                 'repair':employee.get('repair')} if employee else None}
     return {**value, 'plan_sha256': fingerprint(value)}
 
 

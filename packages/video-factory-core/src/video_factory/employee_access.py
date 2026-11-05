@@ -18,6 +18,7 @@ from .feishu_bridge import meta, save
 from .feishu_client import FeishuClient
 from .feishu_oauth import DeviceOAuth
 from .runtime_store import RuntimeFault, fingerprint, identifier, private_file
+from .business_repair import BusinessRepair, OPERATIONS as REPAIR_OPERATIONS, repair_scope, settings as repair_settings
 
 READ_ROUTES = {'capabilities', 'status', 'tasks', 'task', 'script/receipt', 'video/receipt'}
 PLAN_ROUTES = {'script/catalog', 'script/plans', 'script/content', 'script/prepare-record',
@@ -43,7 +44,7 @@ def private_json(path):
 def configuration(path, plan, *, allow_plans=False, clock=time.time):
     value = private_json(path)
     required = {'schema', 'project', 'tenant_key', 'open_id', 'expires_at', 'allow_plans'}
-    if (not isinstance(value, dict) or not required <= set(value) or set(value)-required-{'workflow_source'}
+    if (not isinstance(value, dict) or not required <= set(value) or set(value)-required-{'workflow_source', 'repair'}
             or value['schema'] != 'vf-business-employee-v1' or value['project'] != plan['project']
             or value['tenant_key'] != plan['binding']['tenant_key']
             or not isinstance(value['open_id'], str) or not re.fullmatch(r'ou_[A-Za-z0-9_-]{1,128}', value['open_id'])
@@ -53,6 +54,7 @@ def configuration(path, plan, *, allow_plans=False, clock=time.time):
         raise RuntimeFault('EMPLOYEE_CONFIGURATION_INVALID')
     if value['allow_plans'] and (not allow_plans or value['open_id'] not in plan['binding']['submitters']):
         raise RuntimeFault('EMPLOYEE_PLANS_NOT_AUTHORIZED')
+    repair_settings(value.get('repair'))
     if 'workflow_source' in value:
         source = value['workflow_source']
         if (not isinstance(source, dict) or set(source) != {'path', 'sha256', 'workflow_ids'}
@@ -139,7 +141,10 @@ class EmployeeAccess:
         self.project, self.clock = plan['project'], clock
         self.client_factory, self.script_factory = client_factory, script_factory
         self.subject = fingerprint([plan['app_id'], config['tenant_key'], config['open_id']])
-        self.binding = fingerprint([self.project, self.subject, config['allow_plans']])
+        self.repair_scope = repair_scope(config)
+        self.binding = fingerprint([self.project, self.subject, config['allow_plans']]
+                                   + ([config['repair']] if self.repair_scope != 'none' else []))
+        self.repairs = BusinessRepair(store, self.project, clock=clock) if self.repair_scope != 'none' else None
         self.session = secrets.token_hex(16); self.pairs = {}; self.users = {}; self.start_count = 0
         with store.connect() as db:
             store.authorize(db, admin, 'admin')
@@ -157,6 +162,7 @@ class EmployeeAccess:
             policy['version'] += 1; policy['generation'] += 1
             revoke_grants(db, self.project); save(db, policy_key(self.project), policy)
             self.store.audit(db, 'local-owner', 'employee_entry_started', self.project)
+            if self.repairs: self.repairs.initialize(db)
 
     def close(self):
         with self.store.connect() as db: revoke_grants(db, self.project, self.session)
@@ -207,6 +213,7 @@ class EmployeeAccess:
             expiry = min(self.config['expires_at'], self.clock()+3600, self.clock()+result['expires_in'])
             grant = {'project': self.project, 'scope': 'agent_plan' if self.config['allow_plans'] else 'agent_read',
                      'expires_at': expiry, 'employee_subject': self.subject, 'employee_binding': self.binding,
+                     'employee_repair_scope': self.repair_scope,
                      'employee_generation': policy['generation'], 'employee_session': self.session}
             with self.store.connect() as db:
                 current = meta(db, policy_key(self.project))
@@ -216,9 +223,11 @@ class EmployeeAccess:
             # Feishu user token is server-memory-only and only needed for authorized plans.
             self.users[grant_key] = (result['access_token'] if self.config['allow_plans'] else None, expiry)
             return {'schema': 'vf-business-employee-credential-v1', 'token': raw, 'project': self.project,
-                    'expires_at': expiry, 'subject': self.subject, 'scope': grant['scope']}
+                    'expires_at': expiry, 'subject': self.subject, 'scope': grant['scope'], 'repair_scope': self.repair_scope}
         if key not in self.users or self.users[key][1] <= self.clock(): raise RuntimeFault('AUTH_EMPLOYEE_SESSION_EXPIRED')
         allowed = READ_ROUTES | (PLAN_ROUTES if self.config['allow_plans'] else set()) | {'workflows', 'disconnect'}
+        if self.repair_scope == 'read': allowed |= {'repair/inspect'}
+        if self.repair_scope == 'write': allowed |= REPAIR_OPERATIONS
         if operation not in allowed: raise RuntimeFault('EMPLOYEE_OPERATION_DENIED')
         with employee_authorization(token):
             from .agent_plans import authorize
@@ -228,7 +237,9 @@ class EmployeeAccess:
                 with self.store.connect() as db:
                     db.execute('DELETE FROM meta WHERE key=?', ('automation:key:'+key,));self.store.audit(db, actor, 'employee_disconnected', self.project)
                 self.users.pop(key, None);return {'revoked': True}
-            if operation == 'workflows':
+            if operation in REPAIR_OPERATIONS:
+                result = self.repairs.invoke(operation, token, body)
+            elif operation == 'workflows':
                 if body: raise RuntimeFault('EMPLOYEE_FIELDS_INVALID')
                 result = observation(self.config, clock=self.clock)
             else:
@@ -236,6 +247,10 @@ class EmployeeAccess:
                 scripts = self.script_factory(self.store, self.project, user_token_provider=lambda:self.users[key][0], open_id=self.config['open_id']) if self.config['allow_plans'] else None
                 employee_api = AgentAPI(self.store, self.project, api.scheduler, plans_enabled=self.config['allow_plans'], script_plans=scripts)
                 result = employee_api.call('/v1/agent/'+operation, token, {'project':self.project, **body})
+                if operation == 'capabilities':
+                    result = {**result, 'repair_scope': self.repair_scope,
+                              'mutations_allowed': result['mutations_allowed'] or self.repair_scope == 'write',
+                              'repair_target': 'isolated-business-ledger' if self.repairs else None}
             with self.store.connect() as db:
                 authorize(db, token, self.project);self.store.audit(db, actor, 'employee_'+operation.replace('/','_'), self.project)
             return result

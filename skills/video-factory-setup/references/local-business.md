@@ -26,3 +26,5 @@ Codex 只使用返回的连接路径：`vf-agent --connection <connection.json> 
 ## 业务员工接入候选
 
 管理员可显式使用 `--employee-config` 为同一业务账本绑定一个飞书员工，最长两小时、默认只读。员工通过独立客户端和本人设备授权获取短期项目凭证；不共享管理员连接目录。管理员通过 employee-status/suspend/resume 查看与撤销接入，恢复或重启必须重新配对。员工计划仍需管理员逐项批准费用。详见 docs/product/BUSINESS_EMPLOYEE_ACCESS.md；合成身份验证不能替代真人验收。工作流观测只读管理员固定的短时快照，不是已部署生产修复。
+
+可另选 `repair: {profile: "single-select-decoder-v1", allow_apply: true}`，仅为新隔离实例预授权固定源码类型的修复。调用同一员工 API 的 repair/inspect、propose、validate、apply、rollback，按返回候选版本和唯一请求标识操作。禁止把代码、路径或 Shell 当作参数，禁止执行生产补丁；暂停/恢复或重启后重新验证。该能力不要求 allow_plans 或 execute-approved，不因修复而生成脚本。详见随包 BUSINESS_SOURCE_REPAIR.md；它是产品源码样例的业务适配器，不等于完整生产工作流修复。
