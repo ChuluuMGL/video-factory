@@ -21,8 +21,8 @@ class EmployeeTests(unittest.TestCase):
         self.f = business.LocalBusinessFlowTests(); self.f.setUp(); self.addCleanup(self.f.doCleanups)
         f = self.f
         self.now = time.time(); self.plan = {'project':f.project,'app_id':'cli_fixture','binding':dict(business.BINDING)}
-        f.store.put_secret(f.admin,'employee_app','synthetic-app-secret',f.key)
-        with f.store.connect() as db: save(db,'setup:feishu-app:'+f.project,{'app_id':'cli_fixture','credential_ref':'secret:employee_app'})
+        # Use the fixture's already-bound application. Replacing its credential
+        # reference would correctly invalidate the native writeback plan.
         self.config = {'schema':'vf-business-employee-v1','project':f.project,'tenant_key':'fixture_tenant',
                        'open_id':'ou_employee','expires_at':self.now+3600,'allow_plans':True}
         self.entry = self.make(); self.entry.start(); self.addCleanup(self.entry.close)
