@@ -12,7 +12,7 @@ from unittest.mock import patch
 from cryptography.fernet import Fernet
 from video_factory.cli import main
 from video_factory.feishu_bridge import meta, save
-from video_factory.local_setup import MARKER, authorize_feishu, bind, provision, validate
+from video_factory.local_setup import MARKER, add_video, authorize_feishu, bind, provision, validate
 from video_factory.runtime_store import RuntimeFault, RuntimeStore, canonical, exclusive_write
 from video_factory.script_provider import MODEL
 
@@ -128,6 +128,113 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'MODEL_UNSUPPORTED'): validate(self.plan)
         self.plan = plan(); self.plan['api_key'] = 'must-not-be-in-plan'
         with self.assertRaisesRegex(RuntimeFault, 'PLAN_FIELDS_INVALID'): validate(self.plan)
+
+    def video_plan(self):
+        assets = self.root / 'video-assets'; assets.mkdir(mode=0o700, exist_ok=True)
+        image = assets / 'fixture.png'; image.write_bytes(b'synthetic-image')
+        updated = deepcopy(self.plan)
+        updated['video'] = {'model': 'MiniMax-H3', 'region': 'cn', 'assets': {'sku_one': {
+            'assets_root': str(assets), 'specification': {'duration': 5, 'references': [
+                {'path': 'fixture.png', 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()}]}}}}
+        return updated
+
+    def test_add_video_preserves_review_binding_existing_keys_and_resumes(self):
+        self.put(); bind(self.store, self.admin, self.plan, 'synthetic-user', client_factory=Client)
+        self.store.create_task(self.admin, 'brand_one', 'one',
+                               {'sku_id': 'sku_one', 'script': 'approved script', 'source_revision': '1'})
+        self.store.review(self.admin, 'approved_once', 'brand_one', 'one', 1, 'script', 'accept')
+        def evidence():
+            with self.store.connect() as db:
+                return {'tasks': [tuple(r) for r in db.execute('SELECT * FROM tasks')],
+                        'events': [tuple(r) for r in db.execute('SELECT * FROM events')],
+                        'binding': meta(db, 'feishu:binding:brand_one'),
+                        'keys': [tuple(r) for r in db.execute('SELECT * FROM vault ORDER BY alias')]}
+        before = evidence(); updated = self.video_plan()
+        self.assertFalse(add_video(self.store, self.admin, self.plan, updated, self.key,
+                                   'synthetic-video-secret')['reused'])
+        after = evidence()
+        for field in ('tasks', 'events', 'binding'): self.assertEqual(before[field], after[field])
+        for row in before['keys']: self.assertIn(row, after['keys'])
+        self.assertEqual(len(after['keys']), len(before['keys']) + 1)
+        self.assertTrue(add_video(self.store, self.admin, self.plan, updated, self.key)['reused'])
+        self.assertEqual(after, evidence())
+        self.assertTrue(provision(self.store, self.admin, updated, self.key, {})['reused'])
+        with self.store.connect() as db:
+            self.assertEqual(self.store._current(db, 'brand_one', 'one', 1)['state'], 'ready')
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit WHERE action='local_video_added'").fetchone()[0], 1)
+            self.assertFalse(db.execute("SELECT 1 FROM meta WHERE key LIKE 'worker:%'").fetchone())
+        self.assertNotIn(b'synthetic-video-secret', self.store.path.read_bytes())
+        from video_factory import automation
+        from video_factory.agent_plans import VideoPlans
+        planner = automation.issue(self.store, self.admin, 'brand_one', scope='agent_plan')['token']
+        plans = VideoPlans(self.store, 'brand_one')
+        proposal = plans.prepare(planner, 'one', 1, 'first_video')
+        self.assertEqual(proposal['phase'], 'prepared')
+        self.assertEqual(proposal['provider_requests'], 0)
+        self.assertEqual(proposal['task_state'], 'ready')
+        with self.assertRaisesRegex(RuntimeFault, 'OWNER_APPROVAL_REQUIRED'):
+            plans.submit(planner, proposal['plan_id'], proposal['plan_sha256'])
+
+    def test_add_video_rejects_unrelated_changes_and_wrong_previous_plan(self):
+        self.put(); updated = self.video_plan()
+        for field, value in [('project', 'other'), ('billing_owner', 'other'), ('app_id', 'cli_other')]:
+            changed = deepcopy(updated); changed[field] = value
+            with self.assertRaisesRegex(RuntimeFault, 'ONLY_ADD_VIDEO'):
+                add_video(self.store, self.admin, self.plan, changed, self.key, 'synthetic-video-secret')
+        previous = deepcopy(self.plan); previous['products'][0]['name'] = 'changed'
+        changed = deepcopy(updated); changed['products'] = previous['products']
+        with self.assertRaisesRegex(RuntimeFault, 'LOCAL_SETUP_CHANGED'):
+            add_video(self.store, self.admin, previous, changed, self.key, 'synthetic-video-secret')
+        with self.assertRaisesRegex(RuntimeFault, 'ONLY_ADD_VIDEO'):
+            add_video(self.store, self.admin, updated, updated, self.key, 'synthetic-video-secret')
+
+    def test_add_video_failure_rolls_back_entire_transition(self):
+        self.put(); updated = self.video_plan()
+        with self.store.connect() as db:
+            receipt = meta(db, 'local:setup:brand_one')
+            keys = [tuple(r) for r in db.execute('SELECT * FROM vault')]
+        with patch('video_factory.local_setup.configure', side_effect=RuntimeFault('INJECTED_FAILURE')):
+            with self.assertRaisesRegex(RuntimeFault, 'INJECTED_FAILURE'):
+                add_video(self.store, self.admin, self.plan, updated, self.key, 'synthetic-video-secret')
+        with self.store.connect() as db:
+            self.assertEqual(receipt, meta(db, 'local:setup:brand_one'))
+            self.assertEqual(keys, [tuple(r) for r in db.execute('SELECT * FROM vault')])
+            self.assertIsNone(meta(db, 'local:video-added:brand_one'))
+        self.assertTrue(self.put({})['reused'])
+
+    def test_add_video_rejects_wrong_master_drift_and_changed_reference(self):
+        self.put(); updated = self.video_plan()
+        with self.assertRaisesRegex(RuntimeFault, 'SECRET_DECRYPT_FAILED'):
+            add_video(self.store, self.admin, self.plan, updated, Fernet.generate_key(), 'synthetic-video-secret')
+        (self.root / 'video-assets/fixture.png').write_bytes(b'changed')
+        with self.assertRaisesRegex(RuntimeFault, 'H3_REFERENCE_CHANGED'):
+            add_video(self.store, self.admin, self.plan, updated, self.key, 'synthetic-video-secret')
+        with self.store.connect() as db: save(db, 'script:profile:brand_one', {'changed': True})
+        with self.assertRaisesRegex(RuntimeFault, 'LOCAL_SETUP_CHANGED'):
+            add_video(self.store, self.admin, self.plan, updated, self.key, 'synthetic-video-secret')
+
+    def test_add_video_cli_no_extra_auth_or_key_prompt_after_success(self):
+        self.put(); exclusive_write(self.state / 'master.key', self.key)
+        old = self.root / 'old.json'; new = self.root / 'new.json'
+        exclusive_write(old, canonical(self.plan).encode())
+        updated = self.video_plan(); exclusive_write(new, canonical(updated).encode())
+        password = self.root / 'password'; secret = self.root / 'video-key'
+        exclusive_write(password, b'synthetic-password-long'); exclusive_write(secret, b'synthetic-video-secret')
+        args = ['local-setup', '--root', str(self.state), '--plan', str(new),
+                '--previous-plan', str(old), '--password-file', str(password)]
+        for reused in (False, True):
+            out = io.StringIO()
+            with redirect_stdout(out), patch('video_factory.local_setup.authorize_feishu', side_effect=AssertionError('OAuth not needed')):
+                result = main(args + ([] if reused else ['--video-key-file', str(secret)]))
+            self.assertEqual(result, 0, out.getvalue())
+            report = json.loads(out.getvalue())
+            self.assertEqual(report['reused'], reused)
+            self.assertTrue(report['video_added']); self.assertEqual(report['provider_requests'], 0)
+            self.assertFalse(report['paid_execution_enabled'])
+            self.assertNotIn('synthetic-video-secret', out.getvalue())
+        with self.store.connect() as db:
+            # The original test session remains; each CLI-owned session was revoked.
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0], 1)
 
     def test_oauth_does_not_log_tokens_or_device_code(self):
         self.put(); output = []

@@ -1,6 +1,6 @@
 """Owner-only local business configuration; no containers, model calls or grants.
 
-A non-secret plan is immutable for a project. Configuration and encrypted keys
+A non-secret plan is immutable except for explicit script-only to video setup. Configuration and encrypted keys
 commit together. Binding is a separate read-only Feishu gate and can be resumed.
 The fake trial ledger is never adopted. No execution capability is issued here.
 """
@@ -135,6 +135,54 @@ def bind(store, admin, plan, user_token, *, client_factory=None):
     return bridge.bind(admin, plan['project'], plan['binding'], user_token, fingerprint(old) if old else None)
 
 
+def add_video(store, admin, previous, plan, master_key, video_secret=None):
+    """Add the first video profile without recreating tasks, binding or approvals.
+
+    Both complete plans are required. No existing account, SKU, identity or
+    binding can change through this operation. The caller holds runtime_lock.
+    """
+    old_digest = validate(previous); digest = validate(plan)
+    expected = dict(previous); expected['video'] = plan['video']
+    if previous['video'] is not None or plan['video'] is None or expected != plan:
+        raise RuntimeFault('LOCAL_SETUP_ONLY_ADD_VIDEO_ALLOWED')
+    project = plan['project']; receipt_key = 'local:setup:' + project
+    with store.connect() as db:
+        actor = store.authorize(db, admin, 'admin')
+        if meta(db, 'local:fake-only:v1'): raise RuntimeFault('LOCAL_FAKE_PROFILE_NO_EXTERNAL_IO')
+        if meta(db, MARKER) != {'deployment': plan['deployment']}:
+            raise RuntimeFault('LOCAL_SETUP_RUNTIME_NOT_OWNED')
+        if db.execute("SELECT value FROM meta WHERE key='deployment'").fetchone()[0] != plan['deployment']:
+            raise RuntimeFault('LOCAL_SETUP_DEPLOYMENT_CHANGED')
+        saved = meta(db, receipt_key)
+        if not saved or saved['snapshot'] != snapshots(db, project):
+            raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
+        tx = TransactionStore(store, db)
+        for alias, revision in saved['snapshot']['keys']:
+            tx.resolve_secret(alias, master_key)
+        transition_key = 'local:video-added:' + project
+        transition = {'previous_plan_sha256': old_digest, 'plan_sha256': digest}
+        if saved['plan_sha256'] == digest and meta(db, transition_key) == transition:
+            return {'reused': True, 'video_added': True, 'plan_sha256': digest}
+        if saved['plan_sha256'] != old_digest or meta(db, 'video:profile:' + project) is not None:
+            raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
+        if (not isinstance(video_secret, str) or not 16 <= len(video_secret) <= 4096
+                or any(c.isspace() for c in video_secret)):
+            raise RuntimeFault('LOCAL_SETUP_RAW_KEY_REQUIRED')
+        alias = 'ls_' + fingerprint(project)[:24] + '_video'
+        if db.execute('SELECT 1 FROM vault WHERE alias=?', (alias,)).fetchone():
+            raise RuntimeFault('LOCAL_SETUP_SECRET_ALREADY_PRESENT')
+        tx.put_secret(admin, alias, video_secret, master_key)
+        configure(tx, admin, project, 'secret:' + alias, plan['billing_owner'],
+                  plan['video']['region'], plan['video']['assets'], local_assets=True)
+        setup = meta(db, 'setup:project:' + project)
+        setup['plan_sha256'] = digest
+        save(db, 'setup:project:' + project, setup)
+        save(db, transition_key, transition)
+        save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project)})
+        store.audit(db, actor, 'local_video_added', project)
+    return {'reused': False, 'video_added': True, 'plan_sha256': digest}
+
+
 def interactive_plan(read=input):
     """Non-secret questions only. Agent mode supplies this same JSON contract."""
     ask = lambda label: read(label + ': ').strip()
@@ -199,6 +247,8 @@ def register(commands):
     parser = commands.add_parser('local-setup', help='terminal/Agent setup of a separate local business project')
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--plan', type=Path, required=True, help='private JSON; no passwords or keys')
+    parser.add_argument('--previous-plan', type=Path,
+                        help='explicitly add video to a script-only project; retain the unchanged original plan')
     parser.add_argument('--interactive', action='store_true', help='create a private non-secret plan through terminal questions')
     parser.add_argument('--native-plan', action='store_true', help='read the proposed original-table changes')
     parser.add_argument('--enable-native', help='explicitly approve the exact native plan hash')
@@ -224,11 +274,23 @@ def cli(args):
         private_file(args.plan)
         if args.plan.stat().st_size > 1024 * 1024: raise RuntimeFault('LOCAL_SETUP_PLAN_TOO_LARGE')
         plan = json.loads(args.plan.read_text()); digest = validate(plan)
+        previous = None
+        if args.previous_plan:
+            if not args.previous_plan.is_absolute() or args.previous_plan.resolve() != args.previous_plan:
+                raise RuntimeFault('LOCAL_SETUP_PRIVATE_PLAN_REQUIRED')
+            private_file(args.previous_plan)
+            if args.previous_plan.stat().st_size > 1024 * 1024: raise RuntimeFault('LOCAL_SETUP_PLAN_TOO_LARGE')
+            previous = json.loads(args.previous_plan.read_text()); validate(previous)
+            expected = dict(previous); expected['video'] = plan['video']
+            if previous['video'] is not None or plan['video'] is None or expected != plan:
+                raise RuntimeFault('LOCAL_SETUP_ONLY_ADD_VIDEO_ALLOWED')
         if args.check:
             print(canonical({'plan_sha256': digest, 'provider_requests': 0, 'writes': 0})); return 0
         root = args.root
         if not root.is_absolute() or root.resolve() != root:
             raise RuntimeFault('LOCAL_SETUP_PRIVATE_ROOT_REQUIRED')
+        if previous and not (root / 'runtime.sqlite3').exists():
+            raise RuntimeFault('LOCAL_SETUP_EXISTING_SCRIPT_PROJECT_REQUIRED')
         if not root.exists(): root.mkdir(mode=0o700)
         private_directory(root)
         with runtime_lock(root):
@@ -247,7 +309,7 @@ def cli(args):
                 if meta(db, MARKER) != {'deployment': plan['deployment']}:
                     raise RuntimeFault('LOCAL_SETUP_RUNTIME_NOT_OWNED')
                 existing = meta(db, 'local:setup:' + plan['project'])
-                if existing and existing['plan_sha256'] != digest:
+                if existing and existing['plan_sha256'] != digest and not previous:
                     raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
             key_path = root / 'master.key'
             if not key_path.exists():
@@ -257,14 +319,23 @@ def cli(args):
                 exclusive_write(key_path, Fernet.generate_key())
             key = secret_input(key_path, '').encode()
             values = {}
-            if not existing:
+            if previous:
+                if not existing: raise RuntimeFault('LOCAL_SETUP_EXISTING_SCRIPT_PROJECT_REQUIRED')
+                if existing['plan_sha256'] != digest:
+                    values['video'] = secret_input(args.video_key_file, 'MiniMax 原始 Key（隐藏输入）: ')
+                result = add_video(store, admin, previous, plan, key, values.get('video'))
+            elif not existing:
                 values['app'] = secret_input(args.app_secret_file, '飞书 App Secret（隐藏输入）: ')
                 values['script'] = secret_input(args.script_key_file, 'DeepSeek 官方 Key（隐藏输入）: ')
                 if plan['video']: values['video'] = secret_input(args.video_key_file, 'MiniMax 原始 Key（隐藏输入）: ')
-            result = provision(store, admin, plan, key, values); values.clear()
+            if not previous: result = provision(store, admin, plan, key, values)
+            values.clear()
             result.update({'project': plan['project'], 'configuration_saved': True, 'provider_requests': 0,
                            'paid_execution_enabled': False, 'feishu_binding_verified': False,
                            'native_review_enabled': False, 'next_step': 'bind_existing_feishu_table'})
+            if previous:
+                result.update({'existing_tasks_preserved': True, 'feishu_binding_preserved': True,
+                               'next_step': 'use_new_plan_for_run_inspect; separate_video_fee_approval_required'})
             if args.bind:
                 user_token = secret_input(args.user_token_file, '') if args.user_token_file else authorize_feishu(store, plan, key)
                 bind(store, admin, plan, user_token)
