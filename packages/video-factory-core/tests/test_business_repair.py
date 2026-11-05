@@ -11,10 +11,11 @@ from video_factory.repair_profile import PROFILE, BEFORE, AFTER, source
 from video_factory.runtime_store import RuntimeFault
 
 
-def make_repair_fixture():
+def make_repair_fixture(allow_plans=True):
     fixture = employees.EmployeeTests()
     original = fixture.make
     def make():
+        fixture.config['allow_plans'] = allow_plans
         fixture.config['repair'] = {'profile': PROFILE, 'allow_apply': True}
         return original()
     fixture.make = make
@@ -146,6 +147,20 @@ class BusinessRepairTests(unittest.TestCase):
             state=meta(db,self.f.entry.repairs.key);state['clone']['version']+=1
             save(db,self.f.entry.repairs.key,state)
         with self.assertRaisesRegex(RuntimeFault,'ROLLBACK_CONFLICT'):self.call('rollback',self.request('rollback',c))
+
+    def test_repair_permission_does_not_require_or_grant_paid_plan_permission(self):
+        fixture=make_repair_fixture(allow_plans=False);self.addCleanup(fixture.doCleanups)
+        token=fixture.pair()
+        with self.assertRaisesRegex(RuntimeFault,'OPERATION_DENIED'):
+            fixture.call('script/prepare-record',token,{'record':'recFixture'})
+        before=fixture.call('repair/inspect',token)
+        candidate=fixture.call('repair/propose',token,{'request_id':'repair-without-model-plan',
+            'source_fingerprint':before['clone']['fingerprint']})['candidate']
+        for op in ('validate','apply','rollback'):
+            candidate=fixture.call('repair/'+op,token,{'request_id':'repair-only-'+op+'-request',
+                'candidate_id':candidate['id'],'expected_version':candidate['version']})['candidate']
+        self.assertEqual(fixture.call('repair/inspect',token)['clone']['source'],source(BEFORE))
+        self.assertEqual(fixture.f.provider.calls,[]);self.assertEqual(fixture.f.video.calls,0)
 
 
 if __name__ == '__main__': unittest.main()
