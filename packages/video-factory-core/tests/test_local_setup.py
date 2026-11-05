@@ -164,6 +164,16 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit WHERE action='local_video_added'").fetchone()[0], 1)
             self.assertFalse(db.execute("SELECT 1 FROM meta WHERE key LIKE 'worker:%'").fetchone())
         self.assertNotIn(b'synthetic-video-secret', self.store.path.read_bytes())
+        from video_factory import automation
+        from video_factory.agent_plans import VideoPlans
+        planner = automation.issue(self.store, self.admin, 'brand_one', scope='agent_plan')['token']
+        plans = VideoPlans(self.store, 'brand_one')
+        proposal = plans.prepare(planner, 'one', 1, 'first_video')
+        self.assertEqual(proposal['phase'], 'prepared')
+        self.assertEqual(proposal['provider_requests'], 0)
+        self.assertEqual(proposal['task_state'], 'ready')
+        with self.assertRaisesRegex(RuntimeFault, 'OWNER_APPROVAL_REQUIRED'):
+            plans.submit(planner, proposal['plan_id'], proposal['plan_sha256'])
 
     def test_add_video_rejects_unrelated_changes_and_wrong_previous_plan(self):
         self.put(); updated = self.video_plan()
