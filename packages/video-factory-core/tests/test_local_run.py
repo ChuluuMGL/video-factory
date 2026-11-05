@@ -1,5 +1,6 @@
 """Cloud-only real loopback startup/client tests; no provider or Feishu network."""
 import json
+import http.client
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -92,6 +93,55 @@ class EntryTests(unittest.TestCase):
             sock.bind(('127.0.0.1',0));sock.listen();self.args.port=sock.getsockname()[1]
             with self.assertRaises(OSError): run(self.store,self.admin,self.plan,self.key,self.args,emit=lambda _:None)
         self.assertEqual(self.keys(),0);self.assertEqual(list(self.state.glob('agent-session-*')),[])
+
+    def test_employee_startup_configuration_fence_and_shutdown(self):
+        from video_factory.employee_access import EmployeeAccess, manage
+        config = self.root/'employee.json'
+        value = {'schema':'vf-business-employee-v1','project':self.plan['project'],
+                 'tenant_key':'tenant_fixture','open_id':'ou_fixture',
+                 'expires_at':time.time()+1800,'allow_plans':False}
+        exclusive_write(config,json.dumps(value).encode())
+        self.args.employee_config=config
+        self.args.expect_plan=self.inspect(employee_config=config)['plan_sha256']
+        value['open_id']='ou_other';config.write_text(json.dumps(value))
+        with self.assertRaisesRegex(RuntimeFault,'START_PLAN_CHANGED'):
+            run(self.store,self.admin,self.plan,self.key,self.args,emit=lambda _:None)
+        self.assertEqual(self.keys(),0)
+        value['open_id']='ou_fixture';config.write_text(json.dumps(value))
+        oauth=SimpleNamespace(start=lambda:{'verification_uri':'https://accounts.feishu.cn/fixture',
+            'user_code':'fixture-code','device_code':'fixture-device','expires_in':300,'interval':0},
+            poll=lambda _:{'status':'authorized','access_token':'fixture-user','expires_in':600})
+        def employee(*args,**kwargs):
+            return EmployeeAccess(*args,**kwargs,oauth_factory=lambda *_:oauth,client_factory=fixture.Client)
+        stop=threading.Event();ready=threading.Event();output=[];errors=[]
+        def emit(v):
+            output.append(v)
+            if 'connection' in v:ready.set()
+        def work():
+            try:run(self.store,self.admin,self.plan,self.key,self.args,emit=emit,stop=stop)
+            except BaseException as e:errors.append(e);ready.set()
+        with patch('video_factory.employee_access.EmployeeAccess',side_effect=employee):
+            thread=threading.Thread(target=work);thread.start()
+            try:
+                self.assertTrue(ready.wait(10));self.assertEqual(errors,[])
+                connection=Path(output[0]['connection'])
+                port=json.loads(connection.read_text())['port']
+                self.assertEqual(output[0]['employee_origin'],'http://127.0.0.1:'+str(port))
+                def call(op,token=None):
+                    c=http.client.HTTPConnection('127.0.0.1',port,timeout=5)
+                    c.request('POST','/v1/employee/'+op,'{}',{'Content-Type':'application/json',**({'Authorization':'Bearer '+token} if token else {})})
+                    response=c.getresponse();result=json.loads(response.read());c.close();return response.status,result
+                status,p=call('connect/start');self.assertEqual(status,200)
+                status,grant=call('connect/poll',p['pair_token']);self.assertEqual(status,200)
+                self.assertEqual(call('status',grant['token'])[0],200)
+                self.assertEqual(agent_call(connection,'status',{})['project'],self.plan['project'])
+                policy=manage(self.store,self.admin,self.plan['project'],'status')
+                manage(self.store,self.admin,self.plan['project'],'suspend',expected_version=policy['version'],request_id='launcher-suspend-0001')
+                self.assertNotEqual(call('status',grant['token'])[0],200)
+                self.assertEqual(agent_call(connection,'status',{})['project'],self.plan['project'])
+            finally:stop.set();thread.join(10)
+        self.assertFalse(thread.is_alive());self.assertEqual(errors,[]);self.assertEqual(self.keys(),0)
+        self.assertTrue(manage(self.store,self.admin,self.plan['project'],'status')['suspended'])
 
 
 if __name__=='__main__':unittest.main()

@@ -5,6 +5,7 @@ enqueue each fence the server-owned profile, current task and credential version
 No provider I/O occurs here. The scheduler alone consumes the resulting Worker job.
 """
 from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import json
 import re
@@ -13,6 +14,16 @@ import time
 from .feishu_bridge import meta, save
 from .runtime_store import RuntimeFault, RuntimeStore, fingerprint, identifier
 from .worker import Worker, job_key
+
+
+_employee_context = ContextVar('vf_employee_authorization', default=None)
+
+
+@contextmanager
+def employee_authorization(token):
+    marker = _employee_context.set(hashlib.sha256(token.encode()).hexdigest())
+    try: yield
+    finally: _employee_context.reset(marker)
 
 
 def authorize(db, token, project, *, write=False):
@@ -24,6 +35,13 @@ def authorize(db, token, project, *, write=False):
     if (value.get('scope') not in scopes or value.get('project') != project
             or value.get('expires_at', 0) <= time.time()):
         raise RuntimeFault('AUTH_AGENT_DENIED')
+    if value.get('employee_subject'):
+        policy = meta(db, 'employee:policy:'+project) or {}
+        if (_employee_context.get() != key_id or policy.get('suspended', True)
+                or policy.get('binding') != value.get('employee_binding')
+                or policy.get('generation') != value.get('employee_generation')):
+            raise RuntimeFault('AUTH_EMPLOYEE_CONTEXT_DENIED')
+        return value, 'employee:'+value['employee_subject']+':'+key_id
     return value, 'agent:' + key_id
 
 
