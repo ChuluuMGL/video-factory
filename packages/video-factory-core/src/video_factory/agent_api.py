@@ -1,5 +1,6 @@
 """Scoped Agent metadata and opt-in plans; no owner approval or provider routes."""
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import TCPServer
 import io
 
 from .onboarding import read_json
@@ -112,6 +113,13 @@ class AgentServer(HTTPServer):
         self.api = api
         super().__init__(address, Handler)
         self.timeout = 0.25
+
+    def server_bind(self):
+        # The listener is fixed to numeric loopback; reverse DNS adds no
+        # identity assurance and can block startup on offline Macs.
+        TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
 
     def handle_error(self, *_):
         pass  # Socket failures cannot dump request data or tracebacks.

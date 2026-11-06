@@ -86,6 +86,14 @@ class EntryTests(unittest.TestCase):
             self.assertFalse(connection.exists());self.assertTrue(output[-1]['session_grants_revoked'])
             with self.store.connect() as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],0)
 
+    def test_numeric_loopback_bind_does_not_require_dns(self):
+        from video_factory.agent_api import AgentServer
+        with patch('socket.getfqdn', side_effect=AssertionError('DNS must not be used')):
+            with AgentServer(('127.0.0.1', 0), object()) as server:
+                self.assertEqual(server.server_name, 'localhost')
+                self.assertGreater(server.server_port, 0)
+                self.assertEqual(server.server_address[0], '127.0.0.1')
+
     def test_occupied_port_cleans_up_new_capabilities(self):
         import socket
         with socket.socket() as sock:
