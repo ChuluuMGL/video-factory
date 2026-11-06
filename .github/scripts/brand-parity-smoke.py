@@ -26,9 +26,9 @@ def styles(page, selector):
       ['fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','color','backgroundColor','borderRadius'].map(k=>[k,s[k]]));
     }''')
 
-def fonts(page):
-    page.evaluate('''() => { const e=document.createElement('span');e.id='brand-font-probe';
-      e.textContent='商品资料生成视频审核下载';e.style.fontWeight='500';document.body.append(e); e.getBoundingClientRect(); }''')
+def fonts(page, selector="body"):
+    page.evaluate('''selector => { const e=document.createElement('span');e.id='brand-font-probe';
+      e.textContent='商品资料生成视频审核下载';e.style.fontWeight='500';document.querySelector(selector).append(e); e.getBoundingClientRect(); }''', selector)
     cdp = page.context.new_cdp_session(page)
     cdp.send('DOM.enable'); cdp.send('CSS.enable')
     doc = cdp.send('DOM.getDocument')
@@ -51,11 +51,14 @@ try:
             local.evaluate('document.fonts.ready')
             a=styles(official,'.ai-workflow-page #business-challenges h1'); b=styles(local,'h1')
             af=fonts(official); bf=fonts(local)
-            row={'viewport':label,'official_heading':a,'guide_heading':b,'official_actual_chinese_fonts':af,'guide_actual_chinese_fonts':bf}
+            ahf=fonts(official,'.ai-workflow-page #business-challenges h1'); bhf=fonts(local,'h1')
+            row={'viewport':label,'official_heading':a,'guide_heading':b,'official_actual_chinese_fonts':af,'guide_actual_chinese_fonts':bf,'official_heading_chinese_fonts':ahf,'guide_heading_chinese_fonts':bhf,'official_body':styles(official,'body'),'guide_body':styles(local,'body')}
             report['comparisons'].append(row)
             for key in ('fontFamily','fontWeight','fontSize','lineHeight','letterSpacing'):
                 assert a[key]==b[key], (label,key,a[key],b[key])
             assert af and af==bf, (af,bf)
+            assert ahf and ahf==bhf, (ahf,bhf)
+            assert styles(official,'body')['fontFamily']==styles(local,'body')['fontFamily']
             assert styles(official,'.ai-workflow-page')['backgroundColor']==styles(local,'body')['backgroundColor']
             assert styles(official,'#business-challenges h1 span:last-child')['color']==styles(local,'h1 em')['color']
             assert float(styles(local,'.primary')['borderRadius'].removesuffix('px'))>=9999
@@ -71,10 +74,13 @@ try:
             assert styles(page,'h1')['fontFamily']==a['fontFamily']
             assert styles(page,'h1')['fontWeight']=='500'
             actual=fonts(page)
-            report[surface]={'heading':styles(page,'h1'),'actual_chinese_fonts':actual}
+            heading_actual=fonts(page,'h1')
+            report[surface]={'heading':styles(page,'h1'),'actual_chinese_fonts':actual,'heading_chinese_fonts':heading_actual}
+            assert heading_actual==ahf, (surface,heading_actual,ahf)
             assert actual==af, (surface,actual,af)
             page.close()
         report['status']='PASS'; browser.close()
 finally:
     server.shutdown()
+    print(json.dumps(report,ensure_ascii=False,indent=2))
     (out/'brand-parity.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

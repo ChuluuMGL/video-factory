@@ -219,6 +219,11 @@ class NativeSync:
         if row['state'] == 'awaiting_script_review':
             expected[names['script']] = payload['script']
             expected[names['script_digest']] = hashlib.sha256(payload['script'].encode()).hexdigest()
+            # Keep the previous artifact in the immutable ledger, not in the
+            # current row's video cell after a new script replaces that version.
+            if revision > 1:
+                expected[names['video']] = []
+                expected[names['video_digest']] = ''
         else:
             if not artifact: raise RuntimeFault('FEISHU_NATIVE_VIDEO_MISSING')
             expected[names['video_digest']] = artifact['sha256']
@@ -231,7 +236,7 @@ class NativeSync:
         def matches():
             for name, value in expected.items():
                 actual = remote.get(name)
-                if value == '' and actual in (None, '', []): continue
+                if value in ('', []) and actual in (None, '', []): continue
                 if isinstance(value, list):
                     if not isinstance(actual, list) or [x.get('file_token') for x in actual] != [x['file_token'] for x in value]: return False
                 else:
@@ -249,6 +254,13 @@ class NativeSync:
         if status: status = select_text(status)
         allowed = ('', '脚本退回') if row['state']=='awaiting_script_review' and revision>1 else (
             ('',) if row['state']=='awaiting_script_review' else ('脚本通过',))
+        if row['state'] == 'awaiting_script_review' and revision > 1:
+            from .script_jobs import key as script_key
+            with self.store.connect() as db:
+                job = meta(db, script_key(project, task, revision))
+            native_source = job['plan'].get('native_source') if job else None
+            if native_source and native_source.get('review_status'):
+                allowed = (native_source['review_status'],)
         if status not in allowed:
             raise RuntimeFault('FEISHU_NATIVE_REMOTE_REVIEW_CONFLICT')
         with self.store.connect() as db:

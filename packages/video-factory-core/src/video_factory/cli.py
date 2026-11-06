@@ -40,6 +40,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="vfctl")
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
+    from .local_runtime import register as register_local, cli as local_cli
+    register_local(commands)
+    from .local_setup import register as register_business_setup, cli as business_setup_cli
+    register_business_setup(commands)
+    from .local_run import register as register_run_entry, cli as run_entry_cli
+    register_run_entry(commands)
+    from .local_native_cli import register as register_local_native, cli as local_native_cli
+    register_local_native(commands)
+    from .local_sandbox import register as register_sandbox, cli as sandbox_cli
+    register_sandbox(commands)
     from .workspace import register as register_workspace, cli as workspace_cli
     register_workspace(commands)
     from .runner import register as register_runner, cli as runner_cli
@@ -99,6 +109,16 @@ def main(argv=None):
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command in ('local-run', 'agent'):
+        return run_entry_cli(args)
+    if args.command == 'local-setup':
+        return business_setup_cli(args)
+    if args.command == 'local-feishu':
+        return local_native_cli(args)
+    if args.command == 'local':
+        return sandbox_cli(args)
+    if args.command in ('up', 'agent-key', 'agent-plan', 'agent-script-plan'):
+        return local_cli(args)
     if args.command == 'production-setup':
         return production_cli(args)
     if args.command == 'base-results':
