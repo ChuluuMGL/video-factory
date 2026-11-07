@@ -93,6 +93,14 @@ jobs:
           python .github/scripts/delivery-smoke.py ci-page/site ci-page/evidence
       - name: Compare typography with the live official AI page
         run: python .github/scripts/brand-parity-smoke.py ci-page/site ci-page/evidence
+      - name: Retain typography comparison and viewport screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: installation-page-evidence
+          path: ci-page/evidence/
+          retention-days: 14
+          if-no-files-found: warn
       - name: Record review scope
         if: always()
         run: |

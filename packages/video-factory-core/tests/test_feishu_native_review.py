@@ -37,7 +37,7 @@ class Client:
 
 class NativeReviewTests(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory(); self.store=RuntimeStore.install(Path(self.tmp.name),'fixture','fixture-admin-password')
+        self.tmp=tempfile.TemporaryDirectory(); self.store=RuntimeStore.install(Path(self.tmp.name).resolve(),'fixture','fixture-admin-password')
         self.admin=self.store.login('admin','fixture-admin-password')['token']
         self.store.put_project(self.admin,'brand',{'video_route':'deferred','credential_ref':'secret:fixture','billing_owner':'fixture'})
         self.store.create_task(self.admin,'brand','task_one',{'sku_id':'sku_one','script':'Generated script','source_revision':'source_one'})

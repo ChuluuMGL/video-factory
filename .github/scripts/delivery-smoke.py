@@ -126,10 +126,27 @@ try:
             response = context.request.get(poster)
             assert response.ok and response.headers['content-type'].startswith('image/')
             video.scroll_into_view_if_needed()
-            video.evaluate('(v) => { v.muted = true; v.load(); }')
-            page.wait_for_function('(src) => [...document.querySelectorAll("#cases video")].some(v => v.currentSrc === src && v.readyState >= 2 && v.videoWidth > 0)', arg=source, timeout=45000)
-            video.evaluate('(v) => v.play()')
-            page.wait_for_function('(src) => [...document.querySelectorAll("#cases video")].some(v => v.currentSrc === src && v.currentTime > 0.25 && !v.paused)', arg=source, timeout=20000)
+            # preload=none deliberately does not promise decoded frames after
+            # load(). Request playback first, as a user pressing Play would.
+            # Keep real decoding/progress mandatory and retain bounded diagnostics.
+            video.evaluate("""(v) => {
+                v.muted = true;
+                v.play().catch(error => { v.dataset.smokePlayError = error.name; });
+            }""")
+            try:
+                page.wait_for_function('''(src) => [...document.querySelectorAll("#cases video")].some(v =>
+                    v.currentSrc === src && (v.error || v.dataset.smokePlayError ||
+                    (v.readyState >= 2 && v.videoWidth > 0 && v.currentTime > 0.25 && !v.paused)))''',
+                    arg=source, timeout=45000)
+                assert video.evaluate('(v) => !v.error && !v.dataset.smokePlayError'), 'CASE_PLAYBACK_REJECTED'
+            except Exception:
+                failure = video.evaluate('''(v) => ({source:v.currentSrc, readyState:v.readyState,
+                    networkState:v.networkState, time:v.currentTime, paused:v.paused,
+                    mediaError:v.error ? {code:v.error.code,message:v.error.message} : null,
+                    playError:v.dataset.smokePlayError || null})''')
+                (evidence / 'case-playback-failure.json').write_text(json.dumps(failure, indent=2) + '\n')
+                print('CASE_PLAYBACK_FAILED', json.dumps(failure), flush=True)
+                raise
             info = video.evaluate('(v) => {v.pause(); return {source:v.currentSrc,duration:v.duration,width:v.videoWidth,height:v.videoHeight,currentTime:v.currentTime,error:v.error};}')
             assert info['duration'] > 1 and not info['error']
             media_checks.append(info)

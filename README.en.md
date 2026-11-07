@@ -1,5 +1,7 @@
 # Video Factory
 
+**Local business Setup candidate:** terminal questions or an Agent-prepared non-secret plan configure a separate project, SKU data, DeepSeek, MiniMax and an existing Feishu test table. Resume preserves existing credentials. See the [setup guide](docs/product/LOCAL_BUSINESS_SETUP.md). Not released; live end-to-end, autostart and independent installation acceptance remain separate.
+
 > Build video workflows on your own n8n with an Agent Skill.
 >
 > Feishu Base and n8n by default, with reusable infrastructure for multiple projects.
