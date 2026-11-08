@@ -54,6 +54,8 @@ class ScriptProvider:
         if os.environ.get('VF_WORKER_EGRESS')=='1':
             if os.environ.get('VF_CONTAINER_MODE')!='1':raise RuntimeFault('CONTAINER_MODE_REQUIRED')
             handlers.append(ScriptHandler())
+        if len(canonical(body['messages']).encode('utf-8'))>32768:
+            raise RuntimeFault('SCRIPT_INPUT_LIMIT')
         request=Request('https://'+HOST+'/chat/completions',data=canonical(body).encode(),
                         headers={'Authorization':'Bearer '+secret,'Content-Type':'application/json'},method='POST')
         try:
@@ -65,7 +67,16 @@ class ScriptProvider:
                 script=choices[0]['message']['content'];receipt=value['id']
                 if (not isinstance(script,str) or not script.strip() or len(script.encode('utf-16-le'))//2>6500
                         or not isinstance(receipt,str) or not 1<=len(receipt)<=256):raise ValueError
-                return {'script':script,'provider_id':receipt,'requested_model':MODEL}
+                usage=value.get('usage')
+                # Keep only bounded token counts, never upstream metadata. Missing
+                # or malformed usage is unknown cost, not a zero-cost receipt.
+                if (not isinstance(usage,dict) or any(type(usage.get(k)) is not int or usage[k]<0
+                        for k in ('prompt_tokens','completion_tokens','total_tokens'))
+                        or usage['prompt_tokens']+usage['completion_tokens']!=usage['total_tokens']):
+                    usage=None
+                else:
+                    usage={k:usage[k] for k in ('prompt_tokens','completion_tokens','total_tokens')}
+                return {'script':script,'provider_id':receipt,'requested_model':MODEL,'usage':usage}
         except HTTPError as error:
             # Never retain upstream bodies, URLs or headers: they may contain
             # credentials or customer content. Classification does not retry.

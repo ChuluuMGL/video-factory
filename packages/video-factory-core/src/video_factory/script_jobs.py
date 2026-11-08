@@ -270,6 +270,8 @@ class ScriptJobs:
             check=db.execute('SELECT revision FROM vault WHERE alias=?',(settings['credential_ref'][7:],)).fetchone()
             if not check or check[0]!=settings['credential_revision']:raise RuntimeFault('SCRIPT_CREDENTIAL_CHANGED')
             if fingerprint(self.bridge._binding(db,project))!=plan['binding_sha256'] or job['expires_at']<time.time():raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+            from .script_trial import reserve
+            reserve(db,plan,self.bridge._binding(db,project),job['plan_sha256'])
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
@@ -288,6 +290,8 @@ class ScriptJobs:
             return {'state':'script_submission_unknown','error':code,'automatic_resubmit':False}
         with self.store.connect() as db:
             # Persist provider receipt even if subsequent draft attachment fails.
+            from .script_trial import settle
+            settle(db,project,job['plan_sha256'],result)
             job['provider_id']=result['provider_id'];job['result']=result;job['state']='received'
             save(db,key(project,task,revision),job)
         with self.store.connect() as db:

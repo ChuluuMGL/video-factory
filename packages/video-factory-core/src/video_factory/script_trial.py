@@ -1,0 +1,106 @@
+"""Optional, durable copy-only trial limits inside the existing script authority.
+
+This module grants no execution authority. ScriptJobs calls reserve only after its
+normal identity, paid approval, revision and binding fences, in the same atomic
+transaction as its irrevocable submission intent. Uncertain calls stay reserved.
+Amounts are integer micro-CNY; usage accounting is a conservative upper bound,
+not a claim that the provider invoice has been reconciled.
+"""
+import time
+from .runtime_store import RuntimeFault, fingerprint
+from .feishu_bridge import meta, save
+
+PREFIX = 'script:trial:'
+RESERVE = 200000
+CAP = 30000000
+LIMIT = 30
+DURATION = 86400
+
+
+def configure(store, token, project, *, production_base, copy_base, copy_table):
+    if (not all(isinstance(x,str) and x for x in (production_base,copy_base,copy_table))
+            or production_base == copy_base):
+        raise RuntimeFault('TRIAL_COPY_TARGET_REQUIRED')
+    value = {'production_base': production_base, 'copy_base': copy_base,
+             'copy_table': copy_table, 'enabled': False, 't0': None, 't1': None,
+             'notice_sha256': None, 'requests': {}}
+    with store.connect() as db:
+        actor = store.authorize(db,token,'admin')
+        if meta(db,PREFIX+project) is not None:
+            raise RuntimeFault('TRIAL_ALREADY_CONFIGURED')
+        # Binding must already have been installed through the regular flow.
+        from .feishu_bridge import FeishuBridge
+        binding = FeishuBridge(store)._binding(db,project)
+        if (binding['base_token'],binding['table_id']) != (copy_base,copy_table):
+            raise RuntimeFault('TRIAL_TARGET_MISMATCH')
+        save(db,PREFIX+project,value)
+        store.audit(db,actor,'script_trial_configured',project)
+    return {'enabled': False, 'provider_requests': 0}
+
+
+def activate(store,token,project,*,t0,notice_sha256):
+    import re
+    if (type(t0) not in (int,float) or not time.time() <= t0 <= time.time()+300
+            or not isinstance(notice_sha256,str) or not re.fullmatch('[0-9a-f]{64}',notice_sha256)):
+        raise RuntimeFault('TRIAL_START_NOTICE_REQUIRED')
+    with store.connect() as db:
+        actor=store.authorize(db,token,'admin')
+        trial=meta(db,PREFIX+project)
+        if not trial or trial['t0'] is not None:raise RuntimeFault('TRIAL_WINDOW_IMMUTABLE')
+        trial.update(enabled=True,t0=t0,t1=t0+DURATION,notice_sha256=notice_sha256)
+        save(db,PREFIX+project,trial);store.audit(db,actor,'script_trial_started',project)
+    return {'t0':t0,'t1':t0+DURATION,'max_requests':LIMIT,'budget_cny':30}
+
+
+def pause(store,token,project):
+    with store.connect() as db:
+        actor=store.authorize(db,token,'admin');trial=meta(db,PREFIX+project)
+        if not trial:raise RuntimeFault('TRIAL_NOT_CONFIGURED')
+        trial['enabled']=False;save(db,PREFIX+project,trial)
+        store.audit(db,actor,'script_trial_paused',project)
+    return {'enabled':False}
+
+
+def reserve(db,plan,binding,request_id):
+    trial=meta(db,PREFIX+plan['project'])
+    if trial is None:return
+    now=time.time()
+    if (not trial['enabled'] or trial['t0'] is None or not trial['t0'] <= now < trial['t1']):
+        raise RuntimeFault('TRIAL_WINDOW_CLOSED')
+    if (binding['base_token']==trial['production_base'] or
+            (binding['base_token'],binding['table_id'])!=(trial['copy_base'],trial['copy_table'])):
+        raise RuntimeFault('TRIAL_TARGET_MISMATCH')
+    # Do not allow a new task name or a rotated credential to reset consumption.
+    source=plan.get('native_source') or {}
+    digest=fingerprint([plan['sku'],plan['brief'],plan['feedback'],source.get('source_revision')])
+    rows=trial['requests']
+    if request_id in rows or any(r['input_digest']==digest for r in rows.values()):
+        raise RuntimeFault('TRIAL_DUPLICATE_INPUT')
+    if any(r['state']!='usage_accounted' for r in rows.values()):
+        raise RuntimeFault('TRIAL_PENDING_OR_UNKNOWN')
+    if len(rows)>=LIMIT:raise RuntimeFault('TRIAL_REQUEST_LIMIT')
+    exposure=sum(r.get('cost_upper_micro',RESERVE) for r in rows.values())
+    if exposure+RESERVE>CAP:raise RuntimeFault('TRIAL_BUDGET_LIMIT')
+    rows[request_id]={'state':'reserved','input_digest':digest,'submitted_at':now,
+                      'task':plan['task'],'revision':plan['revision'],'cost_upper_micro':RESERVE}
+    save(db,PREFIX+plan['project'],trial)
+
+
+def settle(db,project,request_id,result):
+    trial=meta(db,PREFIX+project)
+    if trial is None:return
+    row=trial['requests'].get(request_id)
+    if not row or row['state']!='reserved':raise RuntimeFault('TRIAL_RECEIPT_CONFLICT')
+    row['provider_id']=result['provider_id']
+    usage=result.get('usage')
+    valid=(isinstance(usage,dict) and all(type(usage.get(k)) is int and usage[k]>=0
+           for k in ('prompt_tokens','completion_tokens','total_tokens'))
+           and usage['prompt_tokens']+usage['completion_tokens']==usage['total_tokens']
+           and 0 < usage['prompt_tokens']<=32768 and 0 < usage['completion_tokens']<=2048)
+    if valid:
+        row.update(state='usage_accounted',usage=usage,
+                   cost_upper_micro=usage['prompt_tokens']*2+usage['completion_tokens']*8)
+    else:
+        row['state']='usage_unknown'
+        trial['enabled']=False
+    save(db,PREFIX+project,trial)

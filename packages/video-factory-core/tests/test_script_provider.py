@@ -66,3 +66,18 @@ class ScriptProviderTests(unittest.TestCase):
                     ScriptProvider().generate({},'brief','','synthetic-key')
                 self.assertEqual(str(raised.exception),code)
                 self.assertEqual(opener.return_value.open.call_count,1)
+
+    def test_bounded_usage_receipt_and_unknown_usage(self):
+        base={'id':'receipt','choices':[{'finish_reason':'stop','message':{'content':'A script'}}]}
+        for usage in (None,{}, {'prompt_tokens': True,'completion_tokens':2,'total_tokens':3},
+                      {'prompt_tokens':1,'completion_tokens':2,'total_tokens':4}):
+            self.assertIsNone(self.call({**base,'usage':usage})['usage'])
+        usage={'prompt_tokens':100,'completion_tokens':20,'total_tokens':120,'private':'discard'}
+        self.assertEqual(self.call({**base,'usage':usage})['usage'],
+                         {'prompt_tokens':100,'completion_tokens':20,'total_tokens':120})
+
+    def test_input_limit_before_network_and_without_truncation(self):
+        with patch('video_factory.script_provider.build_opener') as opener:
+            with self.assertRaisesRegex(RuntimeFault,'SCRIPT_INPUT_LIMIT'):
+                ScriptProvider().generate({'facts':'界'*12000},'brief','','synthetic-key')
+            opener.assert_not_called()
