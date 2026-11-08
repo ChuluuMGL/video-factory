@@ -52,10 +52,13 @@ class TrialTests(ScriptTests):
 
     def test_expiry_and_target_guard_prevent_post(self):
         self.arm();self.queue()
-        with patch('video_factory.script_trial.time.time',return_value=time.time()+86401):
-            with self.assertRaisesRegex(RuntimeFault,'TRIAL_WINDOW_CLOSED'):self.step()
+        original=self.snapshot()
         with self.f.store.connect() as db:
-            state=meta(db,trial.PREFIX+self.f.project);state['copy_table']='tblOther';save(db,trial.PREFIX+self.f.project,state)
+            expired=copy.deepcopy(original);expired.update(t0=time.time()-86401,t1=time.time()-1)
+            save(db,trial.PREFIX+self.f.project,expired)
+        with self.assertRaisesRegex(RuntimeFault,'TRIAL_WINDOW_CLOSED'):self.step()
+        with self.f.store.connect() as db:
+            original['copy_table']='tblOther';save(db,trial.PREFIX+self.f.project,original)
         with self.assertRaisesRegex(RuntimeFault,'TRIAL_TARGET_MISMATCH'):self.step()
         self.assertEqual(self.provider.calls,0)
 
