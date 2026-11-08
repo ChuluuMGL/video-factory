@@ -1,0 +1,73 @@
+{
+  "schema": "vf-public-release-manifest-v1",
+  "version": "v0.2.0-beta",
+  "prerelease": true,
+  "publish_repository": "ChuluuMGL/video-factory",
+  "agent_repository_visibility": "private",
+  "source": {
+    "core_revision": "78fd58c57462a302d9f2213a4c6684ab78e5b7ff",
+    "agent_revision": "3abae6d39c4ae17ebd24da82e633fe87239142a2"
+  },
+  "harness_revision": "42d4326480a8dc88fbfaa54863e9f265cf91da6f",
+  "runtime_source_bytes_unchanged": true,
+  "distribution_profile": "business-only",
+  "assets": [
+    {
+      "name": "video-factory-v0.2.0-beta-linux-x86_64.zip",
+      "bytes": 20671264,
+      "sha256": "0bfe0b9d51debd43c82e609d9adc6533885556aeddf74b3a6c3e27dc00516b15"
+    },
+    {
+      "name": "video-factory-employee-client-v0.2.0-beta.zip",
+      "bytes": 8509,
+      "sha256": "eab8386d687fa40687166bcd9855249bcdbdf3f9f79299c04253ce99d8aaa8cb"
+    },
+    {
+      "name": "video-factory-v0.2.0-beta-macos-arm64.zip",
+      "bytes": 21750887,
+      "sha256": "045b1532b6538c5dcba690dd6e5911a061c3b03b6dae2511b6250894ca9372e8"
+    },
+    {
+      "name": "INSTALL.md",
+      "bytes": 6019,
+      "sha256": "35241a003e8c1af0f413642f904f5f0b910b7f7df5ca2d514fdea4c7333b96c1"
+    },
+    {
+      "name": "SKILL.md",
+      "bytes": 2252,
+      "sha256": "b3d8ed455e08202b4145d08711a6ca992a95f2ef1cee76383e5abc7cd4ae602b"
+    },
+    {
+      "name": "PRIVACY_REVIEW.md",
+      "bytes": 3401,
+      "sha256": "d115c45bab252dcd590d3c4cb6e716969843fc24b57310674b79939b26a2f7a8"
+    }
+  ],
+  "verification": [
+    {
+      "target": "linux-x86_64",
+      "archive_entries_including_wheels": 11763,
+      "nested_wheels": 20,
+      "native_tests_passed": 53,
+      "third_party_wheels_with_pypi_hash_match": 19,
+      "unresolved_sensitive_findings": 0,
+      "public_dependency_vector_findings": 63,
+      "verified_manifest_hash_findings": 1
+    },
+    {
+      "target": "macos-arm64",
+      "archive_entries_including_wheels": 11757,
+      "nested_wheels": 20,
+      "native_tests_passed": 53,
+      "third_party_wheels_with_pypi_hash_match": 19,
+      "unresolved_sensitive_findings": 0,
+      "public_dependency_vector_findings": 63,
+      "verified_manifest_hash_findings": 1
+    }
+  ],
+  "model_calls": 0,
+  "production_writes": 0,
+  "public_download_install": "not_run_requires_publication",
+  "approval_state": "pending",
+  "published": false
+}
