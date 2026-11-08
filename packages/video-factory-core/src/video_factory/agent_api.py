@@ -10,10 +10,11 @@ from .agent_script_plans import ScriptPlans
 
 
 class AgentAPI:
-    def __init__(self, store, project, scheduler, *, plans_enabled=False, script_plans=None):
+    def __init__(self, store, project, scheduler, *, plans_enabled=False, script_plans=None, employee_access=None):
         self.store, self.project, self.scheduler = store, identifier(project), scheduler
         self.plans_enabled = plans_enabled
         self.script_plans = script_plans
+        self.employee_access = employee_access
 
     def call(self, route, token, body):
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
@@ -173,6 +174,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise RuntimeFault('AGENT_REQUEST_INVALID')
             body = read_json(io.StringIO(raw.decode()))
             headers = self.headers.get_all('Authorization', [])
+            if self.path.startswith('/v1/employee/') and self.server.api.employee_access:
+                if headers and (len(headers) != 1 or not headers[0].startswith('Bearer ')):
+                    raise RuntimeFault('AUTH_EMPLOYEE_REQUIRED')
+                result = self.server.api.employee_access.call(self.path[len('/v1/employee/'):], headers[0][7:] if headers else None, body, self.server.api)
+                self.reply(200, result)
+                return
             if len(headers) != 1 or not headers[0].startswith('Bearer '):
                 raise RuntimeFault('AUTH_AGENT_REQUIRED')
             result = self.server.api.call(self.path, headers[0][7:], body)

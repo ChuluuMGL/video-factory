@@ -79,7 +79,7 @@ def configured_script_plans(store, project, enabled, token_file, open_id):
 
 def serve(store, project, port, stop, *, execution_token=None, master_key=None,
           media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None,
-          dispatch=None, native_files=None, on_locked=lambda: None):
+          dispatch=None, native_files=None, on_locked=lambda: None, employee_access=None):
     if type(port) is not int or not 0 <= port <= 65535:
         raise RuntimeFault('PORT_INVALID')
     with runtime_lock(store.root):
@@ -94,7 +94,7 @@ def serve(store, project, port, stop, *, execution_token=None, master_key=None,
         scheduler = Scheduler(store, project, execution_token=execution_token, master_key=master_key,
                               media_root=media_root, interval=interval, **({'dispatch': dispatch} if dispatch else {}))
         with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler,
-                         plans_enabled=plans_enabled, script_plans=script_plans)) as server, \
+                         plans_enabled=plans_enabled, script_plans=script_plans, employee_access=employee_access)) as server, \
                 (native_receiver(store, project, native_files, scheduler) if native_files else nullcontext()):
             thread = threading.Thread(target=scheduler.run, args=(stop,), name='vf-local-scheduler')
             thread.start()
