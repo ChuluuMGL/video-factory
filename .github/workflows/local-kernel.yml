@@ -40,6 +40,10 @@ jobs:
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_setup.py' -v
       - name: Exercise bounded owner startup and scoped external Agent client
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_run.py' -v
+      - name: Exercise employee identity, business repair plans and scoped workflow observations
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_employee_access.py' -v
+      - name: Exercise business ledger source repair, real Python replay and authority fences
+        run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_business_repair.py' -v
       - name: Exercise local process, ledger and fake provider contracts
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_kernel.py' -v
       - name: Exercise Agent plans, local owner approval and execution receipts
