@@ -49,4 +49,5 @@ class PreparedScriptProvider(ScriptProvider):
             raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
         return {'script':fields['video_script'],'structured_fields':fields,
                 'provider_id':result['provider_id'],'usage':result['usage'],
-                'requested_model':MODEL,'prepared_input_sha256':sample['messages_sha256']}
+                'requested_model':MODEL,'prepared_input_sha256':sample['messages_sha256'],
+                'prepared_source_revision':sample.get('source_revision')}
