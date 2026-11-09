@@ -69,7 +69,7 @@ class PreparedScriptProviderTests(unittest.TestCase):
         def decode(s,c):raise ValueError('private data')
         with patch('video_factory.script_provider.build_opener') as opener:
             opener.return_value.open.return_value=self.response()
-            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_VALIDATION_FAILED$'):
+            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_DECODER_FAILED$'):
                 self.provider(decode).generate(self.sku,self.ref,'','synthetic-key')
 
     def test_decoder_receives_genuine_receipt_without_authentication_secret(self):

@@ -17,6 +17,54 @@ LIMIT = 30
 DURATION = 86400
 
 
+def validation_policy(trial):
+    policy=(trial or {}).get('validation_failure_policy')
+    return (isinstance(policy,dict) and policy.get('continue_samples') is True
+            and policy.get('consecutive_limit') == 3
+            and isinstance(policy.get('notice_sha256'),str) and len(policy['notice_sha256'])==64)
+
+
+def consecutive_validation_failures(trial):
+    count=0
+    for digest,row in sorted(trial['requests'].items(),key=lambda item:item[1]['submitted_at']):
+        if digest in trial.get('quarantined_requests',{}):continue
+        if row.get('outcome')=='validation_failed':count+=1
+        elif row['state']=='usage_accounted':count=0
+        # A queued/inflight request does not erase preceding failures.
+    return count
+
+
+def settle_validation_failure(store,db,project,task,revision):
+    """Settle a known response once, retain diagnostics, never resend or approve."""
+    from .script_jobs import key
+    trial=meta(db,PREFIX+project)
+    if not validation_policy(trial):return False
+    job=meta(db,key(project,task,revision));row=store._current(db,project,task,revision)
+    if job.get('state')=='validation_failed' and row['state']=='failed':return True
+    if (job.get('submission_error')!='SCRIPT_VALIDATION_FAILED' or job['state']!='submission_unknown'
+            or row['state']!='script_submission_unknown'):return False
+    history=meta(db,'script:receipt:'+job['plan_sha256']) or []
+    responses=[r for r in history if r.get('reason')=='RESPONSE_RECEIVED']
+    if (len(responses)!=1 or not any(r.get('reason')=='STRUCTURE_INVALID' for r in history)):
+        raise RuntimeFault('TRIAL_VALIDATION_RECEIPT_MISSING')
+    response=responses[0]
+    if (response.get('http_status')!=200 or response.get('truncated') is not False
+            or response.get('finish_reason')!='stop' or not response.get('provider_id_sha256')):
+        raise RuntimeFault('TRIAL_VALIDATION_RECEIPT_INVALID')
+    request=trial['requests'].get(job['plan_sha256'])
+    if not request or (request['task'],request['revision'])!=(task,revision):
+        raise RuntimeFault('TRIAL_RECEIPT_CONFLICT')
+    settle(db,project,job['plan_sha256'],{'provider_id':'sha256:'+response['provider_id_sha256'],'usage':response.get('usage')})
+    trial=meta(db,PREFIX+project);request=trial['requests'][job['plan_sha256']]
+    if request['state']!='usage_accounted':return False
+    request['outcome']='validation_failed';save(db,PREFIX+project,trial)
+    job['state']='validation_failed';job['failure_receipt_sha256']=fingerprint(history)
+    save(db,key(project,task,revision),job)
+    db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=?",(project,task,revision))
+    store.audit(db,'trial-worker','script_validation_failed_settled',project,task,revision)
+    return True
+
+
 def configure(store, token, project, *, production_base, copy_base, copy_table):
     if (not all(isinstance(x,str) and x for x in (production_base,copy_base,copy_table))
             or production_base == copy_base):
@@ -111,6 +159,8 @@ def reserve(db,plan,binding,request_id):
     source=plan.get('native_source') or {}
     digest=fingerprint([plan['sku'],plan['brief'],plan['feedback'],source.get('source_revision')])
     rows=trial['requests']
+    if validation_policy(trial) and consecutive_validation_failures(trial)>=3:
+        raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
     if request_id in rows or any(r['input_digest']==digest for r in rows.values()):
         raise RuntimeFault('TRIAL_DUPLICATE_INPUT')
     if any(r['state']!='usage_accounted' and rid not in trial.get('quarantined_requests',{}) for rid,r in rows.items()):

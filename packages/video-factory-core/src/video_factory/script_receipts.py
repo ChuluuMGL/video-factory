@@ -1,9 +1,12 @@
-"""Sanitized, durable provider observations. Never persist headers or body text."""
+"""Durable observations; optional private, redacted validation diagnostics."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
+import re
+import json
 
 _sink = ContextVar('script_receipt_sink', default=None)
+_details = ContextVar('script_failure_details', default=False)
 REASONS = {'NETWORK_ERROR','HTTP_ERROR','BODY_LIMIT','INVALID_JSON','INVALID_ENVELOPE',
            'MODEL_LENGTH','CONTENT_INVALID','STRUCTURE_INVALID','VALIDATED','RESPONSE_RECEIVED'}
 
@@ -16,10 +19,51 @@ def usage_counts(value):
 
 
 @contextmanager
-def capture(sink):
+def capture(sink, *, failure_details=False):
     token=_sink.set(sink)
+    detail_token=_details.set(failure_details)
     try:yield
-    finally:_sink.reset(token)
+    finally:
+        _sink.reset(token)
+        _details.reset(detail_token)
+
+
+class ValidationFailure(ValueError):
+    """Trusted decoder diagnostics, not a change to validation acceptance."""
+    def __init__(self, field, code, reason):
+        self.field,self.code,self.reason=field,code,reason
+        super().__init__('STRUCTURE_INVALID')
+
+
+def redact(value, secrets=()):
+    text=value if isinstance(value,str) else str(value)
+    for secret in secrets:
+        if secret:text=text.replace(secret,'[REDACTED]')
+    text=re.sub(r'-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----','[REDACTED_KEY]',text)
+    text=re.sub(r'(?i)\b(?:Bearer\s+\S+|(?:sk|sk-proj)[-_][A-Za-z0-9_-]{8,})','[REDACTED_TOKEN]',text)
+    text=re.sub(r'https?://[^\s"<>]+','[REDACTED_URL]',text)
+    text=re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b','[REDACTED_EMAIL]',text)
+    text=re.sub(r'(?<!\w)(?:\d{1,3}\.){3}\d{1,3}(?!\w)','[REDACTED_IP]',text)
+    text=re.sub(r'(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)','[REDACTED_PHONE]',text)
+    text=re.sub(r'(?i)(["\']?(?:api[_-]?key|app[_-]?secret|password|access[_-]?token|refresh[_-]?token)["\']?\s*[:=]\s*)["\']?[^\s,}\n]+',r'\1[REDACTED]',text)
+    return text
+
+
+def observe_validation(error, content, *, secrets=()):
+    receipt=observe(reason='STRUCTURE_INVALID')
+    if not _details.get():return
+    if isinstance(error,ValidationFailure):
+        field,code,reason=error.field,error.code,error.reason
+    else:
+        field,code,reason='$','DECODER_VALIDATION_ERROR','Detailed decoder cause unavailable'
+    receipt={**receipt,'schema':2,'validation':{
+        'field':redact(field,secrets)[:256], 'code':redact(code,secrets)[:128],
+        'reason':redact(reason,secrets)[:4096]},
+        'model_content_redacted':redact(content,secrets)[:131072],
+        'content_capture_truncated':len(content)>131072,
+        'content_sha256':hashlib.sha256(content.encode()).hexdigest()}
+    sink=_sink.get()
+    if sink is not None:sink(receipt)
 
 
 def observe(*,reason,status=None,elapsed_ms=None,raw=None,value=None,truncated=False):

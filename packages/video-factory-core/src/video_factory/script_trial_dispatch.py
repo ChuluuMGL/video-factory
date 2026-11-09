@@ -8,7 +8,7 @@ normal freshly authenticated prepare/submit path. Reservation fences still own
 count, budget, deduplication and approval enforcement.
 """
 from .runtime_store import RuntimeFault
-from .script_trial import CAP, LIMIT, RESERVE
+from .script_trial import CAP, LIMIT, RESERVE, validation_policy, consecutive_validation_failures
 
 COMPLETION_WAIT_SECONDS = 600
 
@@ -24,6 +24,9 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
     if len(tasks) != len(rows) or not set(tasks) <= set(planned_tasks):
         raise RuntimeFault('TRIAL_DISPATCH_TASK_CONFLICT')
     requests = trial['requests']
+    tolerate_validation = validation_policy(trial)
+    if tolerate_validation and consecutive_validation_failures(trial)>=3:
+        raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
     excluded = trial.get('quarantined_requests', {})
     for digest, q in excluded.items():
         request = requests.get(digest)
@@ -40,6 +43,13 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
             q = excluded[digest]
             if (q['task'], q['revision']) != (task, row['revision']):
                 raise RuntimeFault('TRIAL_DISPATCH_QUARANTINE_CONFLICT')
+            continue
+        if (tolerate_validation and row['state']=='failed' and job['state']=='validation_failed'
+                and job.get('submission_error')=='SCRIPT_VALIDATION_FAILED'):
+            request=requests.get(digest)
+            if (not request or request.get('outcome')!='validation_failed'
+                    or request['state']!='usage_accounted' or not job.get('failure_receipt_sha256')):
+                raise RuntimeFault('TRIAL_DISPATCH_USAGE_REQUIRES_INSPECTION')
             continue
         if job.get('submission_error') or row['state'] in ('failed', 'rejected'):
             raise RuntimeFault('TRIAL_DISPATCH_TERMINAL_FAILURE')

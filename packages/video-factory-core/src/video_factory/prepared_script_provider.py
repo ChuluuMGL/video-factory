@@ -6,9 +6,10 @@ No filesystem paths or model-selected endpoint is accepted from a task brief.
 """
 import copy
 import hashlib
+import json
 from .runtime_store import RuntimeFault, canonical, fingerprint
 from .script_provider import ScriptProvider, MODEL
-from .script_receipts import observe
+from .script_receipts import observe, observe_validation, ValidationFailure
 
 
 class PreparedScriptProvider(ScriptProvider):
@@ -44,19 +45,29 @@ class PreparedScriptProvider(ScriptProvider):
             if isinstance(fields,dict) and fields.get('decision')=='needs_evidence':
                 facts=fields.get('missing_facts')
                 if (set(fields)!={'decision','missing_facts'} or not isinstance(facts,list)
-                        or not 1<=len(facts)<=20 or len(canonical(facts).encode())>6000):raise ValueError
+                        or not 1<=len(facts)<=20 or len(canonical(facts).encode())>6000):
+                    raise ValidationFailure('missing_facts','INVALID_EVIDENCE_DETAILS','Expected 1-20 bounded evidence items and only decision/missing_facts fields')
                 observe(reason='VALIDATED')
                 return {'decision':'needs_evidence','missing_facts':facts,
                         'provider_id':result['provider_id'],'usage':result['usage'],'requested_model':MODEL,
                         'prepared_input_sha256':sample['messages_sha256'],
                         'prepared_source_revision':sample.get('source_revision')}
             required={'video_script','caption_voiceover_script','generation_prompt'}
-            if not isinstance(fields,dict) or set(fields)!=required:raise ValueError
-            for value in fields.values():
+            if not isinstance(fields,dict) or set(fields)!=required:
+                raise ValidationFailure('$','OUTPUT_FIELDS_MISMATCH','Required video_script, caption_voiceover_script, generation_prompt only')
+            for name,value in fields.items():
                 if (not isinstance(value,str) or not value.strip()
-                        or len(value.encode('utf-16-le'))//2>6500):raise ValueError
-        except Exception:
-            observe(reason='STRUCTURE_INVALID')
+                        or len(value.encode('utf-16-le'))//2>6500):
+                    raise ValidationFailure(name,'OUTPUT_TEXT_INVALID','Expected nonempty text of at most 6500 UTF-16 units')
+        except RuntimeFault:
+            # Decoder infrastructure failures are not sample failures.
+            raise
+        except Exception as error:
+            if isinstance(error,json.JSONDecodeError):
+                error=ValidationFailure('$','INVALID_MODEL_JSON','Model content is not valid JSON')
+            elif not isinstance(error,ValidationFailure):
+                raise RuntimeFault('SCRIPT_DECODER_FAILED') from None
+            observe_validation(error,result['content'],secrets=(secret,))
             raise RuntimeFault('SCRIPT_VALIDATION_FAILED') from None
         observe(reason='VALIDATED')
         return {'script':fields['video_script'],'structured_fields':fields,

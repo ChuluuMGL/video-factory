@@ -284,19 +284,25 @@ class ScriptJobs:
                 history.append(receipt);save(db,receipt_key,history)
                 self.store.audit(db,'script-worker','script_response_observed',project,task,revision)
         try:
-            with capture(persist_receipt):
+            from .script_trial import validation_policy, PREFIX
+            with self.store.connect() as db:details=validation_policy(meta(db,PREFIX+project))
+            with capture(persist_receipt,failure_details=details):
                 result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
         except Exception as error:
             allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
                      'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY',
                      'SCRIPT_NETWORK_FAILED','SCRIPT_MODEL_TRUNCATED','SCRIPT_FORMAT_INVALID',
-                     'SCRIPT_VALIDATION_FAILED','SCRIPT_RESPONSE_LIMIT'}
+                     'SCRIPT_VALIDATION_FAILED','SCRIPT_RESPONSE_LIMIT','SCRIPT_DECODER_FAILED'}
             code=str(error) if isinstance(error,RuntimeFault) and str(error) in allowed else 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'
             with self.store.connect() as db:
                 current=meta(db,key(project,task,revision))
                 if current!=job:raise RuntimeFault('SCRIPT_INTENT_CHANGED')
                 current['submission_error']=code
                 save(db,key(project,task,revision),current)
+                if code=='SCRIPT_VALIDATION_FAILED':
+                    from .script_trial import settle_validation_failure
+                    if settle_validation_failure(self.store,db,project,task,revision):
+                        return {'state':'failed','error':code,'automatic_resubmit':False,'usage_settled':True}
             # Preserve the original intent and existing no-resubmit boundary.
             # An HTTP diagnosis alone never authorizes a new paid request.
             return {'state':'script_submission_unknown','error':code,'automatic_resubmit':False}

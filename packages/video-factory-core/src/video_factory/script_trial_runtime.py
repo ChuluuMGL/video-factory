@@ -6,7 +6,7 @@ from .runtime_store import RuntimeFault, fingerprint, identifier
 from .feishu_bridge import FeishuBridge, meta, save, plain_text, select_text
 from .feishu_native_review import EVENT_TYPE, _changed
 from .feishu_client import resource
-from .script_trial import PREFIX
+from .script_trial import PREFIX, validation_policy, consecutive_validation_failures
 from .script_jobs import key as job_key
 from .script_trial_writeback import TrialDraftWriter
 
@@ -223,6 +223,11 @@ class TrialRunner:
             rows = db.execute('SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.revision=(SELECT max(n.revision) FROM tasks n WHERE n.project=t.project AND n.id=t.id) ORDER BY t.id', (self.project,)).fetchall()
             if len(rows)>100: raise RuntimeFault('TRIAL_TASK_LIMIT')
             trial=meta(db,PREFIX+self.project)
+            if validation_policy(trial) and consecutive_validation_failures(trial)>=3:
+                raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
+            validation_failed={(r['task'],r['revision']) for r in trial['requests'].values()
+                               if validation_policy(trial) and r.get('outcome')=='validation_failed'
+                               and r['state']=='usage_accounted'}
             quarantined={(q['task'],q['revision']) for q in trial.get('quarantined_requests',{}).values()}
             checkpoint=trial.get('checkpoint_task',sorted(self.records)[0])
             if checkpoint not in self.records:raise RuntimeFault('TRIAL_CHECKPOINT_NOT_REGISTERED')
@@ -242,6 +247,8 @@ class TrialRunner:
                     return {'state':'awaiting_review','task':row['id'],'provider_requests':0}
                 continue
             if row['state'] in ('failed','rejected'):
+                if row['state']=='failed' and (row['id'],row['revision']) in validation_failed:
+                    continue
                 return {'state':'attention_required','task':row['id'],'provider_requests':0}
         return {'state':'idle','provider_requests':0,'review':review}
 
