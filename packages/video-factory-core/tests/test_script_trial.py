@@ -44,6 +44,17 @@ class TrialTests(ScriptTests):
         self.assertEqual(next(iter(state['requests'].values()))['cost_upper_micro'],trial.RESERVE)
         self.assertEqual(next(iter(state['requests'].values()))['state'],'usage_unknown')
 
+    def test_needs_evidence_is_known_receipt_but_not_reviewable_script(self):
+        self.arm();self.queue()
+        with patch.object(self.provider,'generate',return_value={'decision':'needs_evidence',
+                'missing_facts':['Exact product size required.'],'provider_id':'receipt',
+                'usage':{'prompt_tokens':100,'completion_tokens':20,'total_tokens':120}}) as generate:
+            first=self.step();second=self.step();self.assertEqual(generate.call_count,1)
+        self.assertEqual(first['error'],'SCRIPT_EVIDENCE_REQUIRED');self.assertEqual(first['state'],'failed')
+        self.assertEqual(second['state'],'failed')
+        self.assertEqual(next(iter(self.snapshot()['requests'].values()))['state'],'usage_accounted')
+        with self.assertRaisesRegex(RuntimeFault,'REVIEW_STATE_CONFLICT'):self.review()
+
     def test_timeout_survives_new_worker_and_cannot_reset_trial(self):
         self.arm();self.queue();self.provider.fail=True;self.step()
         self.assertEqual(next(iter(self.snapshot()['requests'].values()))['state'],'reserved')

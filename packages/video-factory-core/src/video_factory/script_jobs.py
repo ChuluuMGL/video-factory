@@ -300,6 +300,11 @@ class ScriptJobs:
     def _attach(self,db,project,task,revision,job):
         row=self.store._current(db,project,task,revision)
         if row['state']!='script_submission_unknown':return {'state':row['state'],'provider_requests':0}
+        if job['result'].get('decision')=='needs_evidence':
+            db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=?",(project,task,revision))
+            self.store.audit(db,'script-worker','script_evidence_required',project,task,revision)
+            return {'state':'failed','error':'SCRIPT_EVIDENCE_REQUIRED','provider_id':job['provider_id'],
+                    'automatic_resubmit':False,'human_attention':'required'}
         source=job['plan'].get('native_source')
         payload={'sku_id':job['plan']['sku']['sku_id'],'script':job['result']['script'],
                  'source_revision':source['source_revision'] if source else job['plan_sha256']}

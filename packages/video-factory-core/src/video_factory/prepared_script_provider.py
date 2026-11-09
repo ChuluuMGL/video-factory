@@ -40,6 +40,14 @@ class PreparedScriptProvider(ScriptProvider):
         # It never retries and cannot label malformed output ready for review.
         try:
             fields=self.decoder(copy.deepcopy(sample),copy.deepcopy(result))
+            if isinstance(fields,dict) and fields.get('decision')=='needs_evidence':
+                facts=fields.get('missing_facts')
+                if (set(fields)!={'decision','missing_facts'} or not isinstance(facts,list)
+                        or not 1<=len(facts)<=20 or len(canonical(facts).encode())>6000):raise ValueError
+                return {'decision':'needs_evidence','missing_facts':facts,
+                        'provider_id':result['provider_id'],'usage':result['usage'],'requested_model':MODEL,
+                        'prepared_input_sha256':sample['messages_sha256'],
+                        'prepared_source_revision':sample.get('source_revision')}
             required={'video_script','caption_voiceover_script','generation_prompt'}
             if not isinstance(fields,dict) or set(fields)!=required:raise ValueError
             for value in fields.values():

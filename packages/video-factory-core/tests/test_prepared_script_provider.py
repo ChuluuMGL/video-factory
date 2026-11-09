@@ -89,3 +89,11 @@ class PreparedScriptProviderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'POLICY_DENIED'):
                 self.provider()._submit({'model':'other','max_tokens':4000},'synthetic-key')
             opener.assert_not_called()
+
+    def test_missing_facts_retains_receipt_without_pretending_a_draft(self):
+        fields={'decision':'needs_evidence','missing_facts':['Specify the approved product size.']}
+        with patch('video_factory.script_provider.build_opener') as opener:
+            opener.return_value.open.return_value=self.response(fields)
+            result=self.provider().generate(self.sku,self.ref,'','synthetic-key')
+        self.assertEqual(result['decision'],'needs_evidence');self.assertNotIn('script',result)
+        self.assertEqual(result['provider_id'],'synthetic-receipt');self.assertEqual(result['usage']['total_tokens'],120)
