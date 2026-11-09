@@ -89,7 +89,7 @@ class TrialCopyReview:
         if plain_text(remote.get(names['candidate_version'])) != version:
             raise RuntimeFault('TRIAL_PROJECTION_CHANGED')
         status = select_text(remote[names['status']]) if remote.get(names['status']) else ''
-        if status in ('', '未开始', '费用已批准', '生成中'):
+        if status in ('', '未开始', '费用已批准', '已计划', '生成中'):
             self.client.update_record(binding['base_token'], binding['table_id'], record,
                                       {names['status']:'脚本待审核'})
             saved = self.client.record(binding['base_token'], binding['table_id'], record)['fields']
@@ -218,7 +218,7 @@ class TrialRunner:
         # Review cannot authorize a model call. ScriptJobs checks each paid plan.
         review = self.review.process_one()
         with self.store.connect() as db:
-            rows = db.execute('SELECT id,revision,state FROM tasks WHERE project=? ORDER BY id,revision', (self.project,)).fetchall()
+            rows = db.execute('SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.revision=(SELECT max(n.revision) FROM tasks n WHERE n.project=t.project AND n.id=t.id) ORDER BY t.id', (self.project,)).fetchall()
             if len(rows)>100: raise RuntimeFault('TRIAL_TASK_LIMIT')
         for row in rows:
             if row['id'] not in self.records: raise RuntimeFault('TRIAL_TASK_NOT_REGISTERED')
@@ -235,3 +235,21 @@ class TrialRunner:
             if row['state'] in ('failed','rejected'):
                 return {'state':'attention_required','task':row['id'],'provider_requests':0}
         return {'state':'idle','provider_requests':0,'review':review}
+
+
+class RefreshingTrialClient:
+    """Refresh application credentials before a request, never replay a failed write."""
+    def __init__(self, factory, *, refresh_seconds=1200, clock=time.monotonic):
+        if not 1 <= refresh_seconds <= 1200: raise ValueError('refresh interval')
+        self.factory,self.interval,self.clock=factory,refresh_seconds,clock
+        self.client=None;self.deadline=0
+
+    def __getattr__(self, method):
+        if method not in ('record','fields','update_record','post','append'):
+            raise AttributeError(method)
+        def call(*args, **kwargs):
+            now=self.clock()
+            if self.client is None or now>=self.deadline:
+                self.client=self.factory();self.deadline=now+self.interval
+            return getattr(self.client,method)(*args,**kwargs)
+        return call

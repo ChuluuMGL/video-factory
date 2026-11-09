@@ -118,3 +118,19 @@ class TrialRuntimeTests(unittest.TestCase):
         with self.f.store.connect() as db:
             trial=meta(db,PREFIX+self.f.project);trial['copy_base']='bascnProduction';save(db,PREFIX+self.f.project,trial)
         with self.assertRaisesRegex(RuntimeFault,'CONFIGURATION_CHANGED'):self.review.publish('generated_one',1,'recFixture')
+
+    def test_old_rejected_revision_cannot_block_latest_ready_revision(self):
+        self.configure();self.start();self.queue()
+        with self.f.store.connect() as db:
+            db.execute("UPDATE tasks SET state='rejected' WHERE id='generated_one'")
+            db.execute("INSERT INTO tasks SELECT project,id,revision+1,input,input_digest,configuration_digest,'ready',provider_id,artifact FROM tasks WHERE id='generated_one'")
+        jobs=Mock();self.assertEqual(self.runner(jobs).tick()['state'],'idle');jobs.step.assert_not_called()
+
+    def test_application_token_renews_without_retrying_failed_writes(self):
+        from video_factory.script_trial_runtime import RefreshingTrialClient
+        clock=Mock(return_value=0);first=Mock();second=Mock();factory=Mock(side_effect=[first,second])
+        client=RefreshingTrialClient(factory,clock=clock)
+        client.record('b','t','r');client.record('b','t','r');self.assertEqual(factory.call_count,1)
+        clock.return_value=1200;second.update_record.side_effect=RuntimeFault('UNKNOWN_WRITE')
+        with self.assertRaisesRegex(RuntimeFault,'UNKNOWN_WRITE'):client.update_record('b','t','r',{})
+        self.assertEqual(factory.call_count,2);second.update_record.assert_called_once()
