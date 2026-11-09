@@ -19,7 +19,7 @@ class PreparedScriptProviderTests(unittest.TestCase):
         self.fields={'video_script':'draft','caption_voiceover_script':'voice','generation_prompt':'prompt'}
 
     def provider(self,decoder=None,sample=None):
-        return PreparedScriptProvider({self.ref:sample or self.sample},decoder or (lambda s,c:json.loads(c)))
+        return PreparedScriptProvider({self.ref:sample or self.sample},decoder or (lambda s,r:json.loads(r['content'])))
 
     def response(self,fields=None,reason='stop'):
         response=MagicMock();response.__enter__.return_value=response;response.status=200

@@ -39,7 +39,7 @@ class PreparedScriptProvider(ScriptProvider):
         # Validation failure preserves ScriptJobs' unknown intent and reservation.
         # It never retries and cannot label malformed output ready for review.
         try:
-            fields=self.decoder(copy.deepcopy(sample),result['content'])
+            fields=self.decoder(copy.deepcopy(sample),copy.deepcopy(result))
             required={'video_script','caption_voiceover_script','generation_prompt'}
             if not isinstance(fields,dict) or set(fields)!=required:raise ValueError
             for value in fields.values():
