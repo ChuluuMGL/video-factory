@@ -25,8 +25,6 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
         raise RuntimeFault('TRIAL_DISPATCH_TASK_CONFLICT')
     requests = trial['requests']
     tolerate_validation = validation_policy(trial)
-    if tolerate_validation and consecutive_validation_failures(trial)>=3:
-        raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
     excluded = trial.get('quarantined_requests', {})
     for digest, q in excluded.items():
         request = requests.get(digest)
@@ -81,6 +79,8 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
             if request['state'] != 'reserved' or tasks[task]['state'] != 'script_submission_unknown':
                 raise RuntimeFault('TRIAL_DISPATCH_USAGE_REQUIRES_INSPECTION')
             pending = True
+    if tolerate_validation and consecutive_validation_failures(trial)>=3:
+        raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
     if not checkpoint or checkpoint['state'] != 'ready':
         return {'state': 'waiting_first_real_review'}
     if waiting:
