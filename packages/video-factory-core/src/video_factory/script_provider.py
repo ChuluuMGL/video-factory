@@ -1,11 +1,14 @@
 """Fixed-origin DeepSeek script request, exactly one POST and no tools."""
 import json
 import os
-from http.client import HTTPSConnection
+import time
+from http.client import HTTPSConnection, HTTPException
 from urllib.request import Request,build_opener,ProxyHandler
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from .h3_provider import NoRedirect,TunnelHandler
 from .runtime_store import RuntimeFault,canonical
+
+from .script_receipts import observe, usage_counts
 
 HOST='api.deepseek.com'
 MODEL='deepseek-flash'
@@ -53,7 +56,9 @@ class ScriptProvider:
         result=self._submit(body,secret)
         script=result.pop('content')
         if not isinstance(script,str) or not script.strip() or len(script.encode('utf-16-le'))//2>6500:
-            raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY')
+            observe(reason='CONTENT_INVALID')
+            raise RuntimeFault('SCRIPT_FORMAT_INVALID')
+        observe(reason='VALIDATED')
         return {**result,'script':script}
 
     def _submit(self,body,secret):
@@ -71,30 +76,49 @@ class ScriptProvider:
             raise RuntimeFault('SCRIPT_INPUT_LIMIT')
         request=Request('https://'+HOST+'/chat/completions',data=canonical(body).encode(),
                         headers={'Authorization':'Bearer '+secret,'Content-Type':'application/json'},method='POST')
+        start=time.monotonic();status=None;raw=None
         try:
-            with build_opener(*handlers).open(request,timeout=120) as response:
-                raw=response.read(128*1024+1)
-                if response.status!=200 or len(raw)>128*1024:raise ValueError
-                value=json.loads(raw);choices=value['choices']
-                if len(choices)!=1 or choices[0]['finish_reason']!='stop':raise ValueError
-                script=choices[0]['message']['content'];receipt=value['id']
-                if (not isinstance(script,str) or not script.strip()
-                        or not isinstance(receipt,str) or not 1<=len(receipt)<=256):raise ValueError
-                usage=value.get('usage')
-                # Keep only bounded token counts, never upstream metadata. Missing
-                # or malformed usage is unknown cost, not a zero-cost receipt.
-                if (not isinstance(usage,dict) or any(type(usage.get(k)) is not int or usage[k]<0
-                        for k in ('prompt_tokens','completion_tokens','total_tokens'))
-                        or usage['prompt_tokens']+usage['completion_tokens']!=usage['total_tokens']):
-                    usage=None
-                else:
-                    usage={k:usage[k] for k in ('prompt_tokens','completion_tokens','total_tokens')}
-                return {'content':script,'provider_id':receipt,'requested_model':MODEL,'usage':usage}
-        except HTTPError as error:
-            # Never retain upstream bodies, URLs or headers: they may contain
-            # credentials or customer content. Classification does not retry.
-            code={400:'SCRIPT_REQUEST_REJECTED',401:'SCRIPT_AUTH_REJECTED',
-                  402:'SCRIPT_BALANCE_REJECTED',403:'SCRIPT_ACCESS_REJECTED',
-                  422:'SCRIPT_REQUEST_REJECTED',429:'SCRIPT_RATE_LIMITED'}.get(error.code)
-            raise RuntimeFault(code or 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
-        except Exception:raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
+            try:
+                with build_opener(*handlers).open(request,timeout=120) as response:
+                    status=response.status
+                    raw=response.read(128*1024+1)
+            except HTTPError as error:
+                status=error.code
+                # Body is hashed only; never persist customer/credential-bearing error text.
+                try:raw=error.read(128*1024+1)
+                except Exception:raw=None
+                observe(reason='HTTP_ERROR',status=status,elapsed_ms=(time.monotonic()-start)*1000,raw=raw)
+                code={400:'SCRIPT_REQUEST_REJECTED',401:'SCRIPT_AUTH_REJECTED',402:'SCRIPT_BALANCE_REJECTED',
+                      403:'SCRIPT_ACCESS_REJECTED',422:'SCRIPT_REQUEST_REJECTED',429:'SCRIPT_RATE_LIMITED'}.get(status)
+                raise RuntimeFault(code or 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
+            except (OSError,URLError,TimeoutError,HTTPException):
+                observe(reason='NETWORK_ERROR',status=status,elapsed_ms=(time.monotonic()-start)*1000)
+                raise RuntimeFault('SCRIPT_NETWORK_FAILED') from None
+            elapsed=(time.monotonic()-start)*1000
+            if len(raw)>128*1024:
+                observe(reason='BODY_LIMIT',status=status,elapsed_ms=elapsed,raw=raw,truncated=True)
+                raise RuntimeFault('SCRIPT_RESPONSE_LIMIT')
+            try:value=json.loads(raw)
+            except (ValueError,UnicodeError):
+                observe(reason='INVALID_JSON',status=status,elapsed_ms=elapsed,raw=raw)
+                raise RuntimeFault('SCRIPT_FORMAT_INVALID') from None
+            # Persist the response observation before any parsing or private decoder runs.
+            observe(reason='RESPONSE_RECEIVED',status=status,elapsed_ms=elapsed,raw=raw,value=value)
+            choices=value.get('choices') if isinstance(value,dict) else None
+            if (status!=200 or not isinstance(choices,list) or len(choices)!=1 or not isinstance(choices[0],dict)):
+                observe(reason='INVALID_ENVELOPE',status=status,elapsed_ms=elapsed,raw=raw,value=value)
+                raise RuntimeFault('SCRIPT_FORMAT_INVALID')
+            if choices[0].get('finish_reason')=='length':
+                observe(reason='MODEL_LENGTH',status=status,elapsed_ms=elapsed,raw=raw,value=value,truncated=True)
+                raise RuntimeFault('SCRIPT_MODEL_TRUNCATED')
+            message=choices[0].get('message');script=message.get('content') if isinstance(message,dict) else None
+            receipt=value.get('id')
+            if (choices[0].get('finish_reason')!='stop' or not isinstance(script,str) or not script.strip()
+                    or not isinstance(receipt,str) or not 1<=len(receipt)<=256):
+                observe(reason='CONTENT_INVALID',status=status,elapsed_ms=elapsed,raw=raw,value=value)
+                raise RuntimeFault('SCRIPT_FORMAT_INVALID')
+            return {'content':script,'provider_id':receipt,'requested_model':MODEL,'usage':usage_counts(value.get('usage'))}
+        except RuntimeFault:raise
+        except Exception:
+            # Unexpected transport/implementation failures remain uncertain, never retried.
+            raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None

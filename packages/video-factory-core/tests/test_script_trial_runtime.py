@@ -134,3 +134,29 @@ class TrialRuntimeTests(unittest.TestCase):
         clock.return_value=1200;second.update_record.side_effect=RuntimeFault('UNKNOWN_WRITE')
         with self.assertRaisesRegex(RuntimeFault,'UNKNOWN_WRITE'):client.update_record('b','t','r',{})
         self.assertEqual(factory.call_count,2);second.update_record.assert_called_once()
+
+    def test_no_status_transition_does_not_mislabel_application_as_denied_reviewer(self):
+        self.configure();event=self.event('optPending',actor='ou_application')
+        self.review.enqueue_verified(event)
+        result=self.review.process_one()
+        self.assertEqual(result['status'],'processed');self.assertEqual(result['reviewed'],[])
+        self.assertEqual(self.provider.calls,0)
+
+    def test_recovery_excludes_only_original_unknown_and_reports_new_failure(self):
+        from video_factory.script_trial import pause,resume
+        from video_factory.runtime_store import fingerprint
+        self.configure();self.start();self.queue();self.provider.fail=True;self.step()
+        pause(self.f.store,self.f.admin,self.f.project)
+        with self.f.store.connect() as db:state=meta(db,PREFIX+self.f.project)
+        now=time.time()
+        with patch('video_factory.script_trial.time.time',return_value=now):
+            resume(self.f.store,self.f.admin,self.f.project,t0=now,notice_sha256='b'*64,
+                   expected_sha256=fingerprint(state),quarantine=list(state['requests']),checkpoint='next_task')
+        runner=self.runner();runner.records['next_task']='recNext'
+        self.assertEqual(runner.tick()['state'],'idle')
+        self.assertEqual(self.provider.calls,1)
+        # A new task/revision is never covered by the old quarantine.
+        with self.f.store.connect() as db:
+            db.execute("INSERT INTO tasks SELECT project,id,revision+1,input,input_digest,configuration_digest,state,provider_id,artifact FROM tasks WHERE id='generated_one'")
+        self.assertEqual(runner.tick()['state'],'attention_required')
+        self.assertEqual(self.provider.calls,1)

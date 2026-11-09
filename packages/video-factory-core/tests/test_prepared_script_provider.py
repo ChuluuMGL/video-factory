@@ -61,7 +61,7 @@ class PreparedScriptProviderTests(unittest.TestCase):
                               ({**self.fields,'video_script':'x'*6501},'stop'),(self.fields,'length')]:
             with self.subTest(reason=reason),patch('video_factory.script_provider.build_opener') as opener:
                 opener.return_value.open.return_value=self.response(fields,reason)
-                with self.assertRaisesRegex(RuntimeFault,'UNCERTAIN_NO_RETRY'):
+                with self.assertRaisesRegex(RuntimeFault,'SCRIPT_MODEL_TRUNCATED' if reason=='length' else 'SCRIPT_VALIDATION_FAILED'):
                     self.provider().generate(self.sku,self.ref,'','synthetic-key')
                 self.assertEqual(opener.return_value.open.call_count,1)
 
@@ -69,7 +69,7 @@ class PreparedScriptProviderTests(unittest.TestCase):
         def decode(s,c):raise ValueError('private data')
         with patch('video_factory.script_provider.build_opener') as opener:
             opener.return_value.open.return_value=self.response()
-            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY$'):
+            with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_VALIDATION_FAILED$'):
                 self.provider(decode).generate(self.sku,self.ref,'','synthetic-key')
 
     def test_decoder_receives_genuine_receipt_without_authentication_secret(self):

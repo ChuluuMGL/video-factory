@@ -49,12 +49,12 @@ class ScriptProviderTests(unittest.TestCase):
         self.assertEqual(result['script'],'A script')
     def test_truncation_and_unbounded_text_are_not_review_ready(self):
         for reason,text in [('length','partial'),('stop','x'*6501),('stop','')]:
-            with self.assertRaisesRegex(RuntimeFault,'UNCERTAIN_NO_RETRY'):
+            with self.assertRaisesRegex(RuntimeFault,'SCRIPT_MODEL_TRUNCATED' if reason=='length' else 'SCRIPT_FORMAT_INVALID'):
                 self.call({'id':'receipt','choices':[{'finish_reason':reason,'message':{'content':text}}]})
     def test_timeout_makes_one_post_only(self):
         with patch('video_factory.script_provider.build_opener') as opener:
             opener.return_value.open.side_effect=TimeoutError('secret must not leak')
-            with self.assertRaisesRegex(RuntimeFault,'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'):
+            with self.assertRaisesRegex(RuntimeFault,'SCRIPT_NETWORK_FAILED'):
                 ScriptProvider().generate({},'brief','','synthetic-key')
             self.assertEqual(opener.return_value.open.call_count,1)
     def test_http_rejection_is_classified_without_response_or_retry(self):

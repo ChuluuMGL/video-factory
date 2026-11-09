@@ -8,6 +8,7 @@ import copy
 import hashlib
 from .runtime_store import RuntimeFault, canonical, fingerprint
 from .script_provider import ScriptProvider, MODEL
+from .script_receipts import observe
 
 
 class PreparedScriptProvider(ScriptProvider):
@@ -44,6 +45,7 @@ class PreparedScriptProvider(ScriptProvider):
                 facts=fields.get('missing_facts')
                 if (set(fields)!={'decision','missing_facts'} or not isinstance(facts,list)
                         or not 1<=len(facts)<=20 or len(canonical(facts).encode())>6000):raise ValueError
+                observe(reason='VALIDATED')
                 return {'decision':'needs_evidence','missing_facts':facts,
                         'provider_id':result['provider_id'],'usage':result['usage'],'requested_model':MODEL,
                         'prepared_input_sha256':sample['messages_sha256'],
@@ -54,7 +56,9 @@ class PreparedScriptProvider(ScriptProvider):
                 if (not isinstance(value,str) or not value.strip()
                         or len(value.encode('utf-16-le'))//2>6500):raise ValueError
         except Exception:
-            raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
+            observe(reason='STRUCTURE_INVALID')
+            raise RuntimeFault('SCRIPT_VALIDATION_FAILED') from None
+        observe(reason='VALIDATED')
         return {'script':fields['video_script'],'structured_fields':fields,
                 'provider_id':result['provider_id'],'usage':result['usage'],
                 'requested_model':MODEL,'prepared_input_sha256':sample['messages_sha256'],

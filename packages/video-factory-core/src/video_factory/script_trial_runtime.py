@@ -158,7 +158,6 @@ class TrialCopyReview:
         with self.store.connect() as db:
             binding, config = self.context(db)
             if fingerprint(config) != event['config_sha256']: raise RuntimeFault('TRIAL_REVIEW_STALE')
-            actor = self.bridge._member(binding, {'tenant_key':binding['tenant_key'],'open_id':event['operator']}, 'script_reviewers')
         names = config['names']
         fields = [x for x in self.client.fields(binding['base_token'], binding['table_id']) if x['field_id']==config['fields']['status']]
         if len(fields) != 1 or fields[0]['type'] != 3: raise RuntimeFault('TRIAL_REVIEW_STALE')
@@ -167,6 +166,9 @@ class TrialCopyReview:
         for action in event['actions']:
             change = _changed(action, config['fields']['status'], options)
             if not change or change[1] not in ('脚本通过','脚本退回'): continue
+            # Only review transitions require reviewer authority. App/status
+            # updates cannot become approvals, and are not misreported as denied people.
+            actor = self.bridge._member(binding, {'tenant_key':binding['tenant_key'],'open_id':event['operator']}, 'script_reviewers')
             if change[0] != '脚本待审核': raise RuntimeFault('TRIAL_REVIEW_TRANSITION_INVALID')
             record = action['record_id']
             receipt_key = 'trial:decision:' + fingerprint([self.project,event['event_id'],record])
@@ -220,16 +222,23 @@ class TrialRunner:
         with self.store.connect() as db:
             rows = db.execute('SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.revision=(SELECT max(n.revision) FROM tasks n WHERE n.project=t.project AND n.id=t.id) ORDER BY t.id', (self.project,)).fetchall()
             if len(rows)>100: raise RuntimeFault('TRIAL_TASK_LIMIT')
+            trial=meta(db,PREFIX+self.project)
+            quarantined={(q['task'],q['revision']) for q in trial.get('quarantined_requests',{}).values()}
+            checkpoint=trial.get('checkpoint_task',sorted(self.records)[0])
+            if checkpoint not in self.records:raise RuntimeFault('TRIAL_CHECKPOINT_NOT_REGISTERED')
         for row in rows:
             if row['id'] not in self.records: raise RuntimeFault('TRIAL_TASK_NOT_REGISTERED')
+            if (row['id'],row['revision']) in quarantined:
+                if row['state']!='script_submission_unknown':raise RuntimeFault('TRIAL_QUARANTINE_CHANGED')
+                continue
             if row['state']=='script_submission_unknown': return {'state':'attention_required','provider_requests':0}
             if row['state']=='script_queued':
-                self.jobs.step(self.token,self.project,row['id'],row['revision'],self.master_key)
-                return {'state':'stepped','task':row['id'],'review':review}
+                outcome=self.jobs.step(self.token,self.project,row['id'],row['revision'],self.master_key)
+                return {'state':'stepped','task':row['id'],'review':review,'outcome':outcome}
             if row['state']=='awaiting_script_review':
                 self.review.publish(row['id'],row['revision'],self.records[row['id']])
                 # First draft is a human checkpoint; never run the next task until accepted.
-                if row['id'] == sorted(self.records)[0]:
+                if row['id'] == checkpoint:
                     return {'state':'awaiting_review','task':row['id'],'provider_requests':0}
                 continue
             if row['state'] in ('failed','rejected'):

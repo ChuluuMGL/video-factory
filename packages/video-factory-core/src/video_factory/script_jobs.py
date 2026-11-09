@@ -275,10 +275,22 @@ class ScriptJobs:
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
-        try:result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
+        from .script_receipts import capture
+        def persist_receipt(receipt):
+            with self.store.connect() as db:
+                receipt_key='script:receipt:'+job['plan_sha256']
+                history=meta(db,receipt_key) or []
+                if len(history)>=8:raise RuntimeFault('SCRIPT_RECEIPT_LIMIT')
+                history.append(receipt);save(db,receipt_key,history)
+                self.store.audit(db,'script-worker','script_response_observed',project,task,revision)
+        try:
+            with capture(persist_receipt):
+                result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
         except Exception as error:
             allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
-                     'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'}
+                     'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY',
+                     'SCRIPT_NETWORK_FAILED','SCRIPT_MODEL_TRUNCATED','SCRIPT_FORMAT_INVALID',
+                     'SCRIPT_VALIDATION_FAILED','SCRIPT_RESPONSE_LIMIT'}
             code=str(error) if isinstance(error,RuntimeFault) and str(error) in allowed else 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'
             with self.store.connect() as db:
                 current=meta(db,key(project,task,revision))

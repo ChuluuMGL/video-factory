@@ -61,6 +61,43 @@ def pause(store,token,project):
     return {'enabled':False}
 
 
+def resume(store,token,project,*,t0,notice_sha256,expected_sha256,quarantine,checkpoint):
+    """Explicit administrator recovery: preserve uncertain intents and all exposure.
+
+    A new window requires a new recorded user instruction. Quarantine excludes
+    only named, already-uncertain tasks from dispatch; it is not a refund/retry.
+    """
+    import re
+    if (type(t0) not in (int,float) or not time.time() <= t0 <= time.time()+300
+            or not isinstance(notice_sha256,str) or not re.fullmatch('[0-9a-f]{64}',notice_sha256)
+            or not isinstance(quarantine,list) or not quarantine or len(set(quarantine))!=len(quarantine)
+            or not isinstance(checkpoint,str) or not checkpoint):
+        raise RuntimeFault('TRIAL_RECOVERY_NOTICE_REQUIRED')
+    with store.connect() as db:
+        actor=store.authorize(db,token,'admin');trial=meta(db,PREFIX+project)
+        if (not trial or trial['enabled'] or trial['t0'] is None
+                or fingerprint(trial)!=expected_sha256 or notice_sha256==trial['notice_sha256']):
+            raise RuntimeFault('TRIAL_RECOVERY_CONFLICT')
+        from .script_jobs import key
+        excluded=dict(trial.get('quarantined_requests',{}))
+        for request in quarantine:
+            row=trial['requests'].get(request)
+            if not row or row['state']!='reserved':raise RuntimeFault('TRIAL_QUARANTINE_DENIED')
+            current=store._current(db,project,row['task'],row['revision'])
+            job=meta(db,key(project,row['task'],row['revision']))
+            if (current['state']!='script_submission_unknown' or not job or job['state']!='submission_unknown'
+                    or job['plan_sha256']!=request or row['task']==checkpoint):
+                raise RuntimeFault('TRIAL_QUARANTINE_DENIED')
+            excluded[request]={'task':row['task'],'revision':row['revision'],'notice_sha256':notice_sha256}
+        history=trial.setdefault('windows',[])
+        history.append({k:trial[k] for k in ('t0','t1','notice_sha256')})
+        trial.update(enabled=True,t0=t0,t1=t0+DURATION,notice_sha256=notice_sha256,
+                     quarantined_requests=excluded,checkpoint_task=checkpoint)
+        save(db,PREFIX+project,trial);store.audit(db,actor,'script_trial_recovered',project)
+    return {'t0':t0,'t1':t0+DURATION,'requests_used':len(trial['requests']),
+            'remaining_requests':LIMIT-len(trial['requests']),'reserved_micro':sum(r['cost_upper_micro'] for r in trial['requests'].values())}
+
+
 def reserve(db,plan,binding,request_id):
     trial=meta(db,PREFIX+plan['project'])
     if trial is None:return
@@ -76,7 +113,7 @@ def reserve(db,plan,binding,request_id):
     rows=trial['requests']
     if request_id in rows or any(r['input_digest']==digest for r in rows.values()):
         raise RuntimeFault('TRIAL_DUPLICATE_INPUT')
-    if any(r['state']!='usage_accounted' for r in rows.values()):
+    if any(r['state']!='usage_accounted' and rid not in trial.get('quarantined_requests',{}) for rid,r in rows.items()):
         raise RuntimeFault('TRIAL_PENDING_OR_UNKNOWN')
     if len(rows)>=LIMIT:raise RuntimeFault('TRIAL_REQUEST_LIMIT')
     exposure=sum(r.get('cost_upper_micro',RESERVE) for r in rows.values())

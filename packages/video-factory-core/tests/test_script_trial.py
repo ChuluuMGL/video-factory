@@ -96,3 +96,35 @@ class TrialTests(ScriptTests):
                 with self.f.store.connect() as db:trial.reserve(db,plan,BINDING,'new')
             self.assertEqual(self.snapshot(),state)
         self.assertEqual(self.provider.calls,0)
+
+    def test_explicit_recovery_preserves_unknown_reserve_and_request_cap(self):
+        from video_factory.runtime_store import fingerprint
+        self.arm();self.queue();self.provider.fail=True;self.step()
+        trial.pause(self.f.store,self.f.admin,self.f.project);before=self.snapshot();now=time.time()
+        with patch('video_factory.script_trial.time.time',return_value=now):
+            result=trial.resume(self.f.store,self.f.admin,self.f.project,t0=now,notice_sha256='b'*64,
+                expected_sha256=fingerprint(before),quarantine=list(before['requests']),checkpoint='next_task')
+        state=self.snapshot();self.assertEqual(state['requests'],before['requests'])
+        self.assertEqual(state['t1'],now+86400);self.assertEqual(result['remaining_requests'],29)
+        self.assertEqual(result['reserved_micro'],200000);self.assertEqual(len(state['windows']),1)
+        self.step();self.assertEqual(self.provider.calls,1)
+        from video_factory.script_jobs import key
+        with self.f.store.connect() as db:plan=meta(db,key(self.f.project,'generated_one',1))['plan']
+        nextplan={**plan,'task':'next_task','brief':'distinct approved input'}
+        with self.f.store.connect() as db:trial.reserve(db,nextplan,BINDING,'next-request')
+        self.assertEqual(len(self.snapshot()['requests']),2)
+        with self.assertRaisesRegex(RuntimeFault,'TRIAL_PENDING_OR_UNKNOWN'):
+            with self.f.store.connect() as db:trial.reserve(db,{**nextplan,'brief':'third'},BINDING,'third-request')
+        self.assertEqual(len(self.snapshot()['requests']),2)
+
+    def test_recovery_requires_new_notice_and_exact_unknown_intent(self):
+        from video_factory.runtime_store import fingerprint
+        self.arm();self.queue();self.provider.fail=True;self.step();trial.pause(self.f.store,self.f.admin,self.f.project)
+        before=self.snapshot();now=time.time()
+        for notice,expected,ids,error in [('a'*64,fingerprint(before),list(before['requests']),'CONFLICT'),
+                ('b'*64,'0'*64,list(before['requests']),'CONFLICT'),
+                ('b'*64,fingerprint(before),['not-a-request'],'QUARANTINE_DENIED')]:
+            with patch('video_factory.script_trial.time.time',return_value=now),self.assertRaisesRegex(RuntimeFault,error):
+                trial.resume(self.f.store,self.f.admin,self.f.project,t0=now,notice_sha256=notice,
+                             expected_sha256=expected,quarantine=ids,checkpoint='next_task')
+            self.assertEqual(self.snapshot(),before)
