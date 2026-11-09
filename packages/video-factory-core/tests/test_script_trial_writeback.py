@@ -2,7 +2,7 @@ import copy
 import time
 import unittest
 from unittest.mock import patch
-from test_script_jobs import ScriptTests
+import test_script_jobs as script_tests
 from review_fixture import BINDING
 from video_factory.runtime_store import RuntimeFault
 from video_factory.script_trial import configure,activate
@@ -18,10 +18,10 @@ class Client:
 
 
 class WritebackTests(unittest.TestCase):
-    setUp=ScriptTests.setUp
-    tearDown=ScriptTests.tearDown
-    queue=ScriptTests.queue
-    step=ScriptTests.step
+    setUp=script_tests.ScriptTests.setUp
+    tearDown=script_tests.ScriptTests.tearDown
+    queue=script_tests.ScriptTests.queue
+    step=script_tests.ScriptTests.step
 
     def prepare(self):
         configure(self.f.store,self.f.admin,self.f.project,production_base='bascnProduction',

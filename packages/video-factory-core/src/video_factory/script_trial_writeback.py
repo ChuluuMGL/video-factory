@@ -46,7 +46,7 @@ class TrialDraftWriter:
             raise RuntimeFault('TRIAL_REMOTE_INPUT_CHANGED')
         version=str(revision)+':'+receipt_digest
         patch={n[k]:v for k,v in fields.items()};patch[n['candidate_version']]=version
-        actual={k:plain_text(remote.get(k)) for k in patch}
+        actual={k:('' if remote.get(k) in (None,'',[]) else plain_text(remote[k])) for k in patch}
         if actual==patch:return {'status':'unchanged','writes':0,'receipt_sha256':receipt_digest}
         if any(actual.values()):raise RuntimeFault('TRIAL_REMOTE_DRAFT_CONFLICT')
         # A single trial writer is required. A failed/unknown PUT is never retried
