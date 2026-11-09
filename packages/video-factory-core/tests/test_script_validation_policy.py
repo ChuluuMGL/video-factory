@@ -125,3 +125,22 @@ class PolicyDispatchTests(ContinuationTests):
     def test_failure_without_accounting_or_receipt_does_not_continue(self):
         self.fail('sample_three',996);self.jobs['sample_three'].pop('failure_receipt_sha256')
         with self.assertRaisesRegex(RuntimeFault,'USAGE_REQUIRES_INSPECTION'):self.decide()
+
+from test_script_trial_runtime import TrialRuntimeTests,Client
+class FailureProjectionTests(TrialRuntimeTests):
+    def test_settled_failure_writes_only_status_preserves_review_and_baseline(self):
+        self.configure();self.start();self.queue()
+        with self.f.store.connect() as db:
+            t=meta(db,trial.PREFIX+self.f.project);t['validation_failure_policy']=POLICY;save(db,trial.PREFIX+self.f.project,t)
+        with patch.object(self.provider,'generate',side_effect=lambda *args:SettlementTests.fail_validation(self)):
+            self.step()
+        fields=self.client.fields()
+        fields[0]['property']['options'].append({'id':'optFailed','name':'失败待处理'})
+        self.client.fields=lambda *args:fields
+        before=copy.deepcopy(self.client.data)
+        self.assertEqual(self.runner().tick()['state'],'idle')
+        self.assertEqual(self.client.writes,[{'status':'失败待处理'}])
+        self.assertEqual(self.client.data,{**before,'status':'失败待处理'})
+        self.runner().tick();self.assertEqual(len(self.client.writes),1)
+        self.client.data['status']='脚本通过'
+        with self.assertRaisesRegex(RuntimeFault,'FAILURE_STATUS_CONFLICT'):self.runner().tick()

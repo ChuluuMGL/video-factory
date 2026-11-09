@@ -133,6 +133,31 @@ class TrialCopyReview:
             save(db, k, {'status':'pending','event':reduced})
         return {'status':'queued'}
 
+    def publish_failure(self, task, revision, record):
+        """Expose a settled failed sample without writing any candidate content."""
+        with self.store.connect() as db:
+            binding,config=self.context(db)
+            row=self.store._current(db,self.project,task,revision)
+            job=meta(db,job_key(self.project,task,revision))
+            if row['state']!='failed' or not job or job['state']!='validation_failed':
+                raise RuntimeFault('TRIAL_FAILURE_STATE_CHANGED')
+        names=config['names'];status_name=names['status']
+        fields=self.client.fields(binding['base_token'],binding['table_id'])
+        status_field=next((f for f in fields if f['field_id']==config['fields']['status']),None)
+        if (not status_field or status_field['type']!=3 or
+                '失败待处理' not in {o['name'] for o in status_field['property']['options']}):
+            raise RuntimeFault('TRIAL_FAILURE_STATUS_UNAVAILABLE')
+        remote=self.client.record(binding['base_token'],binding['table_id'],record)['fields']
+        if plain_text(remote.get(names['task']))!=task:raise RuntimeFault('TRIAL_FAILURE_RECORD_CHANGED')
+        status=select_text(remote[status_name]) if remote.get(status_name) else ''
+        if status not in ('','未开始','已计划','费用已批准','生成中','结果未知','失败待处理'):
+            raise RuntimeFault('TRIAL_FAILURE_STATUS_CONFLICT')
+        if status!='失败待处理':
+            self.client.update_record(binding['base_token'],binding['table_id'],record,{status_name:'失败待处理'})
+        saved=self.client.record(binding['base_token'],binding['table_id'],record)['fields']
+        if select_text(saved.get(status_name))!='失败待处理':raise RuntimeFault('TRIAL_FAILURE_READBACK_FAILED')
+        return {'state':'failed','provider_requests':0}
+
     def process_one(self):
         prefix = QUEUE + self.project + ':'
         with self.store.connect() as db:
@@ -223,8 +248,7 @@ class TrialRunner:
             rows = db.execute('SELECT t.id,t.revision,t.state FROM tasks t WHERE t.project=? AND t.revision=(SELECT max(n.revision) FROM tasks n WHERE n.project=t.project AND n.id=t.id) ORDER BY t.id', (self.project,)).fetchall()
             if len(rows)>100: raise RuntimeFault('TRIAL_TASK_LIMIT')
             trial=meta(db,PREFIX+self.project)
-            if validation_policy(trial) and consecutive_validation_failures(trial)>=3:
-                raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
+            failure_limit=validation_policy(trial) and consecutive_validation_failures(trial)>=3
             validation_failed={(r['task'],r['revision']) for r in trial['requests'].values()
                                if validation_policy(trial) and r.get('outcome')=='validation_failed'
                                and r['state']=='usage_accounted'}
@@ -238,6 +262,7 @@ class TrialRunner:
                 continue
             if row['state']=='script_submission_unknown': return {'state':'attention_required','provider_requests':0}
             if row['state']=='script_queued':
+                if failure_limit:raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
                 outcome=self.jobs.step(self.token,self.project,row['id'],row['revision'],self.master_key)
                 return {'state':'stepped','task':row['id'],'review':review,'outcome':outcome}
             if row['state']=='awaiting_script_review':
@@ -248,8 +273,10 @@ class TrialRunner:
                 continue
             if row['state'] in ('failed','rejected'):
                 if row['state']=='failed' and (row['id'],row['revision']) in validation_failed:
+                    self.review.publish_failure(row['id'],row['revision'],self.records[row['id']])
                     continue
                 return {'state':'attention_required','task':row['id'],'provider_requests':0}
+        if failure_limit:raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
         return {'state':'idle','provider_requests':0,'review':review}
 
 
