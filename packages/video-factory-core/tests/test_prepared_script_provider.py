@@ -72,6 +72,18 @@ class PreparedScriptProviderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeFault,'^SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY$'):
                 self.provider(decode).generate(self.sku,self.ref,'','synthetic-key')
 
+    def test_decoder_receives_genuine_receipt_without_authentication_secret(self):
+        receipts=[]
+        def decode(sample,receipt):
+            receipts.append(receipt)
+            return json.loads(receipt['content'])
+        with patch('video_factory.script_provider.build_opener') as opener:
+            opener.return_value.open.return_value=self.response()
+            self.provider(decode).generate(self.sku,self.ref,'','synthetic-key')
+        self.assertEqual(receipts[0]['provider_id'],'synthetic-receipt')
+        self.assertEqual(receipts[0]['usage']['total_tokens'],120)
+        self.assertNotIn('synthetic-key',str(receipts))
+
     def test_transport_rejects_policy_override_before_network(self):
         with patch('video_factory.script_provider.build_opener') as opener:
             with self.assertRaisesRegex(RuntimeFault,'POLICY_DENIED'):
