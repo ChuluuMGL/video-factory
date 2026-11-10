@@ -150,8 +150,13 @@ def reserve(db,plan,binding,request_id):
     trial=meta(db,PREFIX+plan['project'])
     if trial is None:return
     now=time.time()
-    if (not trial['enabled'] or trial['t0'] is None or not trial['t0'] <= now < trial['t1']):
+    from .script_trial_batch import batch_policy, request_limit
+    batch=batch_policy(trial)
+    if (not trial['enabled'] or trial['t0'] is None or now<trial['t0']
+            or (not batch and (trial['t1'] is None or now>=trial['t1']))):
         raise RuntimeFault('TRIAL_WINDOW_CLOSED')
+    if batch and plan['task'] not in trial['batch']['tasks']:
+        raise RuntimeFault('TRIAL_BATCH_TASK_NOT_APPROVED')
     if (binding['base_token']==trial['production_base'] or
             (binding['base_token'],binding['table_id'])!=(trial['copy_base'],trial['copy_table'])):
         raise RuntimeFault('TRIAL_TARGET_MISMATCH')
@@ -165,7 +170,7 @@ def reserve(db,plan,binding,request_id):
         raise RuntimeFault('TRIAL_DUPLICATE_INPUT')
     if any(r['state']!='usage_accounted' and rid not in trial.get('quarantined_requests',{}) for rid,r in rows.items()):
         raise RuntimeFault('TRIAL_PENDING_OR_UNKNOWN')
-    if len(rows)>=LIMIT:raise RuntimeFault('TRIAL_REQUEST_LIMIT')
+    if len(rows)>=request_limit(trial):raise RuntimeFault('TRIAL_REQUEST_LIMIT')
     exposure=sum(r.get('cost_upper_micro',RESERVE) for r in rows.values())
     if exposure+RESERVE>CAP:raise RuntimeFault('TRIAL_BUDGET_LIMIT')
     rows[request_id]={'state':'reserved','input_digest':digest,'submitted_at':now,
