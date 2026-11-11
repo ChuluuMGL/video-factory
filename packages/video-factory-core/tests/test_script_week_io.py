@@ -11,13 +11,13 @@ class WeekIOTests(unittest.TestCase):
     def setUp(self):
         self.client = Mock()
         self.source = ReadOnlyWeekSource(self.client, base='basProductionFixture',
-                                        tables={'tblTasks': ['Task', 'SKU'], 'tblSku': ['Name']})
+                                        tables={'tblTasks': ['Task', 'SKU'], 'tblSkuFixture': ['Name']})
 
     def test_complete_get_pagination_filters_private_fields(self):
         self.client.get.side_effect = [
-            {'items': [{'record_id': 'recOne', 'fields': {'Task': 'A', 'Email': 'hidden'}}],
+            {'items': [{'record_id': 'recOneFixture', 'fields': {'Task': 'A', 'Email': 'hidden'}}],
              'has_more': True, 'page_token': 'next'},
-            {'items': [{'record_id': 'recTwo', 'fields': {'Task': 'B'}}], 'has_more': False}]
+            {'items': [{'record_id': 'recTwoFixture', 'fields': {'Task': 'B'}}], 'has_more': False}]
         rows = self.source.records('tblTasks')
         self.assertEqual(len(rows), 2); self.assertNotIn('Email', rows[0]['fields'])
         for call in self.client.get.call_args_list:
@@ -28,9 +28,9 @@ class WeekIOTests(unittest.TestCase):
 
     def test_repeated_page_or_record_never_returns_partial_scan(self):
         for pages in ([{'items': [], 'has_more': True, 'page_token': 'same'}]*2,
-                      [{'items': [{'record_id': 'recOne', 'fields': {}}],
+                      [{'items': [{'record_id': 'recOneFixture', 'fields': {}}],
                         'has_more': True, 'page_token': 'a'},
-                       {'items': [{'record_id': 'recOne', 'fields': {}}], 'has_more': False}]):
+                       {'items': [{'record_id': 'recOneFixture', 'fields': {}}], 'has_more': False}]):
             self.client.get.side_effect = pages
             with self.assertRaises(RuntimeFault): self.source.records('tblTasks')
 
@@ -43,14 +43,14 @@ class WeekIOTests(unittest.TestCase):
 
     def test_other_tables_denied_before_network(self):
         for method, args in [(self.source.records, ('tblUnapproved',)),
-                             (self.source.record, ('tblUnapproved', 'recOne'))]:
+                             (self.source.record, ('tblUnapproved', 'recOneFixture'))]:
             with self.assertRaisesRegex(RuntimeFault, 'TABLE_DENIED'): method(*args)
         self.client.get.assert_not_called()
 
     def test_record_identity_checked(self):
         self.client.get.return_value = {'record': {'record_id': 'recOther', 'fields': {}}}
         with self.assertRaisesRegex(RuntimeFault, 'RECORD_MISMATCH'):
-            self.source.record('tblTasks', 'recOne')
+            self.source.record('tblTasks', 'recOneFixture')
 
     def writer(self, **overrides):
         cfg = dict(source_base='basProductionFixture', copy_base='basCopyFixture', table='tblCopy',
