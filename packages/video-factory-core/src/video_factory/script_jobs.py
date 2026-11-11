@@ -219,9 +219,9 @@ class ScriptJobs:
             raise RuntimeFault('SCRIPT_PLAN_CHANGED')
 
     def step(self,token,project,task,revision,master_key):
-        from .dispatch import authorize
+        from .script_week import authorize_step
         with self.store.connect() as db:
-            authorize(db,token,project)
+            authorize_step(db,token,project,task,revision)
             job=meta(db,key(project,task,revision));row=self.store._current(db,project,task,revision)
             if not job:raise RuntimeFault('SCRIPT_JOB_MISSING')
             if job['state']=='received':
@@ -257,7 +257,7 @@ class ScriptJobs:
         secret=self.store.resolve_secret(settings['credential_ref'][7:],master_key)
         if not secret or any(c.isspace() for c in secret):raise RuntimeFault('SCRIPT_KEY_INVALID')
         with self.store.connect() as db:
-            authorize(db,token,project)
+            authorize_step(db,token,project,task,revision)
             latest=meta(db,key(project,task,revision));row=self.store._current(db,project,task,revision)
             if latest!=job or row['state']!='script_queued':raise RuntimeFault('SCRIPT_INTENT_ALREADY_CLAIMED')
             self._fence_execution(db, plan)

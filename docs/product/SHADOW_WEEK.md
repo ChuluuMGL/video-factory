@@ -1,0 +1,15 @@
+# Bounded script-only shadow week
+
+This is an opt-in preparation API, not an installer default or an active production scheduler. No week is started by importing code, preparing a contract, or reviewing a draft.
+
+A fresh isolated project fixes the source Base/table, different copy Base/table, approved claims and policy digests, read-only source verification receipt, model/credential revision, project configuration and prior cost exposure. `script_week.prepare` records a disabled contract without issuing a token. `activate` requires its exact digest and a separately recorded future start notice; expiry is exactly 168 hours after that start.
+
+The service grant only queues immutable source snapshots and steps script jobs in that project. General video dispatch and administrator APIs reject it. Backups invalidate it with other worker approvals. Configuration drift, revocation and expiry fail closed. Each plan still has an individual one-hour execution deadline; the week grant does not extend an old user's approval or impersonate a reviewer.
+
+Limits are measured in seven consecutive 24-hour buckets from T0: 10 new samples and 20 model requests per bucket, 70 samples and 140 requests overall. Each sample permits at most one known structural-validation rewrite. Each request separately reserves at least CNY 0.20. Settled usage plus unresolved reservations must remain within CNY 3 per bucket and CNY 21 for the week; historical exposure plus the week must also remain within CNY 30. Usage arriving after midnight settles against the original submission bucket. Unused allowance does not carry forward. Unknown requests and three consecutive final structural failures block further execution; changing the date does not clear them.
+
+`queue_snapshot` is an internal adapter boundary, not a public endpoint accepting arbitrary plans. The deployment must verify read-only source access, freeze the exact source version and input, and never mix baseline outputs into generation input. Same source version with changed content is rejected. Idempotent replay never submits a second call. Awaiting human review is not a generation gate.
+
+`script_week_archive.review_export` reads local snapshots/results and explicitly paired baseline outputs. It uses an allowlist, redacts credentials/URLs/contact details and accepts deployment-specific sensitive strings. A baseline must match input hash and source version and be unmodified, otherwise it is marked unpaired. `save_archive` writes private, exclusive daily JSON files and `REVIEW_EXPORT_WEEK.json`; late receipts create content-addressed supplements rather than replacing prior evidence. Archives are private operational artifacts, not public repository content.
+
+Deployment readiness additionally requires a real read-only source adapter, copy-only writer, daily archive runner, independent deadline service, verified role mapping and a start confirmation. Unit tests are not proof that these deployment gates have passed. No live trial may start while any of these gates is unresolved.

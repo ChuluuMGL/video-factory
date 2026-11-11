@@ -156,6 +156,10 @@ def reserve(db,plan,binding,request_id,*,rewrite_parent=None):
     now=time.time()
     from .script_trial_batch import batch_policy, request_limit
     batch=batch_policy(trial)
+    week=trial.get('week_contract_sha256') is not None
+    if week:
+        from .script_week import fence_reservation
+        fence_reservation(db,plan,trial,now,rewrite_parent)
     if (not trial['enabled'] or trial['t0'] is None or now<trial['t0']
             or (not batch and (trial['t1'] is None or now>=trial['t1']))):
         raise RuntimeFault('TRIAL_WINDOW_CLOSED')
@@ -167,6 +171,7 @@ def reserve(db,plan,binding,request_id,*,rewrite_parent=None):
     # Do not allow a new task name or a rotated credential to reset consumption.
     source=plan.get('native_source') or {}
     digest=fingerprint([plan['sku'],plan['brief'],plan['feedback'],source.get('source_revision')])
+    if week: digest=fingerprint([digest,plan['week_source_key']])
     rows=trial['requests']
     pending=[rid for rid,r in rows.items() if r.get('outcome')=='rewrite_pending']
     if pending and pending!=[rewrite_parent]:raise RuntimeFault('TRIAL_REWRITE_PENDING')
@@ -180,7 +185,7 @@ def reserve(db,plan,binding,request_id,*,rewrite_parent=None):
         raise RuntimeFault('TRIAL_DUPLICATE_INPUT')
     if any(r['state']!='usage_accounted' and rid not in trial.get('quarantined_requests',{}) for rid,r in rows.items()):
         raise RuntimeFault('TRIAL_PENDING_OR_UNKNOWN')
-    if len(rows)>=request_limit(trial):raise RuntimeFault('TRIAL_REQUEST_LIMIT')
+    if not week and len(rows)>=request_limit(trial):raise RuntimeFault('TRIAL_REQUEST_LIMIT')
     exposure=sum(r.get('cost_upper_micro',RESERVE) for r in rows.values())
     if exposure+RESERVE>CAP:raise RuntimeFault('TRIAL_BUDGET_LIMIT')
     rows[request_id]={'state':'reserved','input_digest':digest,'submitted_at':now,
