@@ -267,3 +267,99 @@ def close(store, project, *, reason='deadline'):
         week.update(state='closed', closed=receipt); save(db, PREFIX + project, week)
         store.audit(db, 'shadow-clock', 'script_week_closed', project)
         return receipt
+
+
+def renew_queued_plan(jobs, token, project, task):
+    """Fresh service approval under the still-active contract, never a resubmit.
+
+    Only a queued, unreserved current attempt may be renewed after a daily wait.
+    The immutable plan and prior rewrite receipts must still match exactly.
+    """
+    from .script_jobs import key
+    from .script_trial import PREFIX as TRIAL
+    from .script_rewrite import check_attempt
+    with jobs.store.connect() as db:
+        authorize_step(db, token, project, task, 1)
+        week = active(db, project); trial = meta(db, TRIAL + project)
+        job = meta(db, key(project, task, 1))
+        parent = check_attempt(db, job)
+        if job['state'] != 'queued' or job.get('request_id',job['plan_sha256']) in trial['requests']:
+            raise RuntimeFault('WEEK_ATTEMPT_ALREADY_RESERVED')
+        check_limits(week, trial, time.time(), rewrite_parent=parent)
+        jobs._fence_execution(db, job['plan'])
+        if job['expires_at'] <= time.time():
+            job['expires_at'] = min(time.time() + 3600, week['t1'])
+            save(db, key(project, task, 1), job)
+            jobs.store.audit(db, 'shadow-service:' + project, 'script_week_fresh_plan_approval', project, task, 1)
+
+
+class WeekRunner:
+    """One tick under the deployment's exclusive process lock.
+
+    read_new() is a verified read-only adapter returning frozen snapshots;
+    publish(task, revision) is the verified copy-only, idempotent projection.
+    archive(day, final=False) reads only, writes private local JSON, and must also
+    run from an independent daily/deadline service while the paid runner pauses.
+    No adapter is auto-created and no scheduler is installed by this class.
+    """
+    def __init__(self, jobs, project, token, master_key, *, read_new, publish, archive):
+        self.jobs,self.store,self.project=jobs,jobs.store,project
+        self.token,self.master_key=token,master_key
+        self.read_new,self.publish,self.archive=read_new,publish,archive
+
+    def _stop(self, reason):
+        receipt=close(self.store,self.project,reason=reason)
+        return {'state':'closed','reason':reason,'close':receipt,'provider_requests':0}
+
+    def tick(self):
+        from .script_jobs import key
+        from .script_trial import PREFIX as TRIAL
+        with self.store.connect() as db:
+            w=meta(db,PREFIX+self.project)
+        if not w or w['t0'] is None:return {'state':'not_started','provider_requests':0}
+        if time.time() >= w['t1']:
+            receipt=self._stop('deadline')
+            for day in range(7):self.archive(day)
+            self.archive(None,final=True)
+            return receipt
+        # Archive all elapsed buckets, including empty ones and late responses.
+        for day in range(max(0,min(7,int((time.time()-w['t0'])//DAY)))):self.archive(day)
+        if w['state']!='active':return {'state':w['state'],'provider_requests':0}
+        if time.time()<w['t0']:return {'state':'waiting_for_t0','provider_requests':0}
+        try:
+            with self.store.connect() as db:
+                authorize(db,self.token,self.project)
+                entries=[]
+                for v in w['snapshots'].values():
+                    job=meta(db,key(self.project,v['task'],1))
+                    row=self.store._current(db,self.project,v['task'],1)
+                    entries.append((v['task'],job,row['state']))
+            for task,job,state in entries:
+                if job['state']=='submission_unknown':return self._stop('error')
+                if job['state']=='queued':
+                    renew_queued_plan(self.jobs,self.token,self.project,task)
+                    result=self.jobs.step(self.token,self.project,task,1,self.master_key)
+                    if result.get('state')=='script_submission_unknown':return self._stop('error')
+                    return {'state':'stepped','task':task,'outcome':result}
+                # Reviewer accept/reject does not trigger an extra generation.
+                if state in ('awaiting_script_review','failed'):
+                    self.publish(task,1)
+            with self.store.connect() as db:
+                w=authorize(db,self.token,self.project);trial=meta(db,TRIAL+self.project)
+                check_limits(w,trial,time.time(),rewrite_parent=None)
+            snapshots=self.read_new()
+            if not isinstance(snapshots,list) or len(snapshots)>100:
+                raise RuntimeFault('WEEK_SOURCE_PAGE_LIMIT')
+            for snapshot in snapshots:
+                queued=queue_snapshot(self.jobs,self.token,self.project,snapshot)
+                if not queued.get('replayed'):
+                    return {'state':'queued','task':queued['task'],'provider_requests':0}
+            return {'state':'idle','provider_requests':0}
+        except RuntimeFault as error:
+            if str(error) in ('WEEK_DAILY_REQUEST_LIMIT','WEEK_DAILY_SAMPLE_LIMIT','WEEK_DAILY_BUDGET_LIMIT'):
+                next_day=w['t0']+(int((time.time()-w['t0'])//DAY)+1)*DAY
+                return {'state':'daily_limit_wait','reason':str(error),'next_at':min(next_day,w['t1']), 'provider_requests':0}
+            stopped=self._stop('error');stopped['error']=str(error);return stopped
+        except Exception:
+            # Transport/adapter errors must not be retried by a restart loop.
+            stopped=self._stop('error');stopped['error']='WEEK_ADAPTER_FAILED';return stopped

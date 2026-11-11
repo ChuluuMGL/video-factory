@@ -181,5 +181,39 @@ class WeekTests(unittest.TestCase):
         t['requests']['2']['outcome']='rewrite_pending'
         week.check_limits(w,t,self.t0+5,rewrite_parent='2')
 
+    def test_runner_processes_more_than_first_draft_and_archives_on_expiry(self):
+        start=self.start(); published=[]; archives=[]
+        remaining=[self.snapshot(1),self.snapshot(2)]
+        runner=week.WeekRunner(self.jobs,self.f.project,self.token,self.key,
+            read_new=lambda:remaining,publish=lambda task,rev:published.append(task),
+            archive=lambda day,**kw:archives.append((day,kw)))
+        self.assertEqual(runner.tick()['state'],'queued')
+        with patch.object(self.provider,'generate',return_value={'script':'draft','provider_id':'receipt',
+            'usage':{'prompt_tokens':100,'completion_tokens':50,'total_tokens':150}}):
+            self.assertEqual(runner.tick()['state'],'stepped')
+            self.assertEqual(runner.tick()['state'],'queued')
+            self.assertEqual(runner.tick()['state'],'stepped')
+        self.assertTrue(published)
+        with patch('video_factory.script_week.time.time',return_value=start['t1']):
+            self.assertEqual(runner.tick()['state'],'closed')
+        self.assertEqual(len(archives),8);self.assertTrue(archives[-1][1]['final'])
+
+    def test_fresh_service_approval_never_replays_reserved_attempt(self):
+        self.start();q=self.queue()
+        with self.f.store.connect() as db:
+            j=meta(db,key(self.f.project,q['task'],1));j['expires_at']=self.t0-1;save(db,key(self.f.project,q['task'],1),j)
+        week.renew_queued_plan(self.jobs,self.token,self.f.project,q['task'])
+        self.generate(q['task'])
+        with self.assertRaisesRegex(RuntimeFault,'ALREADY_RESERVED'):
+            week.renew_queued_plan(self.jobs,self.token,self.f.project,q['task'])
+
+    def test_runner_transport_failure_closes_grant_and_does_not_retry(self):
+        self.start(); calls=[]
+        def broken():calls.append(1);raise TimeoutError('synthetic transport')
+        runner=week.WeekRunner(self.jobs,self.f.project,self.token,self.key,
+            read_new=broken,publish=lambda *_:None,archive=lambda *a,**kw:None)
+        self.assertEqual(runner.tick()['error'],'WEEK_ADAPTER_FAILED')
+        self.assertEqual(runner.tick()['state'],'closed');self.assertEqual(len(calls),1)
+
 
 if __name__ == '__main__':unittest.main()
