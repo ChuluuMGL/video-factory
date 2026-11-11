@@ -69,3 +69,18 @@ class ContentPolicyTests(unittest.TestCase):
         self.assertEqual(set(Counter(picks.values()).values()),{2})
         self.assertEqual(plan_cta_batch(items),picks)
         self.assertNotEqual(plan_cta_batch(items[:1],recent=['Check the shade.'])['0'],'Check the shade.')
+    def test_preparation_binds_cta_into_provider_snapshot_not_just_documentation(self):
+        from video_factory.script_content_policy import prepare_policy_batch
+        from video_factory.prepared_script_provider import PreparedScriptProvider
+        samples=[{'sample_id':str(i),'messages':[{'role':'system','content':'Exact Hook unchanged.'},{'role':'user','content':'{}'}]} for i in range(8)]
+        before=copy.deepcopy(samples)
+        compiled=prepare_policy_batch(samples,{str(i):'held_package' for i in range(8)})
+        provider=PreparedScriptProvider(compiled,lambda *args:None)
+        self.assertEqual(samples,before);self.assertEqual(len(provider.samples),8)
+        for s in compiled.values():
+            self.assertIn(s['preferred_cta'],s['messages'][-1]['content'])
+            self.assertIn('Exact Hook unchanged.',s['messages'][0]['content'])
+
+    def test_precompiled_inputs_are_rejected_instead_of_stacking_conflicting_rules(self):
+        with self.assertRaisesRegex(ValueError,'UNCOMPILED_INPUT_REQUIRED'):
+            strengthen_messages(strengthen_messages([{'role':'system','content':'Original rule.'}]))

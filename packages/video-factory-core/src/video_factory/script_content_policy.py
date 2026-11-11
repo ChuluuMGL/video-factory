@@ -40,6 +40,8 @@ def strengthen_messages(messages):
     value=copy.deepcopy(messages)
     if not value or value[0].get('role')!='system':
         raise ValueError('SYSTEM_MESSAGE_REQUIRED')
+    if any('COPY TRIAL HARD CONSTRAINTS (' in str(m.get('content','')) for m in value):
+        raise ValueError('UNCOMPILED_INPUT_REQUIRED')
     value[0]['content']+='\nCOPY TRIAL HARD CONSTRAINTS ('+VERSION+'): '+RULES
     return value
 
@@ -114,4 +116,34 @@ def plan_cta_batch(items, recent=()):
         pool=SOFT_CTAS if kind=='shade_styling' else DIRECT_CTAS
         chosen=min(pool,key=lambda v:counts[v.casefold()])
         result[name]=chosen;counts[chosen.casefold()]+=1
+    return result
+
+
+def prepare_policy_batch(samples, ending_contexts, *, recent=()):
+    """Compile policy and diverse CTA preferences into fresh immutable snapshots.
+
+    Call only at planning time; never mutate existing approved snapshots. The
+    caller supplies reviewed ending contexts keyed by sample_id, not model data.
+    """
+    import hashlib
+    from .runtime_store import canonical, fingerprint, RuntimeFault
+    originals=list(samples)
+    ids=[s['sample_id'] for s in originals]
+    if len(ids)!=len(set(ids)) or set(ids)!=set(ending_contexts):
+        raise ValueError('CTA_BATCH_CONTEXT_INVALID')
+    picks=plan_cta_batch([{'id':i,'ending_context':ending_contexts[i]} for i in ids],recent)
+    result={}
+    for original in originals:
+        sample=copy.deepcopy(original)
+        sample['messages']=strengthen_messages(sample['messages'])
+        preferred=picks[sample['sample_id']]
+        sample['messages'].append({'role':'user','content':
+            'For this ending context ('+ending_contexts[sample['sample_id']]+'), prefer the CTA '
+            +preferred+' Use a natural contextual equivalent only if needed. Preserve exact Hook, '
+            'claims, timing and word limits; this is an invitation, not a new product fact.'})
+        if len(canonical(sample['messages']).encode())>32768:raise RuntimeFault('SCRIPT_INPUT_LIMIT')
+        sample.update(content_policy_version=VERSION,preferred_cta=preferred,
+                      ending_context=ending_contexts[sample['sample_id']])
+        sample['messages_sha256']=hashlib.sha256(canonical(sample['messages']).encode()).hexdigest()
+        result['snapshot:'+fingerprint(sample)]=sample
     return result

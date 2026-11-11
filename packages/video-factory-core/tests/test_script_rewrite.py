@@ -110,3 +110,36 @@ class RewriteProviderTests(PreparedScriptProviderTests):
             with self.assertRaisesRegex(RuntimeFault,'REWRITE_INPUT_LIMIT'):
                 self.provider().rewrite(self.sku,self.ref,'','synthetic-key',context)
             opener.assert_not_called()
+
+class RewriteContinuationTests(RewriteTests):
+    def test_success_does_not_block_next_sample_and_dispatch_recognizes_two_receipts(self):
+        from video_factory.script_trial_dispatch import continuation
+        self.first_failure();self.step()
+        self.review()
+        with self.f.store.connect() as db:
+            t=meta(db,PREFIX+self.f.project);t['checkpoint_task']='generated_one'
+            job=meta(db,key(self.f.project,'generated_one',1))
+            row=dict(self.f.store._current(db,self.f.project,'generated_one',1))
+        import time
+        self.assertEqual(continuation(t,[row],{'generated_one':job},['generated_one','next_sample'],now=time.time())['state'],'prepare_next')
+        self.args.update(task='next_sample',brief='A distinct new task')
+        p=self.jobs.prepare('synthetic-user-token',**self.args)
+        self.jobs.submit('synthetic-user-token',p['plan_sha256'],**self.args)
+        self.jobs.step(self.cap,self.f.project,'next_sample',1,self.key)
+        self.assertEqual(len(self.snapshot()['requests']),3)
+    def test_evidence_decision_is_final_not_an_invented_fact_rewrite(self):
+        self.enable_rewrite();self.queue()
+        with patch.object(self.provider,'generate',return_value={'decision':'needs_evidence','missing_facts':['Unknown shade'],
+            'provider_id':'evidence','usage':{'prompt_tokens':100,'completion_tokens':20,'total_tokens':120}}),patch.object(self.provider,'rewrite') as rw:
+            self.assertEqual(self.step()['error'],'SCRIPT_EVIDENCE_REQUIRED');self.step();rw.assert_not_called()
+        self.assertEqual(len(self.snapshot()['requests']),1)
+    def test_rewrite_transport_failure_keeps_second_intent_unknown_and_never_third(self):
+        self.first_failure()
+        with patch.object(self.provider,'rewrite',side_effect=RuntimeFault('SCRIPT_NETWORK_FAILED')) as rw:
+            self.assertEqual(self.step()['state'],'script_submission_unknown');self.step();self.assertEqual(rw.call_count,1)
+        self.assertEqual(len(self.snapshot()['requests']),2)
+    def test_old_plan_cannot_gain_retry_by_profile_change(self):
+        self.enable();self.queue()
+        profile(self.f.store,self.f.admin,self.f.project,'secret:script','customer_account',max_validation_rewrites=1)
+        with self.assertRaisesRegex(RuntimeFault,'SCRIPT_PLAN_CHANGED'):self.step()
+        self.assertEqual(len(self.snapshot()['requests']),0)
