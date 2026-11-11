@@ -12,11 +12,11 @@ class LinkedInputTests(unittest.TestCase):
         self.client = Mock()
         self.rows = {
             'recTask': {'record_id': 'recTask', 'fields': {
-                'Brief': 'approved fixture brief', 'SKU': ['recSku'],
+                'Brief': 'approved fixture brief', 'SKU': ['recSkuFixture'],
                 'Model': [{'id': 'recModel'}],
                 'Reference': {'record_ids': ['recReference']},
                 'Email': 'must not leave projection'}},
-            'recSku': {'record_id': 'recSku', 'fields': {'Name': 'fixture SKU'}},
+            'recSkuFixture': {'record_id': 'recSkuFixture', 'fields': {'Name': 'fixture SKU'}},
             'recModel': {'record_id': 'recModel', 'fields': {'Description': 'fixture model'}},
             'recReference': {'record_id': 'recReference', 'fields': {'Breakdown': 'fixture rhythm'}},
         }
@@ -24,7 +24,7 @@ class LinkedInputTests(unittest.TestCase):
         self.config = dict(base='basSourceFixture', task_table='tblTask',
                            task_fields=['Brief', 'SKU', 'Model', 'Reference'],
                            relations={
-                               'SKU': {'table': 'tblSku', 'fields': ['Name']},
+                               'SKU': {'table': 'tblSkuFixture', 'fields': ['Name']},
                                'Model': {'table': 'tblModel', 'fields': ['Description']},
                                'Reference': {'table': 'tblReference', 'fields': ['Breakdown']}})
 
@@ -45,8 +45,8 @@ class LinkedInputTests(unittest.TestCase):
         self.client.update_record.assert_not_called()
 
     def test_missing_multiple_or_url_link_rejected_before_material_read(self):
-        for value in (None, [], ['recSku', 'recOther'], ['https://untrusted.invalid'],
-                      {'record_ids': ['recSku'], 'base': 'basOther'}):
+        for value in (None, [], ['recSkuFixture', 'recOther'], ['https://untrusted.invalid'],
+                      {'record_ids': ['recSkuFixture'], 'base': 'basOther'}):
             self.client.reset_mock()
             self.rows['recTask']['fields']['SKU'] = value
             with self.assertRaises(RuntimeFault):
@@ -59,13 +59,13 @@ class LinkedInputTests(unittest.TestCase):
             record = urlsplit(path).path.split('/')[-1]
             counts[record] = counts.get(record, 0) + 1
             result = self.read(path)
-            if record == 'recSku' and counts[record] == 2:
+            if record == 'recSkuFixture' and counts[record] == 2:
                 result['record']['fields']['Name'] = 'changed'
             return result
         self.client.get.side_effect = read
         with self.assertRaisesRegex(RuntimeFault, 'LINKED_INPUT_CHANGED'):
             LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
-        self.assertEqual(counts['recSku'], 2)
+        self.assertEqual(counts['recSkuFixture'], 2)
 
     def test_task_relinked_during_read_discards_snapshot(self):
         count = 0
@@ -81,15 +81,15 @@ class LinkedInputTests(unittest.TestCase):
             LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
 
     def test_unapproved_or_task_table_relation_rejected_without_network(self):
-        for relations in ({}, {'Unknown': {'table': 'tblSku', 'fields': ['Name']}},
+        for relations in ({}, {'Unknown': {'table': 'tblSkuFixture', 'fields': ['Name']}},
                           {'SKU': {'table': 'tblTask', 'fields': ['Brief']}},
-                          {'SKU': {'table': 'tblSku', 'fields': ['Name'], 'base': 'basOther'}}):
+                          {'SKU': {'table': 'tblSkuFixture', 'fields': ['Name'], 'base': 'basOther'}}):
             config = {**self.config, 'relations': relations}
             with self.assertRaises(RuntimeFault): LinkedWeekInputs(self.client, **config)
         self.client.get.assert_not_called()
 
     def test_wrong_linked_record_and_network_failure_do_not_retry(self):
-        self.rows['recSku']['record_id'] = 'recOther'
+        self.rows['recSkuFixture']['record_id'] = 'recOther'
         with self.assertRaisesRegex(RuntimeFault, 'RECORD_MISMATCH'):
             LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
         self.client.reset_mock()
