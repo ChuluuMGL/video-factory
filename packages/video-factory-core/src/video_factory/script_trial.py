@@ -28,6 +28,7 @@ def consecutive_validation_failures(trial):
     count=0
     for digest,row in sorted(trial['requests'].items(),key=lambda item:item[1]['submitted_at']):
         if digest in trial.get('quarantined_requests',{}):continue
+        if row.get('outcome') in ('rewrite_pending','rewrite_completed'):continue
         if row.get('outcome')=='validation_failed':count+=1
         elif row['state']=='usage_accounted':count=0
         # A queued/inflight request does not erase preceding failures.
@@ -43,7 +44,8 @@ def settle_validation_failure(store,db,project,task,revision):
     if job.get('state')=='validation_failed' and row['state']=='failed':return True
     if (job.get('submission_error')!='SCRIPT_VALIDATION_FAILED' or job['state']!='submission_unknown'
             or row['state']!='script_submission_unknown'):return False
-    history=meta(db,'script:receipt:'+job['plan_sha256']) or []
+    request_id=job.get('request_id',job['plan_sha256'])
+    history=meta(db,'script:receipt:'+request_id) or []
     responses=[r for r in history if r.get('reason')=='RESPONSE_RECEIVED']
     if (len(responses)!=1 or not any(r.get('reason')=='STRUCTURE_INVALID' for r in history)):
         raise RuntimeFault('TRIAL_VALIDATION_RECEIPT_MISSING')
@@ -51,11 +53,11 @@ def settle_validation_failure(store,db,project,task,revision):
     if (response.get('http_status')!=200 or response.get('truncated') is not False
             or response.get('finish_reason')!='stop' or not response.get('provider_id_sha256')):
         raise RuntimeFault('TRIAL_VALIDATION_RECEIPT_INVALID')
-    request=trial['requests'].get(job['plan_sha256'])
+    request=trial['requests'].get(request_id)
     if not request or (request['task'],request['revision'])!=(task,revision):
         raise RuntimeFault('TRIAL_RECEIPT_CONFLICT')
-    settle(db,project,job['plan_sha256'],{'provider_id':'sha256:'+response['provider_id_sha256'],'usage':response.get('usage')})
-    trial=meta(db,PREFIX+project);request=trial['requests'][job['plan_sha256']]
+    settle(db,project,request_id,{'provider_id':'sha256:'+response['provider_id_sha256'],'usage':response.get('usage')})
+    trial=meta(db,PREFIX+project);request=trial['requests'][request_id]
     if request['state']!='usage_accounted':return False
     request['outcome']='validation_failed';save(db,PREFIX+project,trial)
     job['state']='validation_failed';job['failure_receipt_sha256']=fingerprint(history)
@@ -146,9 +148,11 @@ def resume(store,token,project,*,t0,notice_sha256,expected_sha256,quarantine,che
             'remaining_requests':LIMIT-len(trial['requests']),'reserved_micro':sum(r['cost_upper_micro'] for r in trial['requests'].values())}
 
 
-def reserve(db,plan,binding,request_id):
+def reserve(db,plan,binding,request_id,*,rewrite_parent=None):
     trial=meta(db,PREFIX+plan['project'])
-    if trial is None:return
+    if trial is None:
+        if rewrite_parent is not None:raise RuntimeFault('SCRIPT_REWRITE_TRIAL_REQUIRED')
+        return
     now=time.time()
     from .script_trial_batch import batch_policy, request_limit
     batch=batch_policy(trial)
@@ -164,6 +168,12 @@ def reserve(db,plan,binding,request_id):
     source=plan.get('native_source') or {}
     digest=fingerprint([plan['sku'],plan['brief'],plan['feedback'],source.get('source_revision')])
     rows=trial['requests']
+    pending=[rid for rid,r in rows.items() if r.get('outcome')=='rewrite_pending']
+    if pending and pending!=[rewrite_parent]:raise RuntimeFault('TRIAL_REWRITE_PENDING')
+    if rewrite_parent is not None:
+        from .script_rewrite import check_reservation
+        check_reservation(db,plan,request_id,rewrite_parent,trial)
+        digest=fingerprint([digest,'validation-rewrite',rewrite_parent])
     if validation_policy(trial) and consecutive_validation_failures(trial)>=3:
         raise RuntimeFault('TRIAL_CONSECUTIVE_FAILURE_LIMIT')
     if request_id in rows or any(r['input_digest']==digest for r in rows.values()):
@@ -175,6 +185,7 @@ def reserve(db,plan,binding,request_id):
     if exposure+RESERVE>CAP:raise RuntimeFault('TRIAL_BUDGET_LIMIT')
     rows[request_id]={'state':'reserved','input_digest':digest,'submitted_at':now,
                       'task':plan['task'],'revision':plan['revision'],'cost_upper_micro':RESERVE}
+    if rewrite_parent is not None:rows[request_id]['rewrite_parent']=rewrite_parent
     save(db,PREFIX+plan['project'],trial)
 
 
@@ -192,6 +203,8 @@ def settle(db,project,request_id,result):
     if valid:
         row.update(state='usage_accounted',usage=usage,
                    cost_upper_micro=usage['prompt_tokens']*2+usage['completion_tokens']*8)
+        if row.get('rewrite_parent'):
+            trial['requests'][row['rewrite_parent']]['outcome']='rewrite_completed'
     else:
         row['state']='usage_unknown'
         trial['enabled']=False

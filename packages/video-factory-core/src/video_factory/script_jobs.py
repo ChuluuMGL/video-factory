@@ -14,8 +14,10 @@ from .script_provider import ScriptProvider,MODEL
 def key(project,task,revision):return 'script:job:'+fingerprint([project,task,revision])
 
 
-def profile(store,token,project,credential_ref,billing_owner):
+def profile(store,token,project,credential_ref,billing_owner,*,max_validation_rewrites=0):
     identifier(project);identifier(billing_owner)
+    if type(max_validation_rewrites) is not int or max_validation_rewrites not in (0,1):
+        raise RuntimeFault('SCRIPT_REWRITE_LIMIT_INVALID')
     if not isinstance(credential_ref,str) or not re.fullmatch(r'secret:[A-Za-z0-9_-]{1,96}',credential_ref):
         raise RuntimeFault('SCRIPT_CREDENTIAL_REFERENCE_REQUIRED')
     with store.connect() as db:
@@ -24,6 +26,7 @@ def profile(store,token,project,credential_ref,billing_owner):
         secret=db.execute('SELECT revision FROM vault WHERE alias=?',(credential_ref[7:],)).fetchone()
         if not setup or not secret:raise RuntimeFault('SCRIPT_PROJECT_AND_SECRET_REQUIRED')
         value={'model':MODEL,'credential_ref':credential_ref,'credential_revision':secret[0],'billing_owner':billing_owner}
+        if max_validation_rewrites:value['max_validation_rewrites']=1
         save(db,'script:profile:'+project,value);store.audit(db,actor,'script_provider_configured',project)
     return {'project':project,'model':MODEL,'credential_saved':True,'provider_requests':0}
 
@@ -137,7 +140,7 @@ class ScriptJobs:
                         raise RuntimeFault('SCRIPT_NATIVE_SOURCE_REVISION_MUST_ADVANCE')
         value={'project':project,'task':task,'sku':sku,'brief':brief,'feedback':feedback[-8000:],
                'revision':expected_revision+1,'actor':actor,'deployment':deployment,'configuration_digest':config,
-               'binding_sha256':fingerprint(binding),'profile':settings,'max_submissions':1,
+               'binding_sha256':fingerprint(binding),'profile':settings,'max_submissions':1+settings.get('max_validation_rewrites',0),
                'native_config_sha256':fingerprint(native),'native_source':native_source}
         return {'plan':value,'plan_sha256':fingerprint(value),'provider_requests':0,'approval_required':True}
 
@@ -271,14 +274,17 @@ class ScriptJobs:
             if not check or check[0]!=settings['credential_revision']:raise RuntimeFault('SCRIPT_CREDENTIAL_CHANGED')
             if fingerprint(self.bridge._binding(db,project))!=plan['binding_sha256'] or job['expires_at']<time.time():raise RuntimeFault('SCRIPT_PLAN_CHANGED')
             from .script_trial import reserve
-            reserve(db,plan,self.bridge._binding(db,project),job['plan_sha256'])
+            from .script_rewrite import check_attempt
+            parent=check_attempt(db,job)
+            request_id=job.get('request_id',job['plan_sha256'])
+            reserve(db,plan,self.bridge._binding(db,project),request_id,rewrite_parent=parent)
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
         from .script_receipts import capture
         def persist_receipt(receipt):
             with self.store.connect() as db:
-                receipt_key='script:receipt:'+job['plan_sha256']
+                receipt_key='script:receipt:'+request_id
                 history=meta(db,receipt_key) or []
                 if len(history)>=8:raise RuntimeFault('SCRIPT_RECEIPT_LIMIT')
                 history.append(receipt);save(db,receipt_key,history)
@@ -287,7 +293,10 @@ class ScriptJobs:
             from .script_trial import validation_policy, PREFIX
             with self.store.connect() as db:details=validation_policy(meta(db,PREFIX+project))
             with capture(persist_receipt,failure_details=details):
-                result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
+                if job.get('rewrite_context'):
+                    result=self.provider.rewrite(plan['sku'],plan['brief'],plan['feedback'],secret,job['rewrite_context'])
+                else:
+                    result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
         except Exception as error:
             allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
                      'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY',
@@ -302,14 +311,17 @@ class ScriptJobs:
                 if code=='SCRIPT_VALIDATION_FAILED':
                     from .script_trial import settle_validation_failure
                     if settle_validation_failure(self.store,db,project,task,revision):
-                        return {'state':'failed','error':code,'automatic_resubmit':False,'usage_settled':True}
+                        from .script_rewrite import queue_rewrite
+                        queued=queue_rewrite(self.store,db,project,task,revision,self.provider)
+                        return {'state':'script_queued' if queued else 'failed','error':code,
+                                'automatic_resubmit':queued,'usage_settled':True,'rewrite_queued':queued}
             # Preserve the original intent and existing no-resubmit boundary.
             # An HTTP diagnosis alone never authorizes a new paid request.
             return {'state':'script_submission_unknown','error':code,'automatic_resubmit':False}
         with self.store.connect() as db:
             # Persist provider receipt even if subsequent draft attachment fails.
             from .script_trial import settle
-            settle(db,project,job['plan_sha256'],result)
+            settle(db,project,request_id,result)
             job['provider_id']=result['provider_id'];job['result']=result;job['state']='received'
             save(db,key(project,task,revision),job)
         with self.store.connect() as db:

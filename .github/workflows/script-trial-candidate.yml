@@ -32,3 +32,6 @@ jobs:
 
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_content_policy.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_trial_batch.py' -v
+
+          sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_rewrite.py' -v
+          node packages/video-factory-core/tests/test_shot_presentation_policy.mjs

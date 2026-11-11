@@ -36,7 +36,7 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
         job = jobs.get(task)
         if not job or job['plan']['revision'] != row['revision']:
             raise RuntimeFault('TRIAL_DISPATCH_JOB_CONFLICT')
-        digest = job['plan_sha256']
+        digest = job.get('request_id',job['plan_sha256'])
         if digest in excluded:
             q = excluded[digest]
             if (q['task'], q['revision']) != (task, row['revision']):
@@ -71,7 +71,7 @@ def continuation(trial, rows, jobs, planned_tasks, *, now):
     pending = False
     for digest, request in requests.items():
         task = request['task']
-        if task not in tasks or jobs[task]['plan_sha256'] != digest:
+        if task not in tasks or digest not in {jobs[task]['plan_sha256'],jobs[task].get('request_id',jobs[task]['plan_sha256'])}:
             raise RuntimeFault('TRIAL_DISPATCH_ORPHAN_REQUEST')
         if digest in excluded:
             continue
