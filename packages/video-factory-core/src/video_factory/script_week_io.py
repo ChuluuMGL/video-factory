@@ -105,7 +105,7 @@ class LinkedWeekInputs:
                 client, base=base, tables={table: config['fields']}))
 
     @staticmethod
-    def _linked_id(value):
+    def _linked_id(value, table):
         # Public Base API link values are record ID arrays. Some API clients
         # normalize these as {record_ids: [...]}; the CLI uses [{id: ...}].
         if isinstance(value, dict) and set(value) == {'record_ids'}:
@@ -114,14 +114,23 @@ class LinkedWeekInputs:
             raise RuntimeFault('WEEK_EXACT_ONE_LINK_REQUIRED')
         item = value[0]
         if isinstance(item, dict):
-            item = item.get('record_id', item.get('id'))
+            if 'table_id' in item and item['table_id'] != table:
+                raise RuntimeFault('WEEK_LINK_TABLE_MISMATCH')
+            if 'record_ids' in item:
+                ids = item['record_ids']
+                if (not isinstance(ids, list) or len(ids) != 1
+                        or 'record_id' in item or 'id' in item):
+                    raise RuntimeFault('WEEK_EXACT_ONE_LINK_REQUIRED')
+                item = ids[0]
+            else:
+                item = item.get('record_id', item.get('id'))
         return resource(item, 'rec')
 
     def snapshot(self, record):
         first = self.source.record(self.task_table, record)
         # Validate every link before reading any linked record.
-        ids = {field: self._linked_id(first['fields'].get(field))
-               for field in self.relations}
+        ids = {field: self._linked_id(first['fields'].get(field), table)
+               for field, (table, _) in self.relations.items()}
         materials = {}
         for field, (table, reader) in self.relations.items():
             materials[field] = reader.record(table, ids[field])

@@ -67,6 +67,28 @@ class LinkedInputTests(unittest.TestCase):
             LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
         self.assertEqual(counts['recSkuFixture'], 2)
 
+    def test_native_link_envelope_accepts_exact_configured_table(self):
+        self.rows['recTask']['fields']['SKU'] = [{
+            'record_ids': ['recSkuFixture'], 'table_id': 'tblSkuFixture',
+            'text': 'fixture', 'text_arr': ['fixture'], 'type': 'text'}]
+        result = LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
+        self.assertEqual(result['provenance']['linked_records']['SKU']['record'],
+                         'recSkuFixture')
+        self.assertEqual(self.client.get.call_count, 8)
+
+    def test_native_link_wrong_table_multiple_or_ambiguous_ids_rejected(self):
+        for item in (
+            {'record_ids': ['recSkuFixture'], 'table_id': 'tblOther'},
+            {'record_ids': ['recSkuFixture', 'recOther'], 'table_id': 'tblSkuFixture'},
+            {'record_ids': [], 'table_id': 'tblSkuFixture'},
+            {'record_ids': ['recSkuFixture'], 'id': 'recOther'},
+        ):
+            self.client.reset_mock()
+            self.rows['recTask']['fields']['SKU'] = [item]
+            with self.assertRaises(RuntimeFault):
+                LinkedWeekInputs(self.client, **self.config).snapshot('recTask')
+            self.assertEqual(self.client.get.call_count, 1)
+
     def test_task_relinked_during_read_discards_snapshot(self):
         count = 0
         def read(path):
