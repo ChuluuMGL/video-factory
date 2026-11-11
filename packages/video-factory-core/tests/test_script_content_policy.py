@@ -84,3 +84,34 @@ class ContentPolicyTests(unittest.TestCase):
     def test_precompiled_inputs_are_rejected_instead_of_stacking_conflicting_rules(self):
         with self.assertRaisesRegex(ValueError,'UNCOMPILED_INPUT_REQUIRED'):
             strengthen_messages(strengthen_messages([{'role':'system','content':'Original rule.'}]))
+
+    def test_exact_packaging_quote_allowed_only_for_bound_sku(self):
+        claims=[{'id':'identity','text':'Synthetic'},
+                {'id':'p','kind':'package_verbatim','text':'Ultra Long-Lasting'}]
+        for line in ['Ultra Long-Lasting.', 'The box says "Ultra Long-Lasting".']:
+            d=self.draft();d['storyboard']['shots'][0]['voiceover_en']=line
+            normalize_and_guard(d,claims)
+            with self.assertRaises(ValidationFailure):self.apply(d)
+        for line in ['Permanent Hair Color.', 'Intense Hair Color.', 'Permanent Color.']:
+            d=self.draft();d['storyboard']['shots'][0]['voiceover_en']=line
+            with self.assertRaises(ValidationFailure) as e:normalize_and_guard(d,claims)
+            self.assertEqual(e.exception.code,'UNAPPROVED_PACKAGE_QUOTE')
+
+    def test_quote_exceptions_never_allow_forbidden_words_or_extra_guarantee(self):
+        claims=[{'id':'identity'}, {'id':'p','kind':'package_verbatim','text':'Ultra Long-Lasting'}]
+        for line in ['Perfectly Cover Gray Hair', 'Restore Your Damaged Hair', 'Healthy Look',
+                     'Ultra Long-Lasting for six weeks.', 'Guaranteed Ultra Long-Lasting.',
+                     'Ultra Long-Lasting keeps it red.', 'Ultra Long-Lasting never fades.']:
+            for key in ['voiceover_en','on_screen_text_en','visual_description'] if line=='Healthy Look' else ['voiceover_en']:
+                d=self.draft();d['storyboard']['shots'][0][key]=line
+                with self.assertRaises(ValidationFailure):normalize_and_guard(d,claims)
+
+    def test_box_summary_attribution_and_exact_text_required(self):
+        summary='The box photo shows a muted copper shade.'
+        claims=[{'id':'identity'}, {'id':'tone','kind':'box_photo_summary','text':summary}]
+        d=self.draft();d['storyboard']['shots'][0]['voiceover_en']=summary
+        normalize_and_guard(d,claims)
+        for line in ['Your hair becomes a muted copper shade.',
+                     'The box photo shows a brighter copper shade.']:
+            d['storyboard']['shots'][0]['voiceover_en']=line
+            with self.assertRaises(ValidationFailure):normalize_and_guard(d,claims)

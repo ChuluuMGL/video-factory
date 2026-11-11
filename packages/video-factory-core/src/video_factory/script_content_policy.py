@@ -7,11 +7,18 @@ import copy
 import re
 from .script_receipts import ValidationFailure
 
-VERSION = 'approved-claims-cta-continuity-v2'
+VERSION = 'approved-claims-cta-continuity-v3'
 RULES = (
     'Product facts in dialogue, captions and visuals MUST come only from approved_claims. '
     'Identity-only claims permit identity only. Never infer facts from package artwork, '
-    'prior scripts or tone images. No efficacy, coverage or color-retention promises '
+    'prior scripts or tone images. Explicitly approved box_photo_summary claims may be '
+    'quoted ONLY with their full "The box photo shows ..." attribution; these describe '
+    'the reference photo, not actual dye results. Approved package_verbatim claims may '
+    'be quoted exactly, with case changes only. Do not add degree, duration, superiority '
+    'or a result guarantee. Unlisted package phrases are not authorized for this SKU. '
+    'Never use Perfectly Cover Gray Hair, Restore Your Damaged Hair, Healthy Look, '
+    'or synonymous efficacy assertions, even if present on the package. Apart from '
+    'the explicitly approved exact packaging quotes, no efficacy, coverage or color-retention promises '
     '(including "keeps it red"), personal-use results, or unauthorized package contents. '
     'Use ordinary preference and invitation language instead. If the fixed task cannot '
     'be answered without an unsupported fact, return needs_evidence; never invent it. '
@@ -60,11 +67,18 @@ def normalize_and_guard(value, approved_claims):
     for i,shot in enumerate(shots):
         field='storyboard.shots['+str(i)+']'
         speech=' '.join(str(shot.get(k,'')) for k in ('voiceover_en','on_screen_text_en'))
+        guard_approved_wording(speech, approved_claims, field+'.voiceover_en')
+        guard_approved_wording(str(shot.get('visual_description','')), approved_claims,
+                               field+'.visual_description', visual=True)
+        checked_speech=speech
+        for claim in approved_claims:
+            if claim.get('kind')=='package_verbatim':
+                checked_speech=re.sub(r'\b(?:the )?box says [\"“]'+re.escape(claim['text'])+r'[\"”]', '', checked_speech, flags=re.I)
         if re.search(r'\b(?:keeps? (?:it |your (?:hair|colou?r) )?(?:red|vibrant|bright)|'
                      r'(?:colou?r|red) (?:lasts?|stays?)|fade[- ]?(?:proof|resistant)|'
                      r'(?:box|packag\w*) (?:lists?|says?|contains?|includes?)|'
                      r'(?:guarantee\w*|proven) (?:cover\w*|results?)|'
-                     r'(?:covers?|eliminates?) (?:all |your )?(?:gr[ae]y|white))\b',speech,re.I):
+                     r'(?:covers?|eliminates?) (?:all |your )?(?:gr[ae]y|white))\b',checked_speech,re.I):
             raise ValidationFailure(field+'.voiceover_en','UNAUTHORIZED_PRODUCT_PROMISE',
                                     'Efficacy, retention or package-fact assertion forbidden in this trial')
         assets=shot.get('asset_references',[])
@@ -94,6 +108,47 @@ def normalize_and_guard(value, approved_claims):
                     'CTA package must be closed: front-facing holder speaking, or product-only static/rotation with voiceover')
     shots[-1]['visual_evidence']='cta_product'
     return result
+
+
+PACKAGE_PHRASES=('Ultra Long-Lasting','Permanent Hair Color','Intense Hair Color','Permanent Color')
+FORBIDDEN_PHRASES=('Perfectly Cover Gray Hair','Restore Your Damaged Hair','Healthy Look')
+
+
+def guard_approved_wording(text, claims, field, *, visual=False):
+    """Deterministic quote guards, not a general semantic truth classifier.
+
+    Approved claims come from a trusted immutable per-SKU snapshot, never model
+    output. An exception authorizes a phrase, not the rest of its sentence.
+    """
+    package={c.get('text','').casefold() for c in claims
+             if c.get('kind')=='package_verbatim'}
+    summaries=[c.get('text','') for c in claims if c.get('kind')=='box_photo_summary']
+    banned=set(FORBIDDEN_PHRASES)
+    for c in claims:banned.update(c.get('forbidden_verbatim',[]))
+    for phrase in banned:
+        if phrase and re.search(r'(?<!\w)'+re.escape(phrase)+r'(?!\w)',text,re.I):
+            raise ValidationFailure(field,'FORBIDDEN_PRODUCT_CLAIM','Forbidden packaging/efficacy phrase')
+    for phrase in PACKAGE_PHRASES:
+        if re.search(r'(?<!\w)'+re.escape(phrase)+r'(?!\w)',text,re.I) and phrase.casefold() not in package:
+            raise ValidationFailure(field,'UNAPPROVED_PACKAGE_QUOTE','Quote is not approved for this SKU')
+    # Do not erase approved phrases before checking modifiers: "guaranteed
+    # Ultra Long-Lasting for weeks" must not pass merely because the quote does.
+    if any(re.search(re.escape(p),text,re.I) for p in PACKAGE_PHRASES):
+        if re.search(r'\b(?:guarantee\w*|forever|never fades?|longer|longest|best|superior|'
+                     r'more intense|extra intense|even more|weeks?|months?|years?|days?|hours?)\b',text,re.I):
+            raise ValidationFailure(field,'PACKAGE_QUOTE_EXPANDED','No added degree, duration or guarantee')
+    rest=text
+    for summary in summaries:
+        if summary:rest=re.sub(re.escape(summary), '', rest, flags=re.I)
+    if re.search(r'\bthe box photo shows\b',rest,re.I):
+        raise ValidationFailure(field,'UNAPPROVED_BOX_PHOTO_SUMMARY','Use the exact approved attributed summary')
+    if not visual:
+        # Exact summary text with its attribution removed is not an authorized
+        # claim about the customer's hair. Other paraphrases still need review.
+        for summary in summaries:
+            tail=re.sub(r'^The box photo shows\s+', '', summary, flags=re.I).rstrip('.')
+            if tail and re.search(re.escape(tail),rest,re.I):
+                raise ValidationFailure(field,'BOX_PHOTO_ATTRIBUTION_REQUIRED','Retain box-photo attribution')
 
 
 SOFT_CTAS=('Check the shade.','Explore this shade.','Find your shade match.','See the color details.')
