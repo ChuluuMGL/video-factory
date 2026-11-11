@@ -21,6 +21,7 @@ jobs:
       - run: python -m pip install ./packages/video-factory-core
       - name: Copy-only trial fences and bounded provider receipts, no external network
         run: |
+          sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_linked_inputs.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_io.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_service.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_provider.py' -v

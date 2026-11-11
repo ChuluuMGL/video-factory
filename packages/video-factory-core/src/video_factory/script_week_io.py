@@ -79,6 +79,68 @@ class ReadOnlyWeekSource:
         return row
 
 
+class LinkedWeekInputs:
+    """Read only the exact records linked by one approved source task.
+
+    Relations and field projections are operator configuration, not task data.
+    No material table listing, attachment download, or plan-document discovery
+    is exposed here. A stable double read is evidence of the observed input,
+    not proof of plan approval or of a matching production baseline.
+    """
+    def __init__(self, client, *, base, task_table, task_fields, relations):
+        if not isinstance(relations, dict) or not 1 <= len(relations) <= 3:
+            raise RuntimeFault('WEEK_RELATION_ALLOWLIST_INVALID')
+        self.task_table = resource(task_table, 'tbl')
+        self.source = ReadOnlyWeekSource(client, base=base,
+                                        tables={task_table: task_fields})
+        self.relations = {}
+        for field, config in relations.items():
+            if (field not in self.source.tables[task_table]
+                    or not isinstance(config, dict)
+                    or set(config) != {'table', 'fields'}
+                    or config['table'] == task_table):
+                raise RuntimeFault('WEEK_RELATION_ALLOWLIST_INVALID')
+            table = resource(config['table'], 'tbl')
+            self.relations[field] = (table, ReadOnlyWeekSource(
+                client, base=base, tables={table: config['fields']}))
+
+    @staticmethod
+    def _linked_id(value):
+        # Public Base API link values are record ID arrays. Some API clients
+        # normalize these as {record_ids: [...]}; the CLI uses [{id: ...}].
+        if isinstance(value, dict) and set(value) == {'record_ids'}:
+            value = value['record_ids']
+        if not isinstance(value, list) or len(value) != 1:
+            raise RuntimeFault('WEEK_EXACT_ONE_LINK_REQUIRED')
+        item = value[0]
+        if isinstance(item, dict):
+            item = item.get('record_id', item.get('id'))
+        return resource(item, 'rec')
+
+    def snapshot(self, record):
+        first = self.source.record(self.task_table, record)
+        # Validate every link before reading any linked record.
+        ids = {field: self._linked_id(first['fields'].get(field))
+               for field in self.relations}
+        materials = {}
+        for field, (table, reader) in self.relations.items():
+            materials[field] = reader.record(table, ids[field])
+        for field, (table, reader) in self.relations.items():
+            if reader.record(table, ids[field]) != materials[field]:
+                raise RuntimeFault('WEEK_LINKED_INPUT_CHANGED')
+        if self.source.record(self.task_table, record) != first:
+            raise RuntimeFault('WEEK_SOURCE_INPUT_CHANGED')
+        inputs = {'task': first, 'materials': materials}
+        return {'inputs': inputs, 'input_sha256': fingerprint(inputs),
+                'provenance': {'base': self.source.base,
+                               'task_table': self.task_table,
+                               'task_record': record,
+                               'linked_records': {
+                                   field: {'table': table, 'record': ids[field],
+                                           'sha256': fingerprint(materials[field])}
+                                   for field, (table, _) in self.relations.items()}}}
+
+
 class CopyOnlyWeekWriter:
     """Fixed copy target and machine-owned fields; preserve human review fields.
 
