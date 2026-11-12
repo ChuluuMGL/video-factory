@@ -22,6 +22,7 @@ jobs:
       - name: Frozen input discovery and baseline provenance
         run: |
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_pairing.py' -v
+          sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_setup.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_projection.py' -v
           sudo unshare --net -- sh -c 'ip link set lo up; exec "$@"' sh "$(command -v python)" -m unittest discover -s packages/video-factory-core/tests -p 'test_script_week_inputs.py' -v
       - name: Copy-only trial fences and bounded provider receipts, no external network
