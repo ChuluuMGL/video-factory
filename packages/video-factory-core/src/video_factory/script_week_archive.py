@@ -43,11 +43,20 @@ def review_export(store, project, *, day=None, baselines=None, redact_values=())
                             'validation': {k:receipt['validation'].get(k) for k in ('field','code','reason')},
                             'model_content_redacted': receipt.get('model_content_redacted'),
                             'truncated': receipt.get('content_capture_truncated')})
+            requirements = snapshot['brief']
+            if requirements.startswith('snapshot:'):
+                try:
+                    summary = json.loads(snapshot['input_summary'])
+                    requirements = summary['requirement']
+                    if not isinstance(requirements,str) or not requirements: raise ValueError
+                except (ValueError, KeyError, TypeError):
+                    requirements = '[Frozen task requirements unavailable; inspect input evidence]'
             rows.append({'task': task, 'source_key_sha256': source_key, 'day': bucket + 1,
-                'task_requirements': snapshot['brief'], 'input_summary': snapshot['input_summary'],
+                'task_requirements': requirements, 'input_summary': snapshot['input_summary'],
                 'input_sha256': snapshot['input_sha256'], 'sku_id': snapshot['sku_id'],
                 'baseline': {k:base['outputs'][k] if matched else None for k in OUTPUTS},
                 'pairing_status': 'matched' if matched else 'unpaired_or_pending',
+                'pairing_reason': None if matched else base.get('reason','production_execution_receipt_missing'),
                 'candidate': {k:candidate.get(k) for k in OUTPUTS},
                 'status': current['state'], 'failure_class': job.get('submission_error'),
                 'failures': failures, 'request_count': len(attempts),
