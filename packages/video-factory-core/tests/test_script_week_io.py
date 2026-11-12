@@ -13,6 +13,14 @@ class WeekIOTests(unittest.TestCase):
         self.source = ReadOnlyWeekSource(self.client, base='basProductionFixture',
                                         tables={'tblTasks': ['Task', 'SKU'], 'tblSkuFixture': ['Name']})
 
+    def test_machine_only_ledger_still_rejects_unlisted_fields(self):
+        writer = CopyOnlyWeekWriter(self.client, source_base='basSource', copy_base='basCopy',
+            table='tblLedger', machine_fields=['Request', 'Cost'], human_fields=[], identity_field='Request')
+        self.assertEqual(writer._patch({'Request':'one', 'Cost':'0'}), {'Request':'one', 'Cost':'0'})
+        with self.assertRaisesRegex(RuntimeFault, 'WEEK_COPY_FIELD_DENIED'):
+            writer._patch({'Request':'one', 'Review':'approved'})
+        self.client.post.assert_not_called()
+
     def test_complete_get_pagination_filters_private_fields(self):
         self.client.get.side_effect = [
             {'items': [{'record_id': 'recOneFixture', 'fields': {'Task': 'A', 'Email': 'hidden'}}],

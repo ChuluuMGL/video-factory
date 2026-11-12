@@ -160,7 +160,8 @@ class CopyOnlyWeekWriter:
                  human_fields, identity_field):
         resource(source_base); resource(copy_base); resource(table, 'tbl')
         if source_base == copy_base: raise RuntimeFault('WEEK_COPY_TARGET_REQUIRED')
-        self.fields, self.human = _fields(machine_fields), _fields(human_fields)
+        self.fields = _fields(machine_fields)
+        self.human = () if human_fields in ([], ()) else _fields(human_fields)
         if set(self.fields) & set(self.human) or identity_field not in self.fields:
             raise RuntimeFault('WEEK_COPY_FIELD_OWNERSHIP_INVALID')
         self._client, self.base, self.table = client, copy_base, table
