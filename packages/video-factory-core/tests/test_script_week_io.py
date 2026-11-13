@@ -55,6 +55,24 @@ class WeekIOTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'PAGE_INVALID'):
             self.source.records('tblTasks')
 
+    def test_explicit_empty_table_without_items(self):
+        self.client.get.return_value = {'has_more': False, 'total': 0}
+        self.assertEqual(self.source.records('tblTasks'), [])
+        self.client.post.assert_not_called()
+
+    def test_missing_items_never_masks_partial_or_nonempty_scan(self):
+        for payload in ({'has_more':False, 'total':1}, {'has_more':True, 'total':0},
+                        {'has_more':False}, {'has_more':False, 'total':False},
+                        {'has_more':False, 'total':0, 'items':None}):
+            self.client.get.return_value = payload
+            with self.assertRaisesRegex(RuntimeFault, 'PAGE_INVALID'):
+                self.source.records('tblTasks')
+        self.client.get.side_effect = [
+            {'items':[], 'has_more':True, 'page_token':'next'},
+            {'has_more':False, 'total':0}]
+        with self.assertRaisesRegex(RuntimeFault, 'PAGE_INVALID'):
+            self.source.records('tblTasks')
+
     def test_other_tables_denied_before_network(self):
         for method, args in [(self.source.records, ('tblUnapproved',)),
                              (self.source.record, ('tblUnapproved', 'recOneFixture'))]:

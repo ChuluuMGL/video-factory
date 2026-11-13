@@ -53,6 +53,14 @@ class ReadOnlyWeekSource:
                      'automatic_fields': 'false', 'text_field_as_array': 'false'}
             if page is not None: query['page_token'] = page
             data = self._client.get(path + '?' + urlencode(query))
+            # Feishu omits items for an empty table. Accept only its explicit
+            # terminal zero-total shape; missing items on a partial or nonempty
+            # scan must still fail rather than silently dropping records.
+            if (isinstance(data, dict) and 'items' not in data
+                    and data.get('has_more') is False
+                    and type(data.get('total')) is int and data['total'] == 0
+                    and not rows and page is None):
+                return []
             if (not isinstance(data, dict) or not isinstance(data.get('items'), list)
                     or len(data['items']) > 20 or type(data.get('has_more')) is not bool):
                 raise RuntimeFault('WEEK_SOURCE_PAGE_INVALID')
