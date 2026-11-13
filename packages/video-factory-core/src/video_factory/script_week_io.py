@@ -48,13 +48,13 @@ class ReadOnlyWeekSource:
     def records(self, table):
         path = self._path(table)
         page, seen_pages, seen_records, rows = None, set(), set(), []
-        for _ in range(20):
-            query = {'page_size': 100, 'field_names': json.dumps(self.tables[table]),
+        for _ in range(100):
+            query = {'page_size': 20, 'field_names': json.dumps(self.tables[table]),
                      'automatic_fields': 'false', 'text_field_as_array': 'false'}
             if page is not None: query['page_token'] = page
             data = self._client.get(path + '?' + urlencode(query))
             if (not isinstance(data, dict) or not isinstance(data.get('items'), list)
-                    or len(data['items']) > 100 or type(data.get('has_more')) is not bool):
+                    or len(data['items']) > 20 or type(data.get('has_more')) is not bool):
                 raise RuntimeFault('WEEK_SOURCE_PAGE_INVALID')
             for raw in data['items']:
                 row = self._row(table, raw)

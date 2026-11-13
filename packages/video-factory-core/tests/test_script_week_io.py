@@ -31,6 +31,7 @@ class WeekIOTests(unittest.TestCase):
         for call in self.client.get.call_args_list:
             query = parse_qs(urlsplit(call.args[0]).query)
             self.assertIn('field_names', query)
+            self.assertEqual(query['page_size'], ['20'])
             self.assertEqual(query['automatic_fields'], ['false'])
         self.client.post.assert_not_called(); self.client.update_record.assert_not_called()
 
@@ -43,11 +44,16 @@ class WeekIOTests(unittest.TestCase):
             with self.assertRaises(RuntimeFault): self.source.records('tblTasks')
 
     def test_page_bound_and_malformed_response_fail_closed(self):
-        self.client.get.side_effect = [{'items': [], 'has_more': True, 'page_token': str(n)} for n in range(20)]
+        self.client.get.side_effect = [{'items': [], 'has_more': True, 'page_token': str(n)} for n in range(100)]
         with self.assertRaisesRegex(RuntimeFault, 'SCAN_INCOMPLETE'): self.source.records('tblTasks')
         self.client.get.side_effect = None
         self.client.get.return_value = {'items': [], 'has_more': 'false'}
         with self.assertRaisesRegex(RuntimeFault, 'PAGE_INVALID'): self.source.records('tblTasks')
+
+    def test_oversized_page_rejected_without_partial_result(self):
+        self.client.get.return_value = {'items': [{'record_id':'rec'+str(n), 'fields':{}} for n in range(21)], 'has_more':False}
+        with self.assertRaisesRegex(RuntimeFault, 'PAGE_INVALID'):
+            self.source.records('tblTasks')
 
     def test_other_tables_denied_before_network(self):
         for method, args in [(self.source.records, ('tblUnapproved',)),
