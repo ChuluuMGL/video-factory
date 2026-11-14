@@ -2,8 +2,10 @@
 import json
 import os
 import re
-from urllib.error import HTTPError
-from http.client import HTTPSConnection
+import socket
+import ssl
+from urllib.error import HTTPError, URLError
+from http.client import HTTPSConnection, IncompleteRead
 from urllib.parse import urlencode
 from urllib.request import Request, ProxyHandler, build_opener
 from .h3_provider import NoRedirect, TunnelHandler
@@ -13,6 +15,7 @@ HOST='open.feishu.cn'
 # Real device-flow tokens can exceed 4 KiB. Keep the same bounded limit at
 # OAuth receipt and API use; the token remains opaque and memory-only.
 MAX_USER_TOKEN_LENGTH = 16384
+READ_TIMEOUT_SECONDS = 30
 
 
 def resource(value,prefix=''):
@@ -46,14 +49,18 @@ class FeishuClient:
             handlers.append(FeishuHandler())
         try:
             request=Request(self.origin+'/open-apis'+path,headers={'Authorization':'Bearer '+self.token},method='GET')
-            with build_opener(*handlers).open(request,timeout=15) as response:
+            with build_opener(*handlers).open(request,timeout=READ_TIMEOUT_SECONDS) as response:
                 raw=response.read(2*1024*1024+1)
-                if response.status!=200 or len(raw)>2*1024*1024:raise ValueError
-                result=json.loads(raw)
+                if response.status!=200:raise RuntimeFault('FEISHU_READ_HTTP_'+str(response.status))
+                if len(raw)>2*1024*1024:raise RuntimeFault('FEISHU_READ_RESPONSE_TOO_LARGE')
+                try:result=json.loads(raw)
+                except (ValueError,UnicodeError):raise RuntimeFault('FEISHU_READ_INVALID_JSON') from None
+                if not isinstance(result,dict):raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 code=result.get('code')
                 if type(code) is int and 0<code<1000000000:
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code))
-                if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):raise ValueError
+                if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):
+                    raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 return result['data']
         except HTTPError as error:
             try:
@@ -66,7 +73,17 @@ class FeishuClient:
             except Exception:pass
             raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
         except RuntimeFault:raise
-        except Exception:raise RuntimeFault('FEISHU_READ_OR_USER_AUTH_FAILED') from None
+        except Exception as error:
+            # Never expose URLs, token headers, upstream messages or response
+            # bodies. A transport fault is not proof of expired identity.
+            reason=error.reason if isinstance(error,URLError) else error
+            if isinstance(reason,ssl.SSLError):code='TLS_FAILED'
+            elif isinstance(reason,(TimeoutError,socket.timeout)):code='TIMEOUT'
+            elif isinstance(reason,socket.gaierror):code='DNS_FAILED'
+            elif isinstance(reason,IncompleteRead):code='TRUNCATED_RESPONSE'
+            elif isinstance(reason,(ConnectionError,OSError)):code='CONNECTION_FAILED'
+            else:code='TRANSPORT_FAILED'
+            raise RuntimeFault('FEISHU_READ_'+code) from None
 
     def identity(self):
         data=self.get('/authen/v1/user_info')

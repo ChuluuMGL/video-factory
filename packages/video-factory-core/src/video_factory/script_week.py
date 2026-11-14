@@ -112,6 +112,54 @@ def activate(store, admin, project, *, expected_contract, t0, start_notice_sha25
     return {'token': token, 't0': t0, 't1': t0 + DURATION, 'scope': 'bounded_script_week'}
 
 
+def resume_empty(store, admin, project, *, expected_contract, expected_closed,
+                 start_notice_sha256):
+    """Explicit administrator recovery of a zero-request infrastructure failure.
+
+    Preserve the old window and audit, mint a fresh bounded grant, and start
+    168 hours at the transaction's real time. Never reset consumed budgets or
+    admit a previously queued/unknown request through this narrow operation.
+    """
+    if not all(_digest(v) for v in (expected_contract,expected_closed,start_notice_sha256)):
+        raise RuntimeFault('WEEK_RECOVERY_NOTICE_REQUIRED')
+    token=secrets.token_urlsafe(32)
+    token_key='automation:key:'+hashlib.sha256(token.encode()).hexdigest()
+    from .script_trial import PREFIX as TRIAL
+    with store.connect() as db:
+        actor=store.authorize(db,admin,'admin')
+        week=meta(db,PREFIX+project);trial=meta(db,TRIAL+project)
+        if (not week or week['state']!='closed' or not trial or trial.get('enabled')
+                or week.get('closed',{}).get('reason')!='error'
+                or fingerprint(week['closed'])!=expected_closed
+                or week['contract_sha256']!=expected_contract
+                or fingerprint(week['contract'])!=expected_contract
+                or week['contract']['limits']!=LIMITS
+                or _facts(db,project)!=week['contract']['facts']):
+            raise RuntimeFault('WEEK_RECOVERY_CONFLICT')
+        old_grant=meta(db,week.get('token_key',''))
+        if (trial.get('requests') or week.get('snapshots')
+                or meta(db,'script:week-inputs:'+project) is not None
+                or db.execute('SELECT 1 FROM tasks WHERE project=? LIMIT 1',(project,)).fetchone()
+                or (old_grant and old_grant.get('expires_at',0)>0)):
+            raise RuntimeFault('WEEK_RECOVERY_NOT_EMPTY')
+        history_key='script:week-recovery:'+project+':'+expected_closed
+        if meta(db,history_key):raise RuntimeFault('WEEK_RECOVERY_ALREADY_RECORDED')
+        save(db,history_key,{'week':week,'trial':trial,'recovery_notice_sha256':start_notice_sha256})
+        now=time.time()
+        week={**week,'state':'active','t0':now,'t1':now+DURATION,
+              'start_notice_sha256':start_notice_sha256,'token_key':token_key}
+        week.pop('closed',None)
+        trial={**trial,'enabled':True,'t0':now,'t1':now+DURATION,'notice_sha256':start_notice_sha256,
+               'validation_failure_policy':{'continue_samples':True,'consecutive_limit':3,
+                                            'notice_sha256':start_notice_sha256}}
+        save(db,PREFIX+project,week);save(db,TRIAL+project,trial)
+        save(db,token_key,{'project':project,'scope':'bounded_script_week',
+                         'contract_sha256':expected_contract,'expires_at':week['t1']})
+        store.audit(db,actor,'script_week_empty_recovered',project)
+    return {'token':token,'t0':now,'t1':now+DURATION,'scope':'bounded_script_week',
+            'previous_window_preserved':True}
+
+
 def active(db, project):
     from .script_trial import PREFIX as TRIAL
     week = meta(db, PREFIX + project)
