@@ -187,8 +187,15 @@ class CopyOnlyWeekWriter:
         if not isinstance(fields.get(self.identity_field), str) or not fields[self.identity_field]:
             raise RuntimeFault('WEEK_COPY_IDENTITY_REQUIRED')
         record = self._client.append(self.base, self.table, fields, ticket)
-        self._readback(record, fields)
+        self._after_write(record, fields)
         return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}
+
+    def _after_write(self, record, fields):
+        try:return self._readback(record, fields)
+        except RuntimeFault:
+            # Keep the durable intent and stop for reconciliation. This is not
+            # a read-only outage even when the lost receipt is a GET timeout.
+            raise RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN') from None
 
     def _readback(self, record, expected):
         row = self._client.record(self.base, self.table, record)
@@ -210,5 +217,5 @@ class CopyOnlyWeekWriter:
         if all(row['fields'].get(k) == v for k, v in fields.items()):
             return {'record_id': record, 'writes': 0}
         self._client.update_record(self.base, self.table, record, fields)
-        self._readback(record, {**fields, self.identity_field: identity})
+        self._after_write(record, {**fields, self.identity_field: identity})
         return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}

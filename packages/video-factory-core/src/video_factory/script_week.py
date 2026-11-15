@@ -160,6 +160,58 @@ def resume_empty(store, admin, project, *, expected_contract, expected_closed,
             'previous_window_preserved':True}
 
 
+def resume_inventory(store, admin, project, *, expected_contract, expected_closed,
+                 start_notice_sha256, expected_inventory):
+    """Recover zero-request read failure while retaining the audited inventory.
+
+    Only seen/rejected records are allowed; queued/compiled work is forbidden.
+    Exact inventory hash prevents a stale operator plan from resetting dedupe.
+    """
+    if not all(_digest(v) for v in (expected_contract,expected_closed,start_notice_sha256,expected_inventory)):
+        raise RuntimeFault('WEEK_RECOVERY_NOTICE_REQUIRED')
+    token=secrets.token_urlsafe(32)
+    token_key='automation:key:'+hashlib.sha256(token.encode()).hexdigest()
+    from .script_trial import PREFIX as TRIAL
+    with store.connect() as db:
+        actor=store.authorize(db,admin,'admin')
+        week=meta(db,PREFIX+project);trial=meta(db,TRIAL+project)
+        if (not week or week['state']!='closed' or not trial or trial.get('enabled')
+                or week.get('closed',{}).get('reason')!='error'
+                or fingerprint(week['closed'])!=expected_closed
+                or week['contract_sha256']!=expected_contract
+                or fingerprint(week['contract'])!=expected_contract
+                or week['contract']['limits']!=LIMITS
+                or _facts(db,project)!=week['contract']['facts']):
+            raise RuntimeFault('WEEK_RECOVERY_CONFLICT')
+        inventory=meta(db,'script:week-inputs:'+project)
+        if (not isinstance(inventory,dict) or fingerprint(inventory)!=expected_inventory
+                or inventory.get('contract_sha256')!=expected_contract
+                or not isinstance(inventory.get('seen'),dict) or inventory.get('entries')
+                or not isinstance(inventory.get('rejected'),dict)):
+            raise RuntimeFault('WEEK_RECOVERY_INVENTORY_CONFLICT')
+        old_grant=meta(db,week.get('token_key',''))
+        if (trial.get('requests') or week.get('snapshots')
+                or db.execute('SELECT 1 FROM tasks WHERE project=? LIMIT 1',(project,)).fetchone()
+                or (old_grant and old_grant.get('expires_at',0)>0)):
+            raise RuntimeFault('WEEK_RECOVERY_NOT_EMPTY')
+        history_key='script:week-recovery:'+project+':'+expected_closed
+        if meta(db,history_key):raise RuntimeFault('WEEK_RECOVERY_ALREADY_RECORDED')
+        save(db,history_key,{'week':week,'trial':trial,'recovery_notice_sha256':start_notice_sha256,'inventory':inventory})
+        now=time.time()
+        week={**week,'state':'active','t0':now,'t1':now+DURATION,
+              'start_notice_sha256':start_notice_sha256,'token_key':token_key}
+        week.pop('closed',None);week.pop('read_pause',None)
+        trial={**trial,'enabled':True,'t0':now,'t1':now+DURATION,'notice_sha256':start_notice_sha256,
+               'validation_failure_policy':{'continue_samples':True,'consecutive_limit':3,
+                                            'notice_sha256':start_notice_sha256}}
+        save(db,PREFIX+project,week);save(db,TRIAL+project,trial)
+        save(db,token_key,{'project':project,'scope':'bounded_script_week',
+                         'contract_sha256':expected_contract,'expires_at':week['t1']})
+        store.audit(db,actor,'script_week_inventory_recovered',project)
+    return {'token':token,'t0':now,'t1':now+DURATION,'scope':'bounded_script_week',
+            'previous_window_preserved':True,'inventory_sha256':expected_inventory}
+
+
 def active(db, project):
     from .script_trial import PREFIX as TRIAL
     week = meta(db, PREFIX + project)
@@ -188,6 +240,7 @@ def authorize(db, token, project):
             or saved.get('scope') != 'bounded_script_week' or saved.get('expires_at', 0) <= time.time()
             or saved.get('contract_sha256') != week['contract_sha256']):
         raise RuntimeFault('AUTH_WEEK_DENIED')
+    if week.get('read_pause'):raise RuntimeFault('WEEK_READ_PAUSED')
     return week
 
 
@@ -350,10 +403,11 @@ class WeekRunner:
     run from an independent daily/deadline service while the paid runner pauses.
     No adapter is auto-created and no scheduler is installed by this class.
     """
-    def __init__(self, jobs, project, token, master_key, *, read_new, publish, archive):
+    def __init__(self, jobs, project, token, master_key, *, read_new, publish, archive, read_probe=None):
         self.jobs,self.store,self.project=jobs,jobs.store,project
         self.token,self.master_key=token,master_key
         self.read_new,self.publish,self.archive=read_new,publish,archive
+        self.read_probe=read_probe
 
     def _stop(self, reason):
         receipt=close(self.store,self.project,reason=reason)
@@ -370,11 +424,14 @@ class WeekRunner:
             for day in range(7):self.archive(day)
             self.archive(None,final=True)
             return receipt
-        # Archive all elapsed buckets, including empty ones and late responses.
-        for day in range(max(0,min(7,int((time.time()-w['t0'])//DAY)))):self.archive(day)
         if w['state']!='active':return {'state':w['state'],'provider_requests':0}
         if time.time()<w['t0']:return {'state':'waiting_for_t0','provider_requests':0}
         try:
+            if self.read_probe is not None:
+                from .script_week_read_health import gate
+                paused=gate(self.store,self.project,self.read_probe)
+                if paused is not None:return paused
+            for day in range(max(0,min(7,int((time.time()-w['t0'])//DAY)))):self.archive(day)
             with self.store.connect() as db:
                 authorize(db,self.token,self.project)
                 entries=[]
@@ -404,6 +461,9 @@ class WeekRunner:
                     return {'state':'queued','task':queued['task'],'provider_requests':0}
             return {'state':'idle','provider_requests':0}
         except RuntimeFault as error:
+            from .script_week_read_health import TRANSIENT,hold
+            if self.read_probe is not None and str(error) in TRANSIENT:
+                return hold(self.store,self.project,error)
             if str(error) in ('WEEK_DAILY_REQUEST_LIMIT','WEEK_DAILY_SAMPLE_LIMIT','WEEK_DAILY_BUDGET_LIMIT'):
                 next_day=w['t0']+(int((time.time()-w['t0'])//DAY)+1)*DAY
                 return {'state':'daily_limit_wait','reason':str(error),'next_at':min(next_day,w['t1']), 'provider_requests':0}

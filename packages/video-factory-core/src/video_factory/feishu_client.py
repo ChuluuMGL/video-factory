@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import ssl
+import time
 from urllib.error import HTTPError, URLError
 from http.client import HTTPSConnection, IncompleteRead
 from urllib.parse import urlencode
@@ -36,12 +37,24 @@ class FeishuHandler(TunnelHandler):
 
 class FeishuClient:
     origin='https://'+HOST
-    def __init__(self,user_token):
+    def __init__(self,user_token,*,read_attempts=1):
         if not isinstance(user_token,str) or not user_token or len(user_token)>MAX_USER_TOKEN_LENGTH or any(c.isspace() for c in user_token):
             raise RuntimeFault('FEISHU_USER_TOKEN_REQUIRED')
+        if type(read_attempts) is not int or read_attempts not in (1,3):
+            raise RuntimeFault('FEISHU_READ_POLICY_INVALID')
         self.token=user_token
+        self.read_attempts=read_attempts
 
     def get(self,path):
+        # Opt-in for bounded shadow readers only. Never wraps a POST or PUT.
+        for attempt in range(self.read_attempts):
+            try:return self._get_once(path)
+            except RuntimeFault as error:
+                if str(error) not in ('FEISHU_READ_TIMEOUT','FEISHU_READ_HTTP_502') or attempt+1==self.read_attempts:
+                    raise
+                time.sleep(attempt+1)
+
+    def _get_once(self,path):
         # The origin is code-owned; path is assembled from validated IDs only.
         handlers=[ProxyHandler({}),NoRedirect()]
         if os.environ.get('VF_WORKER_EGRESS')=='1':
