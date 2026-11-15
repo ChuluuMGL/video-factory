@@ -25,6 +25,14 @@ def housekeeping(store, project, archive, *, now=None):
         return {'state': 'waiting_for_t0', 'provider_requests': 0, 'archives': []}
     expired = now >= week['t1']
     receipt = close(store, project, reason='deadline') if expired else None
+    if not expired and week['state']=='active' and week.get('read_pause'):
+        # Independent watchdog enforces the outage cap even if the paid worker
+        # is stopped or stuck. Use the real clock, never the observer's now.
+        from .script_week_read_health import status
+        health=status(store,project)
+        if health and health['state']=='closed':
+            receipt=health.get('close')
+            with store.connect() as db:week=meta(db,PREFIX+project)
     # The time argument is observational; close() independently checks the real
     # clock and cannot be tricked into early expiry by callers passing a future.
     count = min(7, int((now - week['t0']) // DAY))

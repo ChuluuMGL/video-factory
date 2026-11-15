@@ -64,6 +64,13 @@ class HealthTests(WeekTests):
             result=health.gate(self.f.store,self.f.project,probe);self.assertEqual(result['error'],'WEEK_READ_OUTAGE_LIMIT')
         self.assertEqual(probe.call_count,5);w,t=self.state();self.assertFalse(t['enabled'])
         with self.f.store.connect() as db:self.assertEqual(meta(db,w['token_key'])['expires_at'],0)
+    def test_independent_housekeeping_enforces_outage_limit(self):
+        from video_factory.script_week_service import housekeeping
+        self.start()
+        with patch('time.time',return_value=self.t0):health.hold(self.f.store,self.f.project,RuntimeFault('FEISHU_READ_TIMEOUT'))
+        with patch('time.time',return_value=self.t0+1800):
+            self.assertEqual(housekeeping(self.f.store,self.f.project,lambda *a,**kw:None)['state'],'closed')
+        self.assertFalse(self.state()[1]['enabled'])
     def test_auth_failure_during_probe_closes(self):
         self.start()
         with patch('time.time',return_value=self.t0):health.hold(self.f.store,self.f.project,RuntimeFault('FEISHU_READ_TIMEOUT'))
