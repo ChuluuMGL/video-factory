@@ -18,6 +18,37 @@ class ReadRetryTests(unittest.TestCase):
         with patch.object(FeishuClient,'_get_once',side_effect=[RuntimeFault('FEISHU_READ_TIMEOUT'),RuntimeFault('FEISHU_READ_HTTP_502'),{}]) as get,patch('video_factory.feishu_client.time.sleep') as wait:
             self.assertEqual(self.client().get('/fixture'),{})
             self.assertEqual(get.call_count,3);self.assertEqual(wait.call_count,2)
+    def test_actual_data_not_ready_response_recovers_without_leaking_message(self):
+        for http_error in (False,True):
+            with self.subTest(http_error=http_error),patch('video_factory.feishu_client.build_opener') as opener,patch('video_factory.feishu_client.time.sleep'):
+                transient=Mock();transient.__enter__=Mock(return_value=transient);transient.__exit__=Mock(return_value=False)
+                transient.status=200;transient.read.return_value=b'{"code":1254607,"msg":"private upstream detail"}'
+                ok=Mock();ok.__enter__=Mock(return_value=ok);ok.__exit__=Mock(return_value=False)
+                ok.status=200;ok.read.return_value=b'{"code":0,"data":{"items":[]}}'
+                first=HTTPError('private-url',503,'private',{},io.BytesIO(transient.read.return_value)) if http_error else transient
+                opener.return_value.open.side_effect=[first,ok]
+                self.assertEqual(self.client().get('/fixture'),{'items':[]})
+                self.assertEqual(opener.return_value.open.call_count,2)
+    def test_data_not_ready_still_has_three_attempt_cap_and_default_one(self):
+        for attempts in (1,3):
+            with self.subTest(attempts=attempts),patch.object(FeishuClient,'_get_once',side_effect=RuntimeFault('FEISHU_READ_REJECTED_CODE_1254607')) as get,patch('video_factory.feishu_client.time.sleep'):
+                with self.assertRaisesRegex(RuntimeFault,'^FEISHU_READ_REJECTED_CODE_1254607$'):FeishuClient('fixture-token',read_attempts=attempts).get('/fixture')
+                self.assertEqual(get.call_count,attempts)
+    def test_http_auth_failure_cannot_become_retryable_data_not_ready(self):
+        for code in (401,403):
+            with self.subTest(code=code),patch('video_factory.feishu_client.build_opener') as opener:
+                opener.return_value.open.side_effect=HTTPError('private-url',code,'private',{},io.BytesIO(b'{"code":1254607}'))
+                with self.assertRaisesRegex(RuntimeFault,'^FEISHU_READ_HTTP_'+str(code)+'$'):self.client().get('/fixture')
+                self.assertEqual(opener.return_value.open.call_count,1)
+    def test_data_not_ready_after_write_stops_without_replaying_write(self):
+        for method in ('append','update'):
+            client=Mock();client.append.return_value='recFixture';client.record.side_effect=RuntimeFault('FEISHU_READ_REJECTED_CODE_1254607')
+            writer=CopyOnlyWeekWriter(client,source_base='bascnSource',copy_base='bascnCopy',table='tblCopy',machine_fields=['id','value'],human_fields=[],identity_field='id')
+            if method=='update':client.record.side_effect=[{'record_id':'recFixture','fields':{'id':'fixture','value':'old'}},RuntimeFault('FEISHU_READ_REJECTED_CODE_1254607')]
+            with self.assertRaisesRegex(RuntimeFault,'WRITE_READBACK_UNKNOWN'):
+                if method=='append':writer.append({'id':'fixture'},'ticket')
+                else:writer.update('recFixture','fixture',{'value':'new'})
+            self.assertEqual(getattr(client,'append' if method=='append' else 'update_record').call_count,1)
     def test_three_attempt_cap(self):
         with patch.object(FeishuClient,'_get_once',side_effect=RuntimeFault('FEISHU_READ_TIMEOUT')) as get,patch('video_factory.feishu_client.time.sleep'):
             with self.assertRaisesRegex(RuntimeFault,'TIMEOUT'):self.client().get('/fixture')
@@ -54,6 +85,22 @@ class HealthTests(WeekTests):
             self.assertEqual(self.runner(read,probe).tick()['state'],'read_recovered')
         self.assertEqual(read.call_count,1);self.assertEqual(probe.call_count,1)
         self.assertEqual(self.state()[1]['requests'],{})
+    def test_data_not_ready_pauses_and_recovers_without_model_or_write(self):
+        self.start();read=Mock(side_effect=RuntimeFault('FEISHU_READ_REJECTED_CODE_1254607'));probe=Mock()
+        with patch('time.time',return_value=self.t0):
+            self.assertEqual(self.runner(read,probe).tick()['state'],'read_paused')
+        with patch('time.time',return_value=self.t0+300):
+            self.assertEqual(self.runner(read,probe).tick()['state'],'read_recovered')
+        self.assertEqual(read.call_count,1);self.assertEqual(probe.call_count,1)
+        self.assertEqual(self.state()[1]['requests'],{})
+    def test_data_not_ready_cannot_extend_outage_deadline(self):
+        self.start();error=RuntimeFault('FEISHU_READ_REJECTED_CODE_1254607')
+        with patch('time.time',return_value=self.t0):health.hold(self.f.store,self.f.project,error)
+        with patch('time.time',return_value=self.t0+300):
+            self.assertEqual(health.gate(self.f.store,self.f.project,Mock(side_effect=error))['pause_deadline'],self.t0+1800)
+        with patch('time.time',return_value=self.t0+1800):
+            self.assertEqual(health.gate(self.f.store,self.f.project,Mock())['state'],'closed')
+        self.assertFalse(self.state()[1]['enabled'])
     def test_outage_limit_never_resets_on_failed_probe(self):
         self.start();probe=Mock(side_effect=RuntimeFault('FEISHU_READ_HTTP_502'))
         with patch('time.time',return_value=self.t0):health.hold(self.f.store,self.f.project,RuntimeFault('FEISHU_READ_TIMEOUT'))

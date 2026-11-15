@@ -8,7 +8,7 @@ import copy
 import json
 from urllib.parse import urlencode
 
-from .feishu_client import resource
+from .feishu_client import resource, READ_TRANSIENT_ERRORS
 from .feishu_native_sync import plain_text
 from .runtime_store import RuntimeFault, fingerprint
 
@@ -193,7 +193,7 @@ class CopyOnlyWeekWriter:
     def _after_write(self, record, fields):
         try:return self._readback(record, fields)
         except RuntimeFault as error:
-            if str(error) not in ('FEISHU_READ_TIMEOUT','FEISHU_READ_HTTP_502'):raise
+            if str(error) not in READ_TRANSIENT_ERRORS:raise
             # Keep the durable intent and stop for reconciliation. This is not
             # a read-only outage even when the lost receipt is a GET timeout.
             raise RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN') from None

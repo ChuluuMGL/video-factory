@@ -17,6 +17,11 @@ HOST='open.feishu.cn'
 # OAuth receipt and API use; the token remains opaque and memory-only.
 MAX_USER_TOKEN_LENGTH = 16384
 READ_TIMEOUT_SECONDS = 30
+# Only idempotent GETs may use these bounded transient recovery rules.
+READ_TRANSIENT_ERRORS = frozenset((
+    "FEISHU_READ_TIMEOUT", "FEISHU_READ_HTTP_502",
+    "FEISHU_READ_REJECTED_CODE_1254607",  # Feishu: Data not ready
+))
 
 
 def resource(value,prefix=''):
@@ -50,7 +55,7 @@ class FeishuClient:
         for attempt in range(self.read_attempts):
             try:return self._get_once(path)
             except RuntimeFault as error:
-                if str(error) not in ('FEISHU_READ_TIMEOUT','FEISHU_READ_HTTP_502') or attempt+1==self.read_attempts:
+                if str(error) not in READ_TRANSIENT_ERRORS or attempt+1==self.read_attempts:
                     raise
                 time.sleep(attempt+1)
 
@@ -80,6 +85,8 @@ class FeishuClient:
                 raw=error.read(65537)
                 result=json.loads(raw) if len(raw)<=65536 else {}
                 code=result.get('code') if isinstance(result,dict) else None
+                if error.code in (401,403) and code==1254607:
+                    raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
                 if type(code) is int and 0<code<1000000000:
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code)) from None
             except RuntimeFault:raise

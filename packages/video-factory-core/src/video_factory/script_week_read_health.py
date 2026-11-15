@@ -2,9 +2,10 @@
 import time
 from .feishu_bridge import meta,save
 from .runtime_store import RuntimeFault
+from .feishu_client import READ_TRANSIENT_ERRORS
 
 PREFIX='script:week:'
-TRANSIENT=frozenset(('FEISHU_READ_TIMEOUT','FEISHU_READ_HTTP_502'))
+TRANSIENT=READ_TRANSIENT_ERRORS
 PROBE_INTERVAL=300
 OUTAGE_LIMIT=1800
 
