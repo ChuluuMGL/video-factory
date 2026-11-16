@@ -5,6 +5,7 @@ import re
 import socket
 import ssl
 import time
+import threading
 from urllib.error import HTTPError, URLError
 from http.client import HTTPSConnection, IncompleteRead
 from urllib.parse import urlencode
@@ -17,11 +18,29 @@ HOST='open.feishu.cn'
 # OAuth receipt and API use; the token remains opaque and memory-only.
 MAX_USER_TOKEN_LENGTH = 16384
 READ_TIMEOUT_SECONDS = 30
+READ_RATE_LIMIT_ERRORS = frozenset((
+    "FEISHU_READ_REJECTED_CODE_1254290", "FEISHU_READ_HTTP_429",
+))
+# Shared across source/copy clients in a worker; opt-in readers only.
+_read_pace_lock = threading.Lock()
+_last_read_started = None
+READ_MIN_INTERVAL_SECONDS = 0.5
+
+
+def _pace_read():
+    global _last_read_started
+    with _read_pace_lock:
+        now = time.monotonic()
+        if _last_read_started is not None:
+            wait = READ_MIN_INTERVAL_SECONDS - (now - _last_read_started)
+            if wait > 0: time.sleep(wait)
+        _last_read_started = time.monotonic()
+
 # Only idempotent GETs may use these bounded transient recovery rules.
 READ_TRANSIENT_ERRORS = frozenset((
     "FEISHU_READ_TIMEOUT", "FEISHU_READ_HTTP_502",
     "FEISHU_READ_REJECTED_CODE_1254607",  # Feishu: Data not ready
-))
+)) | READ_RATE_LIMIT_ERRORS
 
 
 def resource(value,prefix=''):
@@ -53,8 +72,13 @@ class FeishuClient:
     def get(self,path):
         # Opt-in for bounded shadow readers only. Never wraps a POST or PUT.
         for attempt in range(self.read_attempts):
-            try:return self._get_once(path)
+            try:
+                if self.read_attempts == 3: _pace_read()
+                return self._get_once(path)
             except RuntimeFault as error:
+                # Rate limits go directly to the durable five-minute hold.
+                # Never amplify throttling with immediate retry bursts.
+                if str(error) in READ_RATE_LIMIT_ERRORS: raise
                 if str(error) not in READ_TRANSIENT_ERRORS or attempt+1==self.read_attempts:
                     raise
                 time.sleep(attempt+1)
@@ -85,7 +109,7 @@ class FeishuClient:
                 raw=error.read(65537)
                 result=json.loads(raw) if len(raw)<=65536 else {}
                 code=result.get('code') if isinstance(result,dict) else None
-                if error.code in (401,403) and code==1254607:
+                if error.code in (401,403) and code in (1254607,1254290):
                     raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
                 if type(code) is int and 0<code<1000000000:
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code)) from None
