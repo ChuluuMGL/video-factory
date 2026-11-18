@@ -21,6 +21,11 @@ READ_TIMEOUT_SECONDS = 30
 READ_RATE_LIMIT_ERRORS = frozenset((
     "FEISHU_READ_REJECTED_CODE_1254290", "FEISHU_READ_HTTP_429",
 ))
+# A failed connection has no authenticated response. Let the durable health
+# probe establish recovery, without a burst of new connections in this tick.
+READ_HOLD_ERRORS = READ_RATE_LIMIT_ERRORS | frozenset((
+    "FEISHU_READ_CONNECTION_FAILED",
+))
 # Shared across source/copy clients in a worker; opt-in readers only.
 _read_pace_lock = threading.Lock()
 _last_read_started = None
@@ -40,7 +45,7 @@ def _pace_read():
 READ_TRANSIENT_ERRORS = frozenset((
     "FEISHU_READ_TIMEOUT", "FEISHU_READ_HTTP_502",
     "FEISHU_READ_REJECTED_CODE_1254607",  # Feishu: Data not ready
-)) | READ_RATE_LIMIT_ERRORS
+)) | READ_HOLD_ERRORS
 
 
 def resource(value,prefix=''):
@@ -76,9 +81,9 @@ class FeishuClient:
                 if self.read_attempts == 3: _pace_read()
                 return self._get_once(path)
             except RuntimeFault as error:
-                # Rate limits go directly to the durable five-minute hold.
-                # Never amplify throttling with immediate retry bursts.
-                if str(error) in READ_RATE_LIMIT_ERRORS: raise
+                # Connection failures and throttling go to a durable hold.
+                # Only the independent GET probe may establish recovery.
+                if str(error) in READ_HOLD_ERRORS: raise
                 if str(error) not in READ_TRANSIENT_ERRORS or attempt+1==self.read_attempts:
                     raise
                 time.sleep(attempt+1)

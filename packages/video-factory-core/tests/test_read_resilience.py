@@ -1,7 +1,7 @@
 import io
 import unittest
 from unittest.mock import patch,Mock
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from video_factory.feishu_client import FeishuClient
 from video_factory.feishu_results_client import ResultClient
 from video_factory.runtime_store import RuntimeFault,fingerprint
@@ -17,6 +17,25 @@ class ReadRetryTests(unittest.TestCase):
         pace=patch('video_factory.feishu_client._pace_read')
         pace.start();self.addCleanup(pace.stop)
     def client(self):return FeishuClient('fixture-token',read_attempts=3)
+    def test_connection_failure_enters_hold_without_immediate_retry(self):
+        for error in (ConnectionResetError('private upstream'),
+                      URLError(ConnectionRefusedError('private upstream'))):
+            with self.subTest(error=type(error).__name__),patch('video_factory.feishu_client.build_opener') as opener,patch('video_factory.feishu_client.time.sleep') as wait:
+                opener.return_value.open.side_effect=error
+                with self.assertRaisesRegex(RuntimeFault,'^FEISHU_READ_CONNECTION_FAILED$'):
+                    self.client().get('/fixture')
+                opener.return_value.open.assert_called_once();wait.assert_not_called()
+    def test_connection_failure_after_write_is_unknown_and_never_replayed(self):
+        for method in ('append','update'):
+            client=Mock();client.append.return_value='recFixture'
+            error=RuntimeFault('FEISHU_READ_CONNECTION_FAILED')
+            client.record.side_effect=error
+            if method=='update':client.record.side_effect=[{'record_id':'recFixture','fields':{'id':'fixture'}},error]
+            writer=CopyOnlyWeekWriter(client,source_base='bascnSource',copy_base='bascnCopy',table='tblCopy',machine_fields=['id','value'],human_fields=[],identity_field='id')
+            with self.assertRaisesRegex(RuntimeFault,'^WEEK_COPY_WRITE_READBACK_UNKNOWN$'):
+                if method=='append':writer.append({'id':'fixture'},'ticket')
+                else:writer.update('recFixture','fixture',{'value':'new'})
+            getattr(client,'append' if method=='append' else 'update_record').assert_called_once()
     def test_timeout_and_502_recover_on_third_get(self):
         with patch.object(FeishuClient,'_get_once',side_effect=[RuntimeFault('FEISHU_READ_TIMEOUT'),RuntimeFault('FEISHU_READ_HTTP_502'),{}]) as get,patch('video_factory.feishu_client.time.sleep') as wait:
             self.assertEqual(self.client().get('/fixture'),{})
@@ -96,6 +115,40 @@ class ReadRetryTests(unittest.TestCase):
 class HealthTests(WeekTests):
     def runner(self,read,probe):
         return week.WeekRunner(self.jobs,self.f.project,self.token,self.key,read_new=read,read_probe=probe,publish=lambda *a:None,archive=lambda *a,**kw:None)
+    def test_connection_failure_recovers_only_after_durable_probe_without_generation(self):
+        self.start();read=Mock(side_effect=RuntimeFault('FEISHU_READ_CONNECTION_FAILED'));probe=Mock()
+        with patch('time.time',return_value=self.t0):
+            self.assertEqual(self.runner(read,probe).tick()['state'],'read_paused')
+        with patch('time.time',return_value=self.t0+299):
+            self.assertEqual(self.runner(read,probe).tick()['state'],'read_paused')
+            probe.assert_not_called()
+            with self.f.store.connect() as db:
+                with self.assertRaisesRegex(RuntimeFault,'WEEK_READ_PAUSED'):week.authorize(db,self.token,self.f.project)
+        with patch('time.time',return_value=self.t0+300):
+            self.assertEqual(self.runner(read,probe).tick()['state'],'read_recovered')
+        read.assert_called_once();probe.assert_called_once()
+        self.assertEqual(self.state()[1]['requests'],{})
+        self.assertEqual(self.state()[0]['snapshots'],{})
+    def test_connection_failure_outage_never_extends_or_reopens_closed_window(self):
+        self.start();error=RuntimeFault('FEISHU_READ_CONNECTION_FAILED');probe=Mock(side_effect=error)
+        with patch('time.time',return_value=self.t0):health.hold(self.f.store,self.f.project,error)
+        for seconds in (300,600,900,1200,1500):
+            with patch('time.time',return_value=self.t0+seconds):
+                self.assertEqual(health.gate(self.f.store,self.f.project,probe)['pause_deadline'],self.t0+1800)
+        with patch('time.time',return_value=self.t0+1800):
+            self.assertEqual(health.status(self.f.store,self.f.project)['state'],'closed')
+        with patch('time.time',return_value=self.t0+2100):
+            ok=Mock();self.assertEqual(health.gate(self.f.store,self.f.project,ok)['state'],'closed');ok.assert_not_called()
+        w,t=self.state();self.assertFalse(t['enabled']);self.assertEqual(t['requests'],{})
+        with self.f.store.connect() as db:self.assertEqual(meta(db,w['token_key'])['expires_at'],0)
+    def test_connection_pause_respects_original_window_deadline(self):
+        self.start();end=self.state()[0]['t1'];probe=Mock()
+        with patch('time.time',return_value=end-60):
+            result=health.hold(self.f.store,self.f.project,RuntimeFault('FEISHU_READ_CONNECTION_FAILED'))
+            self.assertEqual(result['pause_deadline'],end)
+        with patch('time.time',return_value=end):
+            self.assertEqual(health.gate(self.f.store,self.f.project,probe)['state'],'closed')
+        probe.assert_not_called();self.assertFalse(self.state()[1]['enabled'])
     def test_hold_survives_process_restart_checks_every_five_minutes(self):
         self.start();probe=Mock();read=Mock(side_effect=RuntimeFault('FEISHU_READ_TIMEOUT'))
         with patch('time.time',return_value=self.t0+1):
