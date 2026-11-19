@@ -18,6 +18,17 @@ def row(record='recReview'):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_mixed_column_preserves_only_planning_facts_not_error_logs(self):
+        value = row(); value['fields']['审核/异常说明'] = '用户场景：approved scene\n内容方向：approved goal\nhttps://example.test/docx/docPlan\nERROR: OLD_SCRIPT_SENTINEL'
+        frozen = generation_task(value)
+        self.assertEqual(frozen['fields']['shadow_plan_binding']['用户场景'], 'approved scene')
+        self.assertNotIn('OLD_SCRIPT_SENTINEL', str(frozen))
+        before = ReworkIntake()(value)['version']
+        value['fields']['审核/异常说明'] += '\nNEW_RUNTIME_ERROR'
+        self.assertEqual(ReworkIntake()(value)['version'], before)
+        value['fields']['审核/异常说明'] = value['fields']['审核/异常说明'].replace('approved scene', 'changed approved scene')
+        self.assertNotEqual(ReworkIntake()(value)['version'], before)
+
     def test_output_isolation_deep_freeze_and_material_preservation(self):
         original = row()
         for field in OUTPUT_FIELDS: original['fields'][field] = 'OLD_' + field
