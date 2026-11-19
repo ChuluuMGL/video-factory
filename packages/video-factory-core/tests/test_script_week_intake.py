@@ -23,11 +23,20 @@ class PolicyTests(unittest.TestCase):
         frozen = generation_task(value)
         self.assertEqual(frozen['fields']['shadow_plan_binding']['用户场景'], 'approved scene')
         self.assertNotIn('OLD_SCRIPT_SENTINEL', str(frozen))
-        before = ReworkIntake()(value)['version']
+        before = ReworkIntake(review_backfill=['recReview'])(value)['version']
         value['fields']['审核/异常说明'] += '\nNEW_RUNTIME_ERROR'
-        self.assertEqual(ReworkIntake()(value)['version'], before)
+        self.assertEqual(ReworkIntake(review_backfill=['recReview'])(value)['version'], before)
         value['fields']['审核/异常说明'] = value['fields']['审核/异常说明'].replace('approved scene', 'changed approved scene')
-        self.assertNotEqual(ReworkIntake()(value)['version'], before)
+        self.assertNotEqual(ReworkIntake(review_backfill=['recReview'])(value)['version'], before)
+
+    def test_unrelated_ambiguous_history_does_not_abort_discovery(self):
+        value = row(); value['fields']['审核/异常说明'] = '用户场景：first\n用户场景：second'
+        policy = ReworkIntake(review_backfill=['recReview'])
+        value['fields']['任务状态'] = '已停止（旧计划保留）'
+        self.assertEqual(policy(value)['reason'], 'SOURCE_STATUS_NOT_SCRIPT_PENDING')
+        value['fields']['任务状态'] = '脚本待审核'
+        self.assertEqual(policy(value)['reason'], 'PLAN_METADATA_AMBIGUOUS')
+        self.assertFalse(policy(value)['eligible'])
 
     def test_output_isolation_deep_freeze_and_material_preservation(self):
         original = row()

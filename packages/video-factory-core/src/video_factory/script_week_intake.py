@@ -66,7 +66,7 @@ class ReworkIntake:
         f = row['fields']; status = text(f.get('任务状态')).strip()
         feedback = text(f.get('人工审核意见')).strip()
         has_output = any(bool(f.get(k)) for k in OUTPUT_FIELDS[:6])
-        version = fingerprint({'policy': POLICY, 'task': generation_task(row)})
+        version = fingerprint({'policy': POLICY, 'record': row['record_id'], 'status': status})
         def result(eligible, reason, kind='rework'):
             return dict(eligible=eligible, reason=reason, kind=kind, version=version)
         if f.get('发布链接'): return result(False, 'SOURCE_ALREADY_PUBLISHED')
@@ -79,5 +79,10 @@ class ReworkIntake:
         if has_output and not feedback: return result(False, 'REWORK_FEEDBACK_MISSING')
         if any(not f.get(k) for k in ('关联SKU', '关联模特', '参考视频')):
             return result(False, 'REQUIRED_RELATION_MISSING')
+        try:
+            version = fingerprint({'policy': POLICY, 'task': generation_task(row)})
+        except RuntimeFault as error:
+            if str(error) != 'WEEK_PLAN_METADATA_AMBIGUOUS': raise
+            return result(False, 'PLAN_METADATA_AMBIGUOUS')
         return result(True, 'ELIGIBLE_REWORK' if feedback else 'ELIGIBLE_NEW',
                       'rework' if feedback else 'new')
