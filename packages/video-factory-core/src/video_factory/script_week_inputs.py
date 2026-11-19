@@ -13,9 +13,10 @@ REGISTRY='script:week-inputs:'
 
 
 class WeekInputAdapter:
-    def __init__(self, store, project, *, list_rows, eligible, compile_input):
+    def __init__(self, store, project, *, list_rows, eligible, compile_input, intake=None):
         self.store,self.project=store,project
         self.list_rows,self.eligible,self.compile_input=list_rows,eligible,compile_input
+        self.intake = intake
 
     def read_new(self):
         with self.store.connect() as db:
@@ -43,6 +44,8 @@ class WeekInputAdapter:
         admitted={v['snapshot']['brief'] for v in week['snapshots'].values()}
         for entry in saved['entries'].values():
             if entry['snapshot']['brief'] not in admitted:return [entry['snapshot']]
+        if self.intake is not None:
+            return self._read_intake(rows, observed, saved, now)
         for row in rows:
             rid=row['record_id'];digest=observed[rid]
             if saved['seen'].get(rid)==digest:continue
@@ -69,6 +72,64 @@ class WeekInputAdapter:
             if ref in saved['entries'] and saved['entries'][ref]!=compiled:
                 raise RuntimeFault('WEEK_FROZEN_INPUT_CHANGED')
             saved['entries'][ref]=compiled
+            self._save(saved)
+            return [snapshot]
+        self._save(saved)
+        return []
+
+    def _read_intake(self, rows, observed, saved, now):
+        from collections import Counter
+        import re
+        processed = saved.setdefault('processed_input_versions', {})
+        counts = Counter(); decisions = []; skipped = {}
+        for row in rows:
+            decision = self.intake(row)
+            if (not isinstance(decision, dict) or type(decision.get('eligible')) is not bool
+                    or decision.get('kind') not in ('new', 'rework')
+                    or not re.fullmatch('[0-9a-f]{64}', str(decision.get('version', '')))
+                    or not re.fullmatch('[A-Z_]{1,100}', str(decision.get('reason', '')))):
+                raise RuntimeFault('WEEK_INTAKE_DECISION_INVALID')
+            rid = row['record_id']; version = decision['version']; reason = decision['reason']
+            if decision['eligible']:
+                if version in processed:
+                    reason = 'INPUT_ALREADY_PROCESSED'
+                elif decision['kind'] == 'new' and saved['seen'].get(rid) == observed[rid]:
+                    reason = 'HISTORICAL_UNCHANGED_NEW_TASK'
+                else:
+                    decisions.append((row, decision))
+            counts[reason] += 1
+            if reason not in ('ELIGIBLE_NEW', 'ELIGIBLE_REWORK'):
+                skipped[fingerprint(rid)] = {'reason': reason, 'input_version': version}
+        saved['discovery'] = {'at': now, 'rows': len(rows), 'eligible': len(decisions),
+                              'reason_counts': dict(counts), 'skipped': skipped}
+        # Commit together with compilation; a transport failure must not consume
+        # the source version or suppress its next read-only discovery attempt.
+        waiting = {row['record_id'] for row, _ in decisions}
+        saved['seen'].update({rid: digest for rid, digest in observed.items() if rid not in waiting})
+        for row, decision in decisions:
+            compiled = self.compile_input(row, now)
+            saved['seen'][row['record_id']] = observed[row['record_id']]
+            if isinstance(compiled, dict) and compiled.get('state') == 'needs_evidence':
+                reason = compiled.get('reason')
+                if not isinstance(reason, str) or not reason or len(reason) > 2000:
+                    raise RuntimeFault('WEEK_INPUT_REJECTION_INVALID')
+                saved['rejected'][decision['version']] = {'record_id': row['record_id'], 'at': now, 'reason': reason}
+                processed[decision['version']] = {'state': 'needs_evidence', 'at': now}
+                continue
+            if not isinstance(compiled, dict) or set(compiled) != {'snapshot', 'sample', 'evidence'}:
+                raise RuntimeFault('WEEK_COMPILED_INPUT_INVALID')
+            snapshot = compiled['snapshot']; ref = 'snapshot:' + fingerprint(compiled['sample'])
+            with self.store.connect() as db: week = meta(db, PREFIX+self.project)
+            if (snapshot.get('brief') != ref or snapshot.get('record_id') != row['record_id']
+                    or snapshot.get('eligible_at') != now
+                    or snapshot.get('source_base') != week['contract']['source_base']
+                    or snapshot.get('source_table') != week['contract']['source_table']
+                    or snapshot.get('input_sha256') != fingerprint({k:v for k,v in snapshot.items() if k!='input_sha256'})):
+                raise RuntimeFault('WEEK_COMPILED_INPUT_MISMATCH')
+            if ref in saved['entries'] and saved['entries'][ref] != compiled:
+                raise RuntimeFault('WEEK_FROZEN_INPUT_CHANGED')
+            saved['entries'][ref] = compiled
+            processed[decision['version']] = {'state': 'compiled', 'at': now, 'ref': ref}
             self._save(saved)
             return [snapshot]
         self._save(saved)
