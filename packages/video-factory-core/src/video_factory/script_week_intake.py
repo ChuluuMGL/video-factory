@@ -25,6 +25,15 @@ def generation_task(row):
     if not isinstance(row, dict) or not isinstance(row.get('fields'), dict):
         raise RuntimeFault('WEEK_SOURCE_RECORD_INVALID')
     fields = {k: copy.deepcopy(row['fields'][k]) for k in INPUT_FIELDS if k in row['fields']}
+    # Feishu represents an empty optional link as a text wrapper without IDs.
+    # Normalize only its explicit empty shape; retain unknown/nonempty values.
+    optional = fields.get('关联素材')
+    empty_wrapper = (isinstance(optional, list) and len(optional) == 1
+        and isinstance(optional[0], dict)
+        and set(optional[0]) <= {'table_id', 'text_arr', 'type', 'text'}
+        and optional[0].get('type') == 'text'
+        and optional[0].get('text_arr') == [] and not optional[0].get('text'))
+    if optional is None or optional == [] or empty_wrapper: fields['关联素材'] = []
     # Legacy source mixes plan bindings and runtime logs in one column. Preserve
     # only named planning facts; never copy the column or parse error prose.
     note = text(row['fields'].get('审核/异常说明'))

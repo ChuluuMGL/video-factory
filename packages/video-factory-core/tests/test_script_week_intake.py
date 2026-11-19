@@ -29,6 +29,16 @@ class PolicyTests(unittest.TestCase):
         value['fields']['审核/异常说明'] = value['fields']['审核/异常说明'].replace('approved scene', 'changed approved scene')
         self.assertNotEqual(ReworkIntake(review_backfill=['recReview'])(value)['version'], before)
 
+    def test_explicit_empty_optional_link_is_normalized_without_dropping_data(self):
+        value = row(); before = generation_task(value)
+        value['fields']['关联素材'] = [{'table_id': 'tblMaterials', 'type': 'text', 'text_arr': []}]
+        self.assertEqual(generation_task(value), before)
+        self.assertNotEqual(value['fields']['关联素材'], [])
+        value['fields']['关联素材'][0]['text_arr'] = ['unresolved material']
+        self.assertNotEqual(generation_task(value)['fields']['关联素材'], [])
+        value['fields']['关联素材'] = [{'record_ids': ['recMaterial']}]
+        self.assertEqual(generation_task(value)['fields']['关联素材'], [{'record_ids': ['recMaterial']}])
+
     def test_unrelated_ambiguous_history_does_not_abort_discovery(self):
         value = row(); value['fields']['审核/异常说明'] = '用户场景：first\n用户场景：second'
         policy = ReworkIntake(review_backfill=['recReview'])
