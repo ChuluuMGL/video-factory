@@ -51,3 +51,35 @@ restart, sanitized diagnostics, and source/human-field denial. Run it together
 with writer, projection, results-client and week-recovery regression tests in
 approved cloud CI or a network-disabled container on an authorized test host.
 Do not mount production data, provider credentials or a live runtime writable.
+
+## Stopped-run inspection and resolution
+
+Run this operator tool exclusively against the stopped shadow copy with the
+scheduler inactive. Use the runtime's exclusive process lock and an existing
+copy-scoped reader. No source access, model calls, record POST or PUT are needed.
+
+- Before PUT, atomically freeze both `pending_fields` and `prior_fields`. The
+  latter contains the observed preflight values for the same fields. Copy
+  identity must match. For append, first verify by exact identity lookup that
+  no row exists. Persist that absence evidence with the append ticket before
+  handing the append to the client. A pre-existing or ambiguous match blocks
+  append. Older intents without prior evidence cannot establish matches_prior.
+- `inspect` opens local state read-only and reads the copy. Return intent state,
+  ticket, classification and hashes only for field values. A unique matching
+  row with the frozen pending values is `matches_pending`. A unique update row
+  matching the frozen prior values, or a complete exact append lookup with no
+  rows and frozen absence evidence, is `matches_prior`. Everything else,
+  including missing update rows, duplicate append rows, invalid data, read
+  errors or an unverifiable lookup, is `neither`. Compare with the same text
+  and numeric rules as the writer and give pending precedence.
+- `resolve --owner-confirm --ticket TICKET` re-reads fresh remote state and
+  checks the exact current ticket before changing local state.
+  `matches_pending` records written with the verified row identity.
+  `matches_prior` records abandoned without resending. Keep an abandoned
+  projection as a tombstone so a later call cannot silently recreate the
+  operation. `neither` refuses resolution. Refusals leave the intent intact.
+- Each resolve attempt produces a separate sanitized receipt with the ticket,
+  classification and decision. Apply any transition and its receipt in one
+  local transaction. Keep `first_failure` and `last_failure` unchanged.
+  Inspect itself never writes a receipt to the runtime. These classes report
+  observed state, not proof that a particular ambiguous request caused it.
