@@ -181,10 +181,11 @@ class CopyOnlyWeekWriter:
             raise RuntimeFault('WEEK_COPY_PATCH_LIMIT')
         return copy.deepcopy(fields)
 
-    def append(self, fields, ticket):
+    def append(self, fields, ticket, *, before_write=None):
         fields = self._patch(fields)
         if not isinstance(fields.get(self.identity_field), str) or not fields[self.identity_field]:
             raise RuntimeFault('WEEK_COPY_IDENTITY_REQUIRED')
+        if before_write is not None: before_write()
         record = self._client.append(self.base, self.table, fields, ticket)
         self._after_write(record, fields)
         return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}

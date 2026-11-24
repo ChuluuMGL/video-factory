@@ -9,7 +9,8 @@ class ProjectionTests(unittest.TestCase):
     tearDown=ScriptTests.tearDown
     def adapter(self):
         self.writer=Mock(base='basCopy',table='tblCopy',identity_field='Task')
-        self.writer.append.return_value={'record_id':'recNew'}
+        self.writer.append.return_value={'record_id':'recNew','writes':1}
+        self.writer.update.return_value={'record_id':'recNew','writes':0}
         self.find=Mock(return_value=[{'record_id':'recNew'}])
         return WeekProjection(self.f.store,self.f.project,self.writer,self.find)
     def test_restart_does_not_append_twice(self):

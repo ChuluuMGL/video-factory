@@ -52,8 +52,8 @@ class CopyUpdateRecoveryTests(unittest.TestCase):
             table='tblCopy', machine_fields=['Sample','Output','Failure','Cost'], human_fields=['Review'], identity_field='Sample')
         self.projection = WeekProjection(self.store, 'fixture', self.writer, lambda _: [self.client.remote])
     def test_100_ticks_with_omitted_empty_fields_append_once_put_zero(self):
-        for _ in range(100):
-            self.assertEqual(self.projection.publish('sample', {'Sample':'sample','Output':'draft','Failure':''})['writes'], 0)
+        for i in range(100):
+            self.assertEqual(self.projection.publish('sample', {'Sample':'sample','Output':'draft','Failure':''})['writes'], 1 if i == 0 else 0)
         self.assertEqual(self.client.appends, 1); self.assertEqual(self.client.updates, [])
         self.assertEqual(self.client.remote['fields']['Review'], 'human')
     def test_empty_and_rich_text_representations_share_readback_equivalence(self):
