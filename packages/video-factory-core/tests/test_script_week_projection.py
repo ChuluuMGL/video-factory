@@ -11,18 +11,19 @@ class ProjectionTests(unittest.TestCase):
         self.writer=Mock(base='basCopy',table='tblCopy',identity_field='Task')
         self.writer.append.return_value={'record_id':'recNew','writes':1}
         self.writer.update.return_value={'record_id':'recNew','writes':0}
-        self.find=Mock(return_value=[{'record_id':'recNew'}])
+        self.find=Mock(return_value=[])
         return WeekProjection(self.f.store,self.f.project,self.writer,self.find)
     def test_restart_does_not_append_twice(self):
         p=self.adapter();p.publish('sample',{'Task':'sample','Output':'one'})
         p.publish('sample',{'Task':'sample','Output':'two'})
         self.assertEqual(self.writer.append.call_count,1)
-        self.find.assert_not_called();self.assertEqual(self.writer.update.call_count,2)
+        self.find.assert_called_once_with('sample');self.assertEqual(self.writer.update.call_count,2)
     def test_unknown_append_reconciles_existing_but_never_resends(self):
         p=self.adapter();self.writer.append.side_effect=TimeoutError
         with self.assertRaises(TimeoutError):p.publish('sample',{'Task':'sample'})
+        self.find.return_value = [{'record_id':'recNew'}]
         p.publish('sample',{'Task':'sample'})
-        self.assertEqual(self.writer.append.call_count,1);self.find.assert_called_once_with('sample')
+        self.assertEqual(self.writer.append.call_count,1);self.assertEqual(self.find.call_count,2)
         self.writer._readback.assert_called_once_with('recNew',{'Task':'sample'})
     def test_missing_or_ambiguous_reconciliation_stays_blocked(self):
         p=self.adapter();self.writer.append.side_effect=TimeoutError

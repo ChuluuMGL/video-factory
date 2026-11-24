@@ -50,7 +50,7 @@ class CopyUpdateRecoveryTests(unittest.TestCase):
         self.store = Store(self.tmp.name); self.client = Client()
         self.writer = CopyOnlyWeekWriter(self.client, source_base='basSource', copy_base='basCopy',
             table='tblCopy', machine_fields=['Sample','Output','Failure','Cost'], human_fields=['Review'], identity_field='Sample')
-        self.projection = WeekProjection(self.store, 'fixture', self.writer, lambda _: [self.client.remote])
+        self.projection = WeekProjection(self.store, 'fixture', self.writer, lambda _: [self.client.remote] if self.client.appends else [])
     def test_100_ticks_with_omitted_empty_fields_append_once_put_zero(self):
         for i in range(100):
             self.assertEqual(self.projection.publish('sample', {'Sample':'sample','Output':'draft','Failure':''})['writes'], 1 if i == 0 else 0)

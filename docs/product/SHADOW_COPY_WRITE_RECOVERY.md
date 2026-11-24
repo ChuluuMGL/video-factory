@@ -83,3 +83,19 @@ copy-scoped reader. No source access, model calls, record POST or PUT are needed
   local transaction. Keep `first_failure` and `last_failure` unchanged.
   Inspect itself never writes a receipt to the runtime. These classes report
   observed state, not proof that a particular ambiguous request caused it.
+
+Entry point: `python -m video_factory.shadow_copy_recovery inspect` (or
+`resolve`). Pass the deployment root, project, copy Base/table, projection
+identity and identity field, and a private file containing an existing
+copy-only reader token. Use `--help` for argument names. The operator must
+verify the scheduler is stopped before invoking it. The command takes the
+existing tick lock and verifies the local window is closed and trial disabled.
+Refusals that cannot access the stopped ledger are reported to stdout.
+
+The independent acceptance harness is
+`packages/video-factory-core/tools/validate_shadow_copy_write.py`. It requires
+an owner-approved private config and its SHA-256, an existing copy-scoped token,
+and a fresh private state directory. It uses a dedicated table containing only
+the seeded test row. Limits are 15 GETs, one append POST, and two PUTs. A fresh
+process checks the cleared value with the write budget already exhausted.
+The harness never prepares the human-owned field and never refreshes credentials.

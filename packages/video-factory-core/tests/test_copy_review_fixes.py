@@ -19,7 +19,7 @@ class ReviewFixTests(unittest.TestCase):
         self.store = Store(self.tmp.name); self.client = Client()
         self.writer = CopyOnlyWeekWriter(self.client, source_base='basSource', copy_base='basCopy',
             table='tblCopy', machine_fields=['Sample','Output','Failure'], human_fields=['Review'], identity_field='Sample')
-        self.projection = WeekProjection(self.store,'fixture',self.writer,lambda _: [self.client.remote])
+        self.projection = WeekProjection(self.store,'fixture',self.writer,lambda _: [self.client.remote] if self.client.appends else [])
     def fields(self, value):return {'Sample':'sample','Output':value,'Failure':''}
     def test_first_append_noop_and_delta_counts_are_actual(self):
         first=self.projection.publish('sample',self.fields('old'))
@@ -93,7 +93,7 @@ from test_copy_update_recovery import Client
 from video_factory.runtime_store import RuntimeStore
 from video_factory.script_week_io import CopyOnlyWeekWriter
 from video_factory.script_week_projection import WeekProjection
-c=Client();w=CopyOnlyWeekWriter(c,source_base='basSource',copy_base='basCopy',table='tblCopy',machine_fields=['Sample','Output','Failure'],human_fields=['Review'],identity_field='Sample');p=WeekProjection(RuntimeStore(sys.argv[1]),'fixture',w,lambda _: [c.remote])
+c=Client();w=CopyOnlyWeekWriter(c,source_base='basSource',copy_base='basCopy',table='tblCopy',machine_fields=['Sample','Output','Failure'],human_fields=['Review'],identity_field='Sample');p=WeekProjection(RuntimeStore(sys.argv[1]),'fixture',w,lambda _: [c.remote] if c.appends else [])
 p.publish('sample',{'Sample':'sample','Output':'old','Failure':''})
 def crash(*a):os._exit(73)
 c.update_record=crash

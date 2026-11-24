@@ -199,19 +199,23 @@ class CopyOnlyWeekWriter:
             raise RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN') from None
 
     @staticmethod
+    def _text_value(actual):
+        if actual is None or actual == '' or actual == []:
+            return ''
+        if isinstance(actual, str):
+            return actual
+        if isinstance(actual, list) and all(
+            isinstance(segment, dict) and segment.get('type') == 'text'
+            and isinstance(segment.get('text'), str) for segment in actual
+        ):
+            return ''.join(segment['text'] for segment in actual)
+        raise RuntimeFault('FEISHU_TEXT_FIELD_REQUIRED')
+
+    @staticmethod
     def _same_value(actual, expected):
-        # Use exactly the same text equivalence for preflight and readback.
-        # Do not strip whitespace, coerce numbers, or accept malformed rich text.
+        # Preserve whitespace and numeric types across preflight and readback.
         if isinstance(expected, str):
-            if actual is None or actual == '' or actual == []:
-                actual = ''
-            elif isinstance(actual, list):
-                if not all(isinstance(v, dict) and v.get('type') == 'text'
-                           and isinstance(v.get('text'), str) for v in actual):
-                    raise RuntimeFault('FEISHU_TEXT_FIELD_REQUIRED')
-                actual = ''.join(v['text'] for v in actual)
-            elif not isinstance(actual, str):
-                raise RuntimeFault('FEISHU_TEXT_FIELD_REQUIRED')
+            actual = CopyOnlyWeekWriter._text_value(actual)
         if isinstance(actual, bool) != isinstance(expected, bool):
             return False
         return actual == expected
@@ -228,7 +232,7 @@ class CopyOnlyWeekWriter:
                 raise RuntimeFault('WEEK_COPY_READBACK_MISMATCH')
         return row
 
-    def update(self, record, identity, fields, *, before_write=None):
+    def update(self, record, identity, fields, *, before_write=None, capture_prior=None):
         resource(record, 'rec'); fields = self._patch(fields)
         if self.identity_field in fields and fields[self.identity_field] != identity:
             raise RuntimeFault('WEEK_COPY_IDENTITY_CHANGED')
@@ -240,6 +244,8 @@ class CopyOnlyWeekWriter:
             if not changed:
                 return {'record_id': record, 'writes': 0}
             # Persist intent only once a real difference is known, before PUT.
+            if capture_prior is not None:
+                capture_prior({key: copy.deepcopy(row['fields'].get(key)) for key in fields})
             if before_write is not None: before_write()
             stage = 'update_request'
             self._client.update_record(self.base, self.table, record, changed)
