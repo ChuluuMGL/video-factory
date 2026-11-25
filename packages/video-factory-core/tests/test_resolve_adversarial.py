@@ -8,6 +8,7 @@ import io
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
@@ -145,7 +146,7 @@ class ResolveAdversarialTests(unittest.TestCase):
             'record_id': 'recSynth01',
             'update_ticket': ticket,
             'pending_fields': pending or {'Sample': self.identity, 'Output': 'pending-v2', 'Failure': ''},
-            'prior_fields': prior or {'Sample': self.identity, 'Output': 'prior-draft'},
+            'prior_fields': prior or {'Sample': self.identity, 'Output': 'prior-draft', 'Failure': None},
             'first_failure': {'error': 'FIRST_1254002', 'feishu_code': 1254002},
             'last_failure': {'error': 'LAST_1254002', 'feishu_code': 1254002},
         }
@@ -161,6 +162,13 @@ class ResolveAdversarialTests(unittest.TestCase):
         self.assertEqual(rep_prior['classification'], 'matches_prior')
         self.assertEqual(self.ledger.all_receipts(), {})
 
+        # Update: incomplete prior_fields (missing a pending key) is rejected as 'neither'
+        incomplete_prior = dict(self.ledger.get(self.key))
+        incomplete_prior['prior_fields'] = {'Sample': self.identity, 'Output': 'prior-draft'}
+        self.ledger.put(self.key, incomplete_prior)
+        self.assertEqual(self.call_recover()['classification'], 'neither')
+        self.seed_update_intent()
+
         # Update: matches_pending
         self.client.remote['fields'] = {'Sample': self.identity, 'Output': 'pending-v2', 'Review': 'human'}
         rep_pending = self.call_recover()
@@ -171,21 +179,36 @@ class ResolveAdversarialTests(unittest.TestCase):
         rep_neither = self.call_recover()
         self.assertEqual(rep_neither['classification'], 'neither')
 
-        # Append: matches_prior requires prior_absent=True and zero rows returned
+        # Append: matches_prior requires prior_absent=True, created_at >= 5 minutes ago,
+        # and two consecutive complete empty lookups
         append_row = {
             'state': 'intent',
             'target': [self.copy_base, self.table],
             'ticket': 'tkt-app-01',
             'initial_fields': {'Sample': self.identity, 'Output': 'pending-v2'},
             'prior_absent': True,
+            'created_at': time.time(),
             'first_failure': {'error': 'FIRST'},
             'last_failure': {'error': 'LAST'},
         }
         self.ledger.put(self.key, append_row)
-        self.assertEqual(self.call_recover(find_fn=lambda *_: [])['classification'], 'matches_prior')
+        # Too recent (< 5 minutes) -> neither
+        self.assertEqual(self.call_recover(find_fn=lambda *_: [])['classification'], 'neither')
+
+        # Aged >= 5 minutes (301s), with two consecutive empty lookups -> matches_prior
+        append_row['created_at'] = time.time() - 301
+        self.ledger.put(self.key, append_row)
+        find_two_empty = Mock(side_effect=[[], []])
+        self.assertEqual(self.call_recover(find_fn=find_two_empty)['classification'], 'matches_prior')
+        self.assertEqual(find_two_empty.call_count, 2)
+
+        # Inconsistent consecutive lookups (first empty, second non-empty) -> neither
+        matched_row = {'record_id': 'recSynth01', 'fields': {'Sample': self.identity, 'Output': 'pending-v2'}}
+        find_inconsistent = Mock(side_effect=[[], [matched_row]])
+        self.assertEqual(self.call_recover(find_fn=find_inconsistent)['classification'], 'neither')
+        self.assertEqual(find_inconsistent.call_count, 2)
 
         # Append: matches_pending when unique matching row exists
-        matched_row = {'record_id': 'recSynth01', 'fields': {'Sample': self.identity, 'Output': 'pending-v2'}}
         self.assertEqual(self.call_recover(find_fn=lambda *_: [matched_row])['classification'], 'matches_pending')
 
         # Append: neither when duplicate rows or missing prior_absent evidence
@@ -298,16 +321,18 @@ class ResolveAdversarialTests(unittest.TestCase):
             self.assertEqual(after_row['pending_fields'], frozen_before_restart['pending_fields'])
             self.assertEqual(after_row['first_failure'], frozen_before_restart['first_failure'])
 
-        # Resolve matches_prior -> abandoned tombstone; verify first_failure and last_failure preserved
+        # Resolve update matches_prior -> returns to 'created' (no tombstone for update),
+        # while recording decision='abandoned' receipt and preserving first_failure and last_failure
         current_ticket = self.ledger.get(self.key)['update_ticket']
         expected_first = self.ledger.get(self.key)['first_failure']
         expected_last = self.ledger.get(self.key)['last_failure']
         res = self.call_recover(resolve=True, owner_confirm=True, ticket=current_ticket)
         self.assertEqual(res['decision'], 'abandoned')
-        tombstone = self.ledger.get(self.key)
-        self.assertEqual(tombstone['state'], 'abandoned')
-        self.assertEqual(tombstone['first_failure'], expected_first)
-        self.assertEqual(tombstone['last_failure'], expected_last)
+        resolved_row = self.ledger.get(self.key)
+        self.assertEqual(resolved_row['state'], 'created')
+        self.assertNotIn('update_ticket', resolved_row)
+        self.assertEqual(resolved_row['first_failure'], expected_first)
+        self.assertEqual(resolved_row['last_failure'], expected_last)
         self.assertEqual(len(self.client.updates), 1)
 
     # 5. 清空字段的各种表示：null、空字符串、空数组、缺字段
