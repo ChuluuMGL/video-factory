@@ -66,11 +66,22 @@ class CopyUpdateRecoveryTests(unittest.TestCase):
         result=self.writer.update('recFixture','sample',{'Output':'draft ','Failure':'','Sample':'sample'})
         self.assertEqual(result['writes'],1);self.assertEqual(self.client.updates,[{'Output':'draft '}])
         self.assertEqual(self.writer.update('recFixture','sample',{'Output':'draft ','Failure':''})['writes'],0)
-    def test_clearing_nonempty_field_is_a_real_update(self):
-        self.client.remote['fields']['Failure']='previous'
-        self.assertEqual(self.writer.update('recFixture','sample',{'Failure':''})['writes'],1)
-        self.assertEqual(self.writer.update('recFixture','sample',{'Failure':''})['writes'],0)
-        self.assertEqual(self.client.updates,[{'Failure':''}])
+    def test_clearing_nonempty_field_sends_null_and_preserves_other_values(self):
+        self.client.remote['fields'].update(Failure='previous', Cost=5)
+        desired = {'Failure': '', 'Cost': 0, 'Output': ' '}
+        self.assertEqual(self.writer.update('recFixture', 'sample', desired)['writes'], 1)
+        self.assertEqual(self.writer.update('recFixture', 'sample', desired)['writes'], 0)
+        self.assertEqual(self.client.updates, [{'Failure': None, 'Cost': 0, 'Output': ' '}])
+        self.assertEqual(desired, {'Failure': '', 'Cost': 0, 'Output': ' '})
+
+    def test_uncertain_clear_preserves_original_pending_empty_text(self):
+        self.projection.publish('sample', {'Sample': 'sample', 'Failure': 'previous'})
+        self.client.fail = 'BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_1254002'
+        desired = {'Sample': 'sample', 'Failure': ''}
+        with self.assertRaises(RuntimeFault):
+            self.projection.publish('sample', desired)
+        self.assertEqual(self.store.row()['pending_fields'], desired)
+        self.assertEqual(self.client.updates, [{'Failure': None}])
     def test_invalid_text_is_not_treated_as_empty_or_overwritten(self):
         for v in ({}, 0, False, [{'type':'mention','text':''}]):
             self.client.remote['fields']['Failure']=v

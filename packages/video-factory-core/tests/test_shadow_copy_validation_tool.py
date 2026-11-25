@@ -123,6 +123,14 @@ with patch.object(FeishuClient, '_get_once', get):
                 method(path, body)
         self.assertEqual(self.client.counts, {'GET': 0, 'POST': 0, 'PUT': 0})
 
+    def test_wire_put_rejects_empty_string_without_spending_budget(self):
+        path = self.client.path + '/recExisting'
+        for field in ('ID', 'Output'):
+            with self.assertRaisesRegex(RuntimeFault, 'VALIDATION_WRITE_BODY_INVALID'):
+                self.client.put(path, {'fields': {field: ''}})
+        self.assertEqual(self.client.counts['PUT'], 0)
+        self.assertEqual(self.rows['recExisting']['Output'], 'A')
+
     def test_stopped_output_retains_only_safe_transport_diagnostics(self):
         error = RuntimeFault('upstream secret https://example.invalid')
         error.request_context = {'method': 'PUT', 'http_status': 200, 'feishu_code': 1254002,

@@ -121,11 +121,11 @@ class BoundedClient(ResultClient):
 
     def put(self, path, body):
         require(path.split('?', 1)[0].startswith(self.path + '/rec'), 'VALIDATION_ROUTE_DENIED')
-        fields = dict(self.checked_fields(body))
-        if fields.get(self.output) == '':
-            fields[self.output] = None
+        fields = self.checked_fields(body)
+        require(not any(isinstance(value, str) and value == '' for value in fields.values()),
+                'VALIDATION_WRITE_BODY_INVALID')
         self.reserve('PUT')
-        return super().put(path, {'fields': fields})
+        return super().put(path, body)
 
 
 class Ledger:

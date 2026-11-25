@@ -250,7 +250,11 @@ class CopyOnlyWeekWriter:
                 capture_prior({key: copy.deepcopy(row['fields'].get(key)) for key in fields})
             if before_write is not None: before_write()
             stage = 'update_request'
-            self._client.update_record(self.base, self.table, record, changed)
+            # Feishu clears text with JSON null. Keep the desired fields
+            # unchanged for intent storage and semantic readback.
+            wire_fields = {key: None if isinstance(value, str) and value == '' else value
+                           for key, value in changed.items()}
+            self._client.update_record(self.base, self.table, record, wire_fields)
             stage = 'update_readback'
             self._after_write(record, {**fields, self.identity_field: identity})
             return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}

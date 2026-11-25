@@ -102,7 +102,8 @@ the seeded test row. Limits are 15 GETs, one append POST, and two PUTs. A fresh
 process checks the cleared value with the write budget already exhausted.
 The harness never prepares the human-owned field and never refreshes credentials.
 
-The validation harness sends JSON `null` to clear the output text in PUT.
+The copy writer sends JSON `null` to clear text in PUT. The validation harness
+rejects a raw empty string instead of rewriting the payload.
 Its HTTP exits reject any field outside identity and machine output before
 reserving a write. The new interpreter opens the validation ledger read-only.
 It has at most one GET from the remaining aggregate budget, zero POST and PUT,
