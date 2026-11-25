@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from video_factory.feishu_bridge import meta
 from video_factory.feishu_client import FeishuClient
 from video_factory.feishu_results_client import ResultClient
 from video_factory.runtime_store import RuntimeFault
@@ -87,8 +88,9 @@ with patch.object(FeishuClient, '_get_once', get):
         with patch.object(tool.subprocess, 'run', fixture_child):
             report = self.validate()
         self.assertEqual(report['state'], 'passed')
-        self.assertEqual(self.client.counts['POST'], 1)
-        self.assertEqual(self.client.counts['PUT'], 2)
+        self.assertEqual(self.client.counts, {'GET': 12, 'POST': 1, 'PUT': 2})
+        self.assertEqual([event['step'] for event in self.events],
+                         ['append', 'same_input', 'update', 'clear', 'restart_process'])
         self.assertNotIn('Output', self.rows['recExisting'])
         self.assertEqual(self.rows['recExisting']['Review'], tool.SENTINEL)
         self.assertEqual(sum(event['writes'] for event in self.events), 3)
@@ -153,3 +155,25 @@ with patch.object(FeishuClient, '_get_once', get):
                 with self.assertRaisesRegex(RuntimeFault, 'VALIDATION_RESTART_' + code):
                     tool.verify_restart(self.client, self.ledger, 'basProd', 'Review')
             self.assertEqual(self.client.counts, {'GET': 1, 'POST': 0, 'PUT': 0})
+
+    def test_preflight_failure_leaves_ledger_inspectable(self):
+        with patch.object(FeishuClient, '_get_once', side_effect=RuntimeFault('FEISHU_READ_TIMEOUT')):
+            with self.assertRaisesRegex(RuntimeFault, 'FEISHU_READ_TIMEOUT'):
+                self.validate()
+        with self.ledger.connect() as db:
+            self.assertEqual(meta(db, 'script:week:' + tool.PROJECT), {'state': 'closed'})
+            self.assertEqual(meta(db, 'script:trial:' + tool.PROJECT), {'enabled': False})
+        self.assertEqual(self.client.counts, {'GET': 1, 'POST': 0, 'PUT': 0})
+
+    def test_human_change_in_update_readback_stops_before_clear(self):
+        put = ResultClient.put
+
+        def tamper(client, path, body):
+            response = put(client, path, body)
+            self.rows['recExisting']['Review'] = 'changed'
+            return response
+
+        with patch.object(ResultClient, 'put', tamper):
+            with self.assertRaisesRegex(RuntimeFault, 'VALIDATION_HUMAN_CHANGED'):
+                self.validate()
+        self.assertEqual(self.client.counts['PUT'], 1)

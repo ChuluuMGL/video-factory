@@ -72,6 +72,7 @@ class BoundedClient(ResultClient):
         self.counts = dict.fromkeys(LIMITS, 0)
         self.journal = journal
         self.stage = 'preflight'
+        self.human_check = None
         self.deadline = time.monotonic() + 540
 
     def reserve(self, method):
@@ -83,6 +84,15 @@ class BoundedClient(ResultClient):
             self.journal.flush()
             os.fsync(self.journal.fileno())
         self.counts[method] += 1
+
+    def record(self, base, table, record):
+        row = super().record(base, table, record)
+        if self.human_check is not None:
+            guarded_record, field = self.human_check
+            if record == guarded_record:
+                require(CopyOnlyWeekWriter._same_value(row['fields'].get(field), SENTINEL),
+                        'VALIDATION_HUMAN_CHANGED')
+        return row
 
     def checked_fields(self, body):
         require(isinstance(body, dict) and set(body) == {'fields'}
@@ -193,6 +203,10 @@ def verify_restart(client, ledger, source, human):
 
 
 def validate(client, ledger, base, table, source, identity, output, human, emit):
+    with ledger.connect() as db:
+        db.execute('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        save(db, 'script:week:' + PROJECT, {'state': 'closed'})
+        save(db, 'script:trial:' + PROJECT, {'enabled': False})
     writer = CopyOnlyWeekWriter(client, source_base=source, copy_base=base, table=table,
                                 machine_fields=[identity, output], human_fields=[human],
                                 identity_field=identity)
@@ -214,10 +228,8 @@ def validate(client, ledger, base, table, source, identity, output, human, emit)
                 {identity: EXISTING, output: 'A', human: SENTINEL}.items()),
             'VALIDATION_FIXTURE_NOT_READY')
     row_id = seeded['record_id']
+    client.human_check = (row_id, human)
     with ledger.connect() as db:
-        db.execute('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-        save(db, 'script:week:' + PROJECT, {'state': 'closed'})
-        save(db, 'script:trial:' + PROJECT, {'enabled': False})
         save(db, projection_key(PROJECT, base, table, EXISTING),
              {'state': 'created', 'record_id': row_id, 'target': [base, table],
               'initial_fields': {identity: EXISTING, output: 'A'}})
@@ -233,9 +245,6 @@ def validate(client, ledger, base, table, source, identity, output, human, emit)
     publish(projection, 'append', NEW, 'A', (1, 1, 0))
     publish(projection, 'same_input', NEW, 'A', (0, 0, 0))
     publish(projection, 'update', EXISTING, 'B', (1, 1, 0))
-    client.stage = 'verify_human'
-    require(same(client.record(base, table, row_id)['fields'].get(human), SENTINEL),
-            'VALIDATION_HUMAN_CHANGED')
     publish(projection, 'clear', EXISTING, '', (1, 1, 0))
     client.stage = 'restart_process'
     verify_restart(client, ledger, source, human)
