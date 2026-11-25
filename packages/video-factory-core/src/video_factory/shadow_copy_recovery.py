@@ -2,6 +2,7 @@
 import argparse
 from contextlib import closing
 import fcntl
+import math
 from pathlib import Path
 import sqlite3
 import time
@@ -36,8 +37,12 @@ def observe_intent(row, identity, identity_field, record, find):
                 return report, None
         else:
             found = find(identity)
-            if found == [] and prior is not None:
-                report['classification'] = 'matches_prior'
+            if found == []:
+                created_at = row.get('created_at')
+                if (prior is not None and type(created_at) in (int, float)
+                        and math.isfinite(created_at) and 0 < created_at <= time.time() - 300
+                        and find(identity) == []):
+                    report['classification'] = 'matches_prior'
                 return report, None
             if not isinstance(found, list) or len(found) != 1:
                 return report, None
@@ -96,6 +101,9 @@ def recover(db, *, project, base, table, identity, identity_field, record, find,
         if decision == 'written':
             row.update(state='created', record_id=record_id,
                        last_verified_fields_sha256=report['pending_sha256'])
+        elif row['state'] == 'update_intent':
+            row['state'] = 'created'
+            row.pop('update_ticket', None)
         else:
             row['state'] = 'abandoned'
         row['resolution_receipt_id'] = receipt_id

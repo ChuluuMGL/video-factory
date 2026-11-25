@@ -196,7 +196,9 @@ class CopyOnlyWeekWriter:
             if str(error) not in READ_TRANSIENT_ERRORS:raise
             # Keep the durable intent and stop for reconciliation. This is not
             # a read-only outage even when the lost receipt is a GET timeout.
-            raise RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN') from None
+            unknown = RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN')
+            unknown.request_context = getattr(error, 'request_context', None)
+            raise unknown from None
 
     @staticmethod
     def _text_value(actual):

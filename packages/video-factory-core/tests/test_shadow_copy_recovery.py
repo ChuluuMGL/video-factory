@@ -1,4 +1,5 @@
 import sqlite3
+import time
 import unittest
 from unittest.mock import Mock
 
@@ -39,7 +40,8 @@ class RecoveryTests(unittest.TestCase):
         receipt = self.call(resolve=True, owner_confirm=True, ticket='ticket')
         self.assertEqual(receipt['decision'], 'abandoned')
         row = meta(self.db, self.key)
-        self.assertEqual(row['state'], 'abandoned')
+        self.assertEqual(row['state'], 'created')
+        self.assertNotIn('update_ticket', row)
         for key in ('first_failure', 'last_failure'):
             self.assertEqual(row[key], self.row[key])
         self.assertEqual(meta(self.db, 'script:week-projection-resolution:' +
@@ -68,8 +70,15 @@ class RecoveryTests(unittest.TestCase):
         save(self.db, self.key, row)
         self.assertEqual(self.call()['classification'], 'neither')
         row['prior_absent'] = True
+        row['created_at'] = time.time()
+        save(self.db, self.key, row)
+        self.assertEqual(self.call()['classification'], 'neither')
+        row['created_at'] -= 301
         save(self.db, self.key, row)
         self.assertEqual(self.call()['classification'], 'matches_prior')
+        self.find.side_effect = [[], [self.record.return_value]]
+        self.assertEqual(self.call()['classification'], 'neither')
+        self.find.side_effect = None
         self.find.return_value = [self.record.return_value] * 2
         self.assertEqual(self.call()['classification'], 'neither')
         self.find.return_value = [{'record_id': 'recFixture', 'fields': row['initial_fields']}]

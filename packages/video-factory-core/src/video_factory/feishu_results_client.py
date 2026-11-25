@@ -17,6 +17,7 @@ from .feishu_client import FeishuClient, FeishuHandler, resource
 from .feishu_oauth import DeviceOAuth, text_value
 from .h3_provider import NoRedirect
 from .runtime_store import RuntimeFault, canonical
+from .feishu_diagnostics import response_context
 
 FIELDS = {'同步标识': 1, '项目': 1, '任务': 1, '版本': 1, 'SKU': 1,
           '状态': 1, '脚本': 1, '视频摘要': 1, '视频': 17}
@@ -40,13 +41,6 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
         raise
 
 
-def _response_context(context, status, headers):
-    if type(status) is int: context['http_status'] = status
-    request_id = headers.get('X-Tt-Logid') if headers is not None else None
-    if isinstance(request_id, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', request_id):
-        context['request_id'] = request_id
-
-
 def _request(path, body, token, content_type, method, context):
     if method not in ('POST', 'PUT'): raise RuntimeFault('FEISHU_METHOD_DENIED')
     handlers = [ProxyHandler({}), NoRedirect()]
@@ -58,7 +52,7 @@ def _request(path, body, token, content_type, method, context):
     try:
         req = Request('https://open.feishu.cn/open-apis'+path, data=body, headers=headers, method=method)
         with build_opener(*handlers).open(req, timeout=30) as response:
-            _response_context(context, response.status, getattr(response, 'headers', None))
+            response_context(context, response.status, getattr(response, 'headers', None))
             raw = response.read(2*1024*1024+1)
             if response.status != 200 or len(raw) > 2*1024*1024: raise ValueError
             value = json.loads(raw)
@@ -72,7 +66,7 @@ def _request(path, body, token, content_type, method, context):
                 raise ValueError
             return value
     except HTTPError as error:
-        _response_context(context, error.code, error.headers)
+        response_context(context, error.code, error.headers)
         try:
             raw = error.read(65537)
             value = json.loads(raw) if len(raw) <= 65536 else {}

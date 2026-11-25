@@ -45,7 +45,7 @@ class WeekProjection:
             row = meta(db, key)
             if row is None:
                 row = {'state': 'intent', 'ticket': str(uuid.uuid4()), 'initial_fields': fields,
-                       'target': [self.writer.base, self.writer.table]}
+                       'target': [self.writer.base, self.writer.table], 'created_at': time.time()}
                 save(db, key, row); fresh = True
             else:
                 fresh = False

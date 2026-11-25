@@ -75,9 +75,11 @@ copy-scoped reader. No source access, model calls, record POST or PUT are needed
 - `resolve --owner-confirm --ticket TICKET` re-reads fresh remote state and
   checks the exact current ticket before changing local state.
   `matches_pending` records written with the verified row identity.
-  `matches_prior` records abandoned without resending. Keep an abandoned
-  projection as a tombstone so a later call cannot silently recreate the
-  operation. `neither` refuses resolution. Refusals leave the intent intact.
+  `matches_prior` abandons the old intent without resending. An update
+  returns to `created`; a later separately authorized publish compares fresh
+  values and creates a new ticket if needed. An abandoned append alone keeps
+  a tombstone. Append absence requires a recorded creation time at least five
+  minutes in the past and two consecutive complete, empty identity lookups. `neither` refuses resolution. Refusals leave the intent intact.
 - Each resolve attempt produces a separate sanitized receipt with the ticket,
   classification and decision. Apply any transition and its receipt in one
   local transaction. Keep `first_failure` and `last_failure` unchanged.
@@ -99,3 +101,11 @@ and a fresh private state directory. It uses a dedicated table containing only
 the seeded test row. Limits are 15 GETs, one append POST, and two PUTs. A fresh
 process checks the cleared value with the write budget already exhausted.
 The harness never prepares the human-owned field and never refreshes credentials.
+
+The validation harness sends JSON `null` to clear the output text in PUT.
+Its HTTP exits reject any field outside identity and machine output before
+reserving a write. The new interpreter opens the validation ledger read-only.
+It has at most one GET from the remaining aggregate budget, zero POST and PUT,
+and logs each reserved attempt before sending so the parent can reconcile
+even when the child times out or exits on a signal. Stop reports contain
+allowlisted diagnostic codes and transport metadata only.

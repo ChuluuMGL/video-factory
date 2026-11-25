@@ -21,3 +21,10 @@ def failure_context(error):
         value = context.get(name)
         if isinstance(value, str) and re.fullmatch(pattern, value): result[name] = value
     return result
+
+
+def response_context(context, status, headers):
+    if type(status) is int: context['http_status'] = status
+    request_id = headers.get('X-Tt-Logid') if headers is not None else None
+    if isinstance(request_id, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', request_id):
+        context['request_id'] = request_id
