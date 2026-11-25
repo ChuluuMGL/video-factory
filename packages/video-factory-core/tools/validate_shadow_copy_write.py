@@ -37,8 +37,9 @@ def stopped(error, stage):
     for name in ('method', 'http_status', 'feishu_code', 'request_id'):
         if name in context:
             report[name] = context[name]
-    if hasattr(error, 'copy_receipt'):
-        report.update(error.copy_receipt)
+    receipt = getattr(error, 'copy_receipt', None)
+    if receipt and receipt['write_attempts'] > 0:
+        report.update({name: receipt[name] for name in ('write_attempts', 'writes', 'unknown_writes')})
     return report
 
 

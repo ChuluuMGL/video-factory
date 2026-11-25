@@ -130,6 +130,7 @@ with patch.object(FeishuClient, '_get_once', get):
         error.copy_stage = 'update_request'
         expected = {'state': 'stopped', 'error': 'COPY_OPERATION_FAILED', 'stage': 'update_request',
                     'method': 'PUT', 'http_status': 200, 'feishu_code': 1254002, 'request_id': 'abc123'}
+        error.copy_receipt = {'write_attempts': 0, 'writes': 0, 'unknown_writes': 0}
         self.assertEqual(tool.stopped(error, 'update'), expected)
         self.assertEqual(tool.stopped(RuntimeFault('VALIDATION_REQUEST_LIMIT'), 'clear')['error'],
                          'VALIDATION_REQUEST_LIMIT')
