@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, ProxyHandler, build_opener
 from .h3_provider import NoRedirect, TunnelHandler
 from .runtime_store import RuntimeFault
+from .feishu_diagnostics import response_context
 
 HOST='open.feishu.cn'
 # Real device-flow tokens can exceed 4 KiB. Keep the same bounded limit at
@@ -89,6 +90,14 @@ class FeishuClient:
                 time.sleep(attempt+1)
 
     def _get_once(self,path):
+        context = {'method': 'GET'}
+        try:
+            return self._get_with_context(path, context)
+        except RuntimeFault as error:
+            error.request_context = context
+            raise
+
+    def _get_with_context(self, path, context):
         # The origin is code-owned; path is assembled from validated IDs only.
         handlers=[ProxyHandler({}),NoRedirect()]
         if os.environ.get('VF_WORKER_EGRESS')=='1':
@@ -97,6 +106,7 @@ class FeishuClient:
         try:
             request=Request(self.origin+'/open-apis'+path,headers={'Authorization':'Bearer '+self.token},method='GET')
             with build_opener(*handlers).open(request,timeout=READ_TIMEOUT_SECONDS) as response:
+                response_context(context, response.status, getattr(response, 'headers', None))
                 raw=response.read(2*1024*1024+1)
                 if response.status!=200:raise RuntimeFault('FEISHU_READ_HTTP_'+str(response.status))
                 if len(raw)>2*1024*1024:raise RuntimeFault('FEISHU_READ_RESPONSE_TOO_LARGE')
@@ -105,11 +115,13 @@ class FeishuClient:
                 if not isinstance(result,dict):raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 code=result.get('code')
                 if type(code) is int and 0<code<1000000000:
+                    context['feishu_code'] = code
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code))
                 if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):
                     raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 return result['data']
         except HTTPError as error:
+            response_context(context, error.code, error.headers)
             try:
                 raw=error.read(65537)
                 result=json.loads(raw) if len(raw)<=65536 else {}
@@ -117,6 +129,7 @@ class FeishuClient:
                 if error.code in (401,403) and code in (1254607,1254290):
                     raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
                 if type(code) is int and 0<code<1000000000:
+                    context['feishu_code'] = code
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code)) from None
             except RuntimeFault:raise
             except Exception:pass

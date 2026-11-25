@@ -6,6 +6,8 @@ The application token stays in memory and is never returned in a receipt.
 import json
 import os
 import secrets
+import re
+import hashlib
 import zlib
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -15,6 +17,7 @@ from .feishu_client import FeishuClient, FeishuHandler, resource
 from .feishu_oauth import DeviceOAuth, text_value
 from .h3_provider import NoRedirect
 from .runtime_store import RuntimeFault, canonical
+from .feishu_diagnostics import response_context
 
 FIELDS = {'同步标识': 1, '项目': 1, '任务': 1, '版本': 1, 'SKU': 1,
           '状态': 1, '脚本': 1, '视频摘要': 1, '视频': 17}
@@ -22,6 +25,23 @@ BLOCK_SIZE = 4*1024*1024
 
 
 def request(path, body, token=None, content_type='application/json; charset=utf-8', method='POST'):
+    target = path.split('?', 1)[0]
+    operation = 'other'
+    if target == '/auth/v3/tenant_access_token/internal': operation = 'application_auth'
+    elif re.fullmatch(r'/bitable/v1/apps/[^/]+/tables/[^/]+/records/search', target): operation = 'record_search'
+    elif re.fullmatch(r'/bitable/v1/apps/[^/]+/tables/[^/]+/records/batch_create', target): operation = 'record_append'
+    elif re.fullmatch(r'/bitable/v1/apps/[^/]+/tables/[^/]+/records/[^/]+', target): operation = 'record_update'
+    elif re.fullmatch(r'/bitable/v1/apps/[^/]+/tables/[^/]+/records', target): operation = 'record_append'
+    context = {'method': method, 'operation': operation,
+               'target_sha256': hashlib.sha256(target.encode()).hexdigest()}
+    try:
+        return _request(path, body, token, content_type, method, context)
+    except RuntimeFault as error:
+        error.request_context = context
+        raise
+
+
+def _request(path, body, token, content_type, method, context):
     if method not in ('POST', 'PUT'): raise RuntimeFault('FEISHU_METHOD_DENIED')
     handlers = [ProxyHandler({}), NoRedirect()]
     if os.environ.get('VF_WORKER_EGRESS') == '1':
@@ -32,6 +52,7 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
     try:
         req = Request('https://open.feishu.cn/open-apis'+path, data=body, headers=headers, method=method)
         with build_opener(*handlers).open(req, timeout=30) as response:
+            response_context(context, response.status, getattr(response, 'headers', None))
             raw = response.read(2*1024*1024+1)
             if response.status != 200 or len(raw) > 2*1024*1024: raise ValueError
             value = json.loads(raw)
@@ -40,14 +61,17 @@ def request(path, body, token=None, content_type='application/json; charset=utf-
                 # Only a bounded numeric code is safe to surface. The message
                 # and response body can contain customer data or credentials.
                 if 0 < value['code'] < 1000000000:
+                    context['feishu_code'] = value['code']
                     raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_FEISHU_CODE_'+str(value['code']))
                 raise ValueError
             return value
     except HTTPError as error:
+        response_context(context, error.code, error.headers)
         try:
             raw = error.read(65537)
             value = json.loads(raw) if len(raw) <= 65536 else {}
             code = value.get('code') if isinstance(value, dict) else None
+            if type(code) is int and 0 < code < 1000000000: context['feishu_code'] = code
             # Feishu has explicitly refused this request. In particular a
             # create-table 403/91403 cannot have created a table, whereas a
             # lost response or a successful HTTP response with an error body

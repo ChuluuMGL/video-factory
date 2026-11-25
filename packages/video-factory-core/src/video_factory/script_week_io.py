@@ -9,7 +9,6 @@ import json
 from urllib.parse import urlencode
 
 from .feishu_client import resource, READ_TRANSIENT_ERRORS
-from .feishu_native_sync import plain_text
 from .runtime_store import RuntimeFault, fingerprint
 
 
@@ -182,10 +181,11 @@ class CopyOnlyWeekWriter:
             raise RuntimeFault('WEEK_COPY_PATCH_LIMIT')
         return copy.deepcopy(fields)
 
-    def append(self, fields, ticket):
+    def append(self, fields, ticket, *, before_write=None):
         fields = self._patch(fields)
         if not isinstance(fields.get(self.identity_field), str) or not fields[self.identity_field]:
             raise RuntimeFault('WEEK_COPY_IDENTITY_REQUIRED')
+        if before_write is not None: before_write()
         record = self._client.append(self.base, self.table, fields, ticket)
         self._after_write(record, fields)
         return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}
@@ -196,7 +196,31 @@ class CopyOnlyWeekWriter:
             if str(error) not in READ_TRANSIENT_ERRORS:raise
             # Keep the durable intent and stop for reconciliation. This is not
             # a read-only outage even when the lost receipt is a GET timeout.
-            raise RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN') from None
+            unknown = RuntimeFault('WEEK_COPY_WRITE_READBACK_UNKNOWN')
+            unknown.request_context = getattr(error, 'request_context', None)
+            raise unknown from None
+
+    @staticmethod
+    def _text_value(actual):
+        if actual is None or actual == '' or actual == []:
+            return ''
+        if isinstance(actual, str):
+            return actual
+        if isinstance(actual, list) and all(
+            isinstance(segment, dict) and segment.get('type') == 'text'
+            and isinstance(segment.get('text'), str) for segment in actual
+        ):
+            return ''.join(segment['text'] for segment in actual)
+        raise RuntimeFault('FEISHU_TEXT_FIELD_REQUIRED')
+
+    @staticmethod
+    def _same_value(actual, expected):
+        # Preserve whitespace and numeric types across preflight and readback.
+        if isinstance(expected, str):
+            actual = CopyOnlyWeekWriter._text_value(actual)
+        if isinstance(actual, bool) != isinstance(expected, bool):
+            return False
+        return actual == expected
 
     def _readback(self, record, expected):
         row = self._client.record(self.base, self.table, record)
@@ -206,17 +230,34 @@ class CopyOnlyWeekWriter:
             actual = row['fields'].get(field)
             # These projections use text and number fields only. Human-owned
             # status, opinions and scores never enter this patch.
-            if isinstance(value, str): actual = '' if actual in (None, '', []) else plain_text(actual)
-            if actual != value: raise RuntimeFault('WEEK_COPY_READBACK_MISMATCH')
+            if not self._same_value(actual, value):
+                raise RuntimeFault('WEEK_COPY_READBACK_MISMATCH')
         return row
 
-    def update(self, record, identity, fields):
+    def update(self, record, identity, fields, *, before_write=None, capture_prior=None):
         resource(record, 'rec'); fields = self._patch(fields)
         if self.identity_field in fields and fields[self.identity_field] != identity:
             raise RuntimeFault('WEEK_COPY_IDENTITY_CHANGED')
-        row = self._readback(record, {self.identity_field: identity})
-        if all(row['fields'].get(k) == v for k, v in fields.items()):
-            return {'record_id': record, 'writes': 0}
-        self._client.update_record(self.base, self.table, record, fields)
-        self._after_write(record, {**fields, self.identity_field: identity})
-        return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}
+        stage = 'update_preflight'
+        try:
+            row = self._readback(record, {self.identity_field: identity})
+            changed = {k: v for k, v in fields.items()
+                       if not self._same_value(row['fields'].get(k), v)}
+            if not changed:
+                return {'record_id': record, 'writes': 0}
+            # Persist intent only once a real difference is known, before PUT.
+            if capture_prior is not None:
+                capture_prior({key: copy.deepcopy(row['fields'].get(key)) for key in fields})
+            if before_write is not None: before_write()
+            stage = 'update_request'
+            # Feishu clears text with JSON null. Keep the desired fields
+            # unchanged for intent storage and semantic readback.
+            wire_fields = {key: None if isinstance(value, str) and value == '' else value
+                           for key, value in changed.items()}
+            self._client.update_record(self.base, self.table, record, wire_fields)
+            stage = 'update_readback'
+            self._after_write(record, {**fields, self.identity_field: identity})
+            return {'record_id': record, 'writes': 1, 'fields_sha256': fingerprint(fields)}
+        except RuntimeFault as error:
+            error.copy_stage = stage
+            raise
