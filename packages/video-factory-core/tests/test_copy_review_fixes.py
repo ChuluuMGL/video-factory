@@ -89,6 +89,7 @@ class ReviewFixTests(unittest.TestCase):
             d.execute("INSERT INTO meta VALUES('schema','1')")
         db.chmod(0o600)
         script="""import os,sys
+sys.path.insert(0, sys.argv[2])
 from test_copy_update_recovery import Client
 from video_factory.runtime_store import RuntimeStore
 from video_factory.script_week_io import CopyOnlyWeekWriter
@@ -99,7 +100,11 @@ def crash(*a):os._exit(73)
 c.update_record=crash
 p.publish('sample',{'Sample':'sample','Output':'new','Failure':''})
 """
-        done=subprocess.run([sys.executable,'-c',script,str(root)],capture_output=True,timeout=15)
+        tests_dir = Path(__file__).resolve().parent
+        done = subprocess.run(
+            [sys.executable, '-c', script, str(root), str(tests_dir)],
+            capture_output=True, timeout=15,
+        )
         self.assertEqual(done.returncode,73,done.stderr.decode())
         self.client.remote['fields']['Output']='old'
         restarted=WeekProjection(RuntimeStore(root),'fixture',self.writer,lambda _: [])
