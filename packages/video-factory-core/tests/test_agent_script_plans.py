@@ -121,15 +121,15 @@ class ScriptPlanTests(unittest.TestCase):
 
         first = self.prepare()
         approve(first)
-        task = self.request['task']
-        self.store.create_task(self.admin, self.project, task, {
-            'sku_id': 'sku_one', 'script': 'Synthetic revision to reject', 'source_revision': 'fixture',
-        })
-        self.store.review(self.admin, 'rejected_fixture', self.project, task, 1, 'script', 'reject', 'Revise the hook.')
+        self.assertEqual(self.provider.calls, [])
+        self.submit(first)
+        self.step()  # Synthetic draft and receipt for a legitimate predecessor.
+        self.review(1, 'reject', 'Revise the hook.')
+        calls_before_revision = list(self.provider.calls)
         revised = self.prepare('delegated_revision', {**self.request, 'expected_revision': 1})
         self.assertTrue(revised['version_token'].startswith('rev-1-'))
         approve(revised)
-        self.assertEqual(self.provider.calls, [])
+        self.assertEqual(self.provider.calls, calls_before_revision)
 
     def test_prepare_approve_and_submit_are_distinct(self):
         plan = self.prepare(); self.assertEqual(plan['phase'], 'prepared')
