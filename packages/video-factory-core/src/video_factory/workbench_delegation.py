@@ -29,13 +29,13 @@ def delegation(store, admin, project, principal, roles=None, ttl_hours=24, outpu
             raise RuntimeFault('LOCAL_FAKE_PROFILE_NO_PAID_OR_OWNER_PLAN_ROUTE')
         policy_key = 'workbench:delegation:' + project
         policy = meta(db, policy_key) or {}
+        for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'automation:key:%'").fetchall():
+            grant = json.loads(row[1])
+            if grant.get('project') == project and grant.get('workbench_principal') == principal:
+                db.execute('DELETE FROM meta WHERE key=?', (row[0],))
         if roles is None:
             policy.pop(principal, None)
             save(db, policy_key, policy)
-            for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'automation:key:%'").fetchall():
-                grant = json.loads(row[1])
-                if grant.get('project') == project and grant.get('workbench_principal') == principal:
-                    db.execute('DELETE FROM meta WHERE key=?', (row[0],))
             store.audit(db, actor, 'workbench_grant_revoked', project)
             return {'revoked': True, 'project': project}
         raw = secrets.token_urlsafe(32)

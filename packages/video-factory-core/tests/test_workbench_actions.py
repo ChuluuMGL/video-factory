@@ -105,3 +105,58 @@ class WorkbenchTests(unittest.TestCase):
         now[0] += 300
         with self.assertRaisesRegex(RuntimeFault, 'TOKEN_EXPIRED'):
             self.api.media.open(token)
+
+    def test_repair_preserves_failed_revision_and_refuses_stale_confirmation(self):
+        self.task('video_failure', 'failed')
+        with self.store.connect() as db:
+            self.store.audit(db, 'worker', 'provider_failed_no_retry', PROJECT, 'video_failure', 1)
+        failure = self.call('failures')['items'][0]
+        preview = self.call('repair/preview', target_type='task_state', target_id=failure['task_key'],
+                            expected_version=failure['version_token'], repair_action='requeue_failed_task')
+        confirmation = self.confirmation(preview)
+        receipt = self.call('repair/apply', **confirmation)
+        self.assertTrue(receipt['applied'])
+        self.assertFalse(receipt['scheduled'])
+        self.assertTrue(self.call('repair/apply', **confirmation)['replayed'])
+        with self.store.connect() as db:
+            values = [tuple(row) for row in db.execute('SELECT revision,state FROM tasks WHERE project=? ORDER BY revision', (PROJECT,))]
+        self.assertEqual(values, [(1, 'failed'), (2, 'ready')])
+
+
+class NativeWorkbenchTests(unittest.TestCase):
+    def test_ambiguous_native_review_write_is_never_repeated(self):
+        import test_local_native
+        from video_factory.dispatch import authorize
+        from video_factory.feishu_bridge import meta
+        from video_factory.workbench_writeback import flush
+        from unittest.mock import patch
+
+        test_local_native.LocalNativeTests.setUp(self)
+        test_local_native.LocalNativeTests.task(self)
+        signer = self.root / 'review-grant'
+        delegation(self.store, self.admin, 'brand', PRINCIPAL, ['review'], output=signer)
+        api = AgentAPI(self.store, 'brand', test_local_native.LocalNativeTests.scheduler(self))
+        call = lambda route, **body: api.call('/v1/agent/' + route, signer.read_text(),
+                                             {'project': 'brand', **body}, principal=PRINCIPAL)
+        authorize_tick = lambda db: authorize(db, self.execution, 'brand')
+        self.native.sync('brand', self.root, authorize_tick)
+        row = call('reviews')['items'][0]
+        preview = call('review/prepare', task_key=row['task_key'], expected_version=row['version_token'],
+                       stage='script', decision='accept')
+        consent = WorkbenchTests.confirmation(preview)
+        self.assertEqual(call('review/commit', **consent)['board_writeback'], 'reconciliation_required')
+        with self.store.connect() as db:
+            config = meta(db, 'native:config:brand')
+        original = self.remote.update_record
+
+        def interrupted(*args):
+            original(*args)
+            raise RuntimeFault('BASE_RESULTS_REQUEST_UNKNOWN_READ_STATUS')
+
+        with patch.object(self.remote, 'update_record', side_effect=interrupted) as update:
+            result = flush(self.store, 'brand', self.native, config, authorize_tick)
+            self.assertEqual(result['status'], 'attention_required')
+            self.assertIsNone(flush(self.store, 'brand', self.native, config, authorize_tick))
+            update.assert_called_once()
+        self.assertEqual(self.remote.record_fields['状态'], '脚本通过')
+        self.assertEqual(call('review/commit', **consent)['board_writeback'], 'reconciliation_required')

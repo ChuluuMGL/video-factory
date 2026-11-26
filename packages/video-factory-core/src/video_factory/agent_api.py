@@ -31,7 +31,7 @@ class AgentAPI:
             params = {key: value for key, value in body.items() if key != 'project'}
             if set(params) - WORKBENCH_FIELDS[op]:
                 raise RuntimeFault('WORKBENCH_FIELDS_INVALID')
-            actions = WorkbenchActions(self.store, self.project, self.script_plans)
+            actions = WorkbenchActions(self.store, self.project, self.script_plans, video_plans_enabled=self.plans_enabled)
             if op in ('stats', 'failures', 'reviews'):
                 with self.store.connect() as db:
                     authorize(db, token, self.project, workbench=True)
@@ -198,7 +198,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {'status': 'up', 'scope': 'local_kernel_candidate'})
         elif self.path.startswith('/v1/agent/media/stream/'):
             try:
-                stream, size = self.server.api.media.open(self.path.rsplit('/', 1)[1])
+                stream, size = self.server.api.media.open(self.path.removeprefix('/v1/agent/media/stream/'))
             except (RuntimeFault, OSError):
                 self.reply(404, {'error': 'WORKBENCH_MEDIA_UNAVAILABLE'})
                 return

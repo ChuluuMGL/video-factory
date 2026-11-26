@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from audit_policy import reviewed_adversarial_fixture, reviewed_fixture_command, verdict
+from audit_policy import reviewed_historical_fixture, reviewed_fixture_command, verdict
 
 REPO = os.environ['GITHUB_REPOSITORY']
 MODE = sys.argv[1]
@@ -62,10 +62,12 @@ def scan(path, label, kind='dir'):
             secret = hit.get('Secret', '')
             if secret == 'NOT-A-REAL-CREDENTIAL':
                 classification = 'explicit-synthetic-fixture'
-            elif kind == 'git' and reviewed_adversarial_fixture(
+            elif kind == 'git' and reviewed_historical_fixture(
                     hit.get('RuleID'), hit.get('File'), hit.get('Commit'), hit.get('StartLine'),
-                    hashlib.sha256(secret.encode()).hexdigest()):
-                classification = 'reviewed-adversarial-fixture'
+                    lambda: subprocess.check_output(
+                        ['git', 'show', hit['Commit'] + ':' + hit['File']], text=True
+                    ).splitlines()[hit['StartLine'] - 1]):
+                classification = 'reviewed-historical-fixture'
             elif secret.startswith('/run/secrets/') and not any(c.isspace() for c in secret):
                 classification = 'runtime-secret-file-reference'
             else:

@@ -149,8 +149,9 @@ def revised(script, instruction, facts):
 
 
 class WorkbenchActions:
-    def __init__(self, store, project, script_plans=None, *, clock=time.time):
+    def __init__(self, store, project, script_plans=None, *, video_plans_enabled=False, clock=time.time):
         self.store, self.project, self.script_plans, self.clock = store, project, script_plans, clock
+        self.video_plans_enabled = video_plans_enabled
 
     def read(self, db, route, body, media_preview):
         from .workbench_views import projection
@@ -271,7 +272,7 @@ class WorkbenchActions:
                           confirmation=self._preview(db, 'edit', actor, row, {'draft': draft}, False,
                                                      '确认保存脚本新版本', digest=sha(draft)),
                           brief=brief('脚本改稿预览已生成。', '核对差异后确认。', '尚未写入任务账本。'))
-        return self._envelope(db,'review_or_edit_script', project, self.clock(), result)
+        return self._envelope(db, 'review_or_edit_script', project, self.clock(), result)
 
     def _repair_preview(self, db, actor, body):
         bounded(body.get('instruction', ''), 2000)
@@ -280,13 +281,14 @@ class WorkbenchActions:
         require(row['state'] not in ('submission_unknown', 'script_submission_unknown'),
                 'WORKBENCH_SUBMISSION_UNKNOWN_RECONCILE_FIRST')
         schedule = boolean(body, 'reschedule')
+        require(not schedule or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
         require(row['state'] == 'failed' and body.get('repair_action') == 'requeue_failed_task',
                 'WORKBENCH_REPAIR_STATE_DENIED')
         previous = meta(db, job_key(self.project, row['id'], row['revision'])) or {}
         require(previous.get('failure_code') or db.execute(
             "SELECT 1 FROM audit WHERE project=? AND task=? AND revision=? AND action='provider_failed_no_retry'",
             (self.project, row['id'], row['revision'])).fetchone(), 'WORKBENCH_DEFINITE_VIDEO_FAILURE_REQUIRED')
-        return self._envelope(db,'repair_and_schedule', self.project, self.clock(), {
+        return self._envelope(db, 'repair_and_schedule', self.project, self.clock(), {
             'phase': 'preview', 'brief': brief('已准备修复预览。', '核对新版本及费用。'),
             'diff': {'format': 'unified', 'summary': '保留旧失败版本，创建新版本',
                      'patch': '- state: failed\n+ state: ' + ('ready (approved queue)' if schedule else 'ready')},
@@ -326,7 +328,7 @@ class WorkbenchActions:
         require(not advance or decision == 'accept' and stage in ('script', 'storyboard'), 'WORKBENCH_ADVANCE_INVALID')
         value = {'stage': stage, 'decision': decision, 'feedback': feedback, 'advance': advance,
                  'notes': {**known, **prepared}, 'annotations': annotations, 'notes_digest': fingerprint(known)}
-        return self._envelope(db,'submit_review_decision', project, self.clock(), {
+        return self._envelope(db, 'submit_review_decision', project, self.clock(), {
             'phase': 'prepare', 'brief': brief('审核结论待确认。', '确认前核对版本和费用。'),
             'confirmation': self._preview(db, 'review', actor, row, value, advance, '确认审核结论'),
         })
@@ -335,6 +337,7 @@ class WorkbenchActions:
         require(not ({'confirmation_id', 'expected_digest', 'proposal_sha256', 'accept_provider_charges'} & set(body)),
                 'WORKBENCH_FIELDS_INVALID')
         kind, plan_id, plan_sha = body.get('plan_type'), body.get('plan_id'), body.get('plan_sha256')
+        require(kind != 'video' or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
         plan = plan_for(db, self.project, kind, plan_id)
         require(plan.get('plan_sha256') == plan_sha and not plan.get('submitted') and not plan.get('revoked')
                 and plan['expires_at'] > self.clock(), 'WORKBENCH_PLAN_CHANGED')
@@ -345,7 +348,7 @@ class WorkbenchActions:
             row = self._first_script_row(db, source, body.get('expected_version'))
         else:
             row = row_for(self.store, db, self.project, source['task'], body.get('expected_version'))
-        return self._envelope(db,'submit_review_decision', self.project, self.clock(), {
+        return self._envelope(db, 'submit_review_decision', self.project, self.clock(), {
             'phase': 'prepare', 'brief': brief('费用审批待确认。', '核对计划摘要和单次调用范围。'),
             'confirmation': self._preview(db, 'approve', actor, row, {'plan_type': kind, 'plan_id': plan_id,
                                          'plan_sha256': plan_sha}, True, '确认单次费用审批'),
@@ -366,7 +369,10 @@ class WorkbenchActions:
             result = {**saved['receipt'], 'replayed': True}
             if result.get('board_writeback') == 'reconciliation_required':
                 from .workbench_writeback import receipt_status
-                result['board_writeback'] = receipt_status(db, self.project, body['confirmation_id'])
+                board, next_plan = receipt_status(db, self.project, body['confirmation_id'])
+                result['board_writeback'] = board
+                if next_plan:
+                    result['next_stage_plan'] = next_plan
             return result
         payload = saved['payload']
         consent = boolean(body, 'accept_provider_charges')
@@ -390,6 +396,7 @@ class WorkbenchActions:
             plan = plan_for(db, project, plan_type, plan_id)
             require(plan['plan_sha256'] == payload['plan_sha256'] and not plan.get('submitted'),
                     'WORKBENCH_PLAN_CHANGED')
+            require(plan_type != 'video' or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
             if plan_type == 'script':
                 require(fresh and fresh.get('plan_sha256') == plan['source_plan_sha256'],
                         'WORKBENCH_PLAN_CHANGED')
@@ -434,9 +441,13 @@ class WorkbenchActions:
             save(db, f'workbench:notes:{project}:{task}:{revision}', notes)
             newer = self.store._current(db, project, task, revision)
             from .workbench_writeback import enqueue
-            writeback = enqueue(db, project, ref, row, newer, 'review', feedback)
+            deferred = {'principal': actor, 'expires_at': saved['expires_at'],
+                        'profile_sha256': saved['profile'],
+                        'grant_key': hashlib.sha256(token.encode()).hexdigest()} if (
+                            self.video_plans_enabled and paid and payload['advance']) else None
+            writeback = enqueue(db, project, ref, row, newer, 'review', feedback, deferred)
             next_plan = {'plan_id': None, 'enqueued': False, 'video_spending_approved': False}
-            if paid and payload['advance'] and writeback == 'synced':
+            if deferred and writeback == 'synced':
                 next_plan = video_queue(self.store, db, project, actor, newer, ref)
             result.update(review_recorded=True, new_canonical_status=STATUS[receipt['state']][1],
                           board_writeback=writeback, next_stage_plan=next_plan)
@@ -451,7 +462,7 @@ class WorkbenchActions:
                           next_stage_plan=next_plan)
         skill = {'repair': 'repair_and_schedule', 'edit': 'review_or_edit_script',
                  'review': 'submit_review_decision', 'approve': 'submit_review_decision'}[kind]
-        result = self._envelope(db,skill, project, self.clock(), {
+        result = self._envelope(db, skill, project, self.clock(), {
             **result, 'brief': brief('已记录已确认的操作。', '回读结果。'),
         })
         self.store.audit(db, actor, 'workbench_' + kind, project, task, revision)

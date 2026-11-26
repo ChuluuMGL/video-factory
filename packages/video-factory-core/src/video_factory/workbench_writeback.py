@@ -1,6 +1,7 @@
 """Durable Feishu board outbox. A reserved request is never sent twice."""
 import hashlib
 import json
+import time
 
 from .feishu_bridge import meta, plain_text, save, select_text
 from .feishu_diagnostics import failure_context
@@ -18,12 +19,10 @@ def prefix(project):
     return 'workbench:board:' + project + ':'
 
 
-def enqueue(db, project, ref, before, after, operation, feedback):
+def enqueue(db, project, ref, before, after, operation, feedback, deferred=None):
     config = meta(db, 'native:config:' + project) or {}
     if not config.get('enabled'):
         return 'synced'
-    if before['state'] == 'awaiting_storyboard_review':
-        raise RuntimeFault('WORKBENCH_STORYBOARD_NATIVE_MAPPING_UNAVAILABLE')
     key = prefix(project) + ref
     save(db, key, {
         'native_sha256': fingerprint(config), 'task': before['id'], 'operation': operation,
@@ -31,14 +30,15 @@ def enqueue(db, project, ref, before, after, operation, feedback):
         'old_state': before['state'], 'new_state': after['state'], 'feedback': feedback,
         'old_input': json.loads(before['input']), 'new_input': json.loads(after['input']),
         'artifact': json.loads(before['artifact']) if before['artifact'] else None,
-        'input_digest': after['input_digest'], 'state': 'pending',
+        'input_digest': after['input_digest'], 'state': 'pending', 'deferred': deferred,
     })
     return 'reconciliation_required'
 
 
 def receipt_status(db, project, ref):
     item = meta(db, prefix(project) + ref)
-    return 'synced' if item and item['state'] == 'synced' else 'reconciliation_required'
+    return ('synced', item.get('next_stage_plan')) if item and item['state'] == 'synced' else (
+        'reconciliation_required', None)
 
 
 def _same(name, value, expected, status):
@@ -102,21 +102,28 @@ def flush(store, project, native, config, authorization):
             raise RuntimeFault('WORKBENCH_BOARD_VERSION_CHANGED')
 
         old_status = STATUSES.get(item['old_state'], '脚本退回')
-        new_status = STATUSES.get(item['new_state'], '视频退回' if item['old_state'] == 'awaiting_video_review' else '脚本退回')
+        stage = {'awaiting_video_review': '视频', 'awaiting_storyboard_review': '分镜'}.get(item['old_state'], '脚本')
+        new_status = (stage + '退回' if item['new_state'] == 'rejected' else
+                      '分镜通过' if stage == '分镜' else STATUSES[item['new_state']])
         expected = {names['status']: new_status, names['feedback']: item['feedback'],
                     names['review_revision']: str(item['revision']),
                     names['script_digest']: hashlib.sha256(newer['script'].encode()).hexdigest(),
                     names['script']: newer['script']}
         if item['operation'] == 'edit':
             expected[names['feedback']] = ''
-        if item['artifact']:
-            if remote.get(names['video_digest']) != item['artifact']['sha256'] and not CopyOnlyWeekWriter._same_value(
-                    remote.get(names['video_digest']), item['artifact']['sha256']):
-                raise RuntimeFault('WORKBENCH_BOARD_VERSION_CHANGED')
+        if item['artifact'] and stage == '视频' and not CopyOnlyWeekWriter._same_value(
+                remote.get(names['video_digest']), item['artifact']['sha256']):
+            raise RuntimeFault('WORKBENCH_BOARD_VERSION_CHANGED')
 
         actual = {name: value for name, value in expected.items()
                   if not _same(name, remote.get(name), value, names['status'])}
         if actual:
+            if stage == '分镜':
+                status_field = next((field for field in client.fields(base, table)
+                                     if field.get('field_id') == fields['status']), None)
+                options = (status_field or {}).get('property', {}).get('options', [])
+                if new_status not in {option.get('name') for option in options}:
+                    raise RuntimeFault('WORKBENCH_STORYBOARD_NATIVE_MAPPING_UNAVAILABLE')
             prior = {names['status']: old_status, names['review_revision']: str(item['old_revision']),
                      names['script']: previous['script'],
                      names['script_digest']: hashlib.sha256(previous['script'].encode()).hexdigest()}
@@ -136,7 +143,8 @@ def flush(store, project, native, config, authorization):
                 raise RuntimeFault('WORKBENCH_BOARD_READBACK_CHANGED')
         with store.connect() as db:
             check(db, item)
-            save(db, key, {**item, 'state': 'synced'})
+            synced = {**item, 'state': 'synced'}
+            save(db, key, synced)
             if item['operation'] == 'edit':
                 save(db, source_key(project, item['task']), {'record_id': record_id})
                 source = {'record_id': record_id, 'task': item['task'], 'revision': item['revision']}
@@ -144,6 +152,8 @@ def flush(store, project, native, config, authorization):
                 snapshot = {**source, 'state': item['new_state'], 'input_digest': item['input_digest'], 'artifact': None}
                 save(db, sync_key(project, item['task'], item['revision'], 'script'),
                      {'snapshot': snapshot, 'steps': {}, 'complete': True})
+        if item.get('deferred'):
+            _advance(store, project, key, synced, authorization)
         return {'status': 'synced', 'feishu_writes': writes}
     except Exception as error:
         # Never mark a possibly sent operation pending again. Other operations
@@ -152,3 +162,32 @@ def flush(store, project, native, config, authorization):
             if meta(db, key) == item:
                 save(db, key, {**item, 'state': 'reconciliation_required', 'failure': failure_context(error)})
         return {'status': 'attention_required', 'automatic_resubmit': False, 'feishu_writes': writes}
+
+
+def _advance(store, project, key, synced, authorization):
+    """Queue exactly one approved next stage after verified board readback."""
+    from .workbench_actions import video_queue
+    request = synced['deferred']
+    try:
+        with store.connect() as db:
+            authorization(db)
+            if meta(db, key) != synced:
+                return
+            principal = request['principal']
+            policy = meta(db, 'workbench:delegation:' + project) or {}
+            grant = meta(db, 'automation:key:' + request['grant_key']) or {}
+            if (request['expires_at'] <= time.time() or grant.get('expires_at', 0) <= time.time()
+                    or grant.get('project') != project or grant.get('workbench_principal') != principal
+                    or 'cost' not in grant.get('workbench_roles', []) or 'cost' not in policy.get(principal, [])
+                    or request['profile_sha256'] != fingerprint(meta(db, 'video:profile:' + project))
+                    or synced['native_sha256'] != fingerprint(meta(db, 'native:config:' + project))):
+                return
+            latest = store._current(db, project, synced['task'], synced['revision'])
+            if latest['input_digest'] != synced['input_digest'] or latest['state'] != synced['new_state']:
+                return
+            plan = video_queue(store, db, project, principal, latest, key.rsplit(':', 1)[1])
+            save(db, key, {**synced, 'next_stage_plan': plan})
+    except RuntimeFault:
+        # Board synchronization is complete. A new owner plan is required if the
+        # deferred approval is stale or the next stage cannot currently queue.
+        return
