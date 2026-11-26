@@ -348,6 +348,8 @@ class WorkbenchActions:
             row = self._first_script_row(db, source, body.get('expected_version'))
         else:
             row = row_for(self.store, db, self.project, source['task'], body.get('expected_version'))
+            require(row['revision'] == source['revision'] - (1 if kind == 'script' else 0),
+                    'WORKBENCH_PLAN_CHANGED')
         return self._envelope(db, 'submit_review_decision', self.project, self.clock(), {
             'phase': 'prepare', 'brief': brief('费用审批待确认。', '核对计划摘要和单次调用范围。'),
             'confirmation': self._preview(db, 'approve', actor, row, {'plan_type': kind, 'plan_id': plan_id,

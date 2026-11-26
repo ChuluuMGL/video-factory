@@ -96,6 +96,41 @@ class ScriptPlanTests(unittest.TestCase):
         self.plans = self.service()
         return source
 
+    def test_delegated_cost_approval_binds_first_and_revised_plans(self):
+        from video_factory.workbench_delegation import delegation
+
+        principal = 'auth-' + 'd' * 64
+        credential = self.root / 'workbench-cost-key'
+        delegation(self.store, self.admin, self.project, principal, ['cost'], output=credential)
+        api = AgentAPI(self.store, self.project, Scheduler(self.store, self.project), script_plans=self.plans)
+
+        def approve(plan):
+            fields = {'project': self.project, 'plan_type': 'script', 'plan_id': plan['plan_id'],
+                      'plan_sha256': plan['plan_sha256'], 'expected_version': plan['version_token']}
+            token = credential.read_text()
+            preview = api.call('/v1/agent/plan/approve', token, {**fields, 'phase': 'prepare'}, principal=principal)
+            confirm = {**fields, 'phase': 'commit', **{
+                key: preview['confirmation'][key] for key in ('confirmation_id', 'expected_digest')}}
+            with self.assertRaisesRegex(RuntimeFault, 'COST_CONSENT_REQUIRED'):
+                api.call('/v1/agent/plan/approve', token, confirm, principal=principal)
+            receipt = api.call('/v1/agent/plan/approve', token, {**confirm, 'accept_provider_charges': True},
+                               principal=principal)
+            self.assertTrue(receipt['approved'])
+            self.assertFalse(receipt['enqueued'])
+            self.assertEqual(receipt['provider_requests'], 0)
+
+        first = self.prepare()
+        approve(first)
+        task = self.request['task']
+        self.store.create_task(self.admin, self.project, task, {
+            'sku_id': 'sku_one', 'script': 'Synthetic revision to reject', 'source_revision': 'fixture',
+        })
+        self.store.review(self.admin, 'rejected_fixture', self.project, task, 1, 'script', 'reject', 'Revise the hook.')
+        revised = self.prepare('delegated_revision', {**self.request, 'expected_revision': 1})
+        self.assertTrue(revised['version_token'].startswith('rev-1-'))
+        approve(revised)
+        self.assertEqual(self.provider.calls, [])
+
     def test_prepare_approve_and_submit_are_distinct(self):
         plan = self.prepare(); self.assertEqual(plan['phase'], 'prepared')
         self.assertEqual(plan['task_state'], 'not_created')

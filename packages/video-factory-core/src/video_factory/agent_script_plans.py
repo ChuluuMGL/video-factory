@@ -86,7 +86,18 @@ class ScriptPlans:
                  else 'approved' if saved.get('approved_by') else 'prepared')
         result = job.get('result') if enqueued else None
         from .workbench_views import first_script_row, version
-        version_row = row or (first_script_row(db, self.project, plan) if latest is None else None)
+        if latest is None and plan['revision'] == 1:
+            version_row = first_script_row(db, self.project, plan)
+        elif row is not None and latest == plan['revision']:
+            version_row = row
+        elif latest == plan['revision'] - 1:
+            # A revision plan fences the rejected/closed predecessor until
+            # submission creates its target revision.
+            version_row = db.execute(
+                'SELECT * FROM tasks WHERE project=? AND id=? AND revision=?',
+                (self.project, plan['task'], latest)).fetchone()
+        else:
+            version_row = None
         return {'version_token': version(version_row) if version_row else None,
                 'schema': 'vf-agent-script-plan-v1', 'project': self.project, 'task': plan['task'],
                 'revision': plan['revision'], 'sku_id': plan['sku']['sku_id'], 'plan_id': saved['plan_id'],
