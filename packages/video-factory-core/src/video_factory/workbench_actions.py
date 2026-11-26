@@ -10,7 +10,7 @@ from .agent_plans import VideoPlans, authorize
 from .feishu_bridge import meta, save
 from .runtime_store import RuntimeFault, canonical, fingerprint, identifier
 from .worker import job_key
-from .workbench_views import SHA, STAGES, STATUS, brief, envelope, iso, text, unresolved, version
+from .workbench_views import SHA, STAGES, STATUS, brief, envelope, iso, text, notes_for, stage_status, version
 
 ROLES = {'repair', 'review', 'edit', 'cost'}
 PRINCIPAL = re.compile('auth-[a-f0-9]{64}')
@@ -152,9 +152,15 @@ class WorkbenchActions:
     def __init__(self, store, project, script_plans=None, *, clock=time.time):
         self.store, self.project, self.script_plans, self.clock = store, project, script_plans, clock
 
-    def read(self, db, route, body):
+    def read(self, db, route, body, media_preview):
         from .workbench_views import projection
-        return projection(db, self.project, route, body, self.clock())
+        return projection(db, self.project, route, body, self.clock(), media_preview=media_preview)
+
+    @staticmethod
+    def _envelope(db, skill, project, at, result):
+        native = meta(db, 'native:config:' + project) or {}
+        board = 'feishu_bitable' if native.get('enabled') else 'self_hosted'
+        return envelope(skill, project, at, result, board=board)
 
     def _preview(self, db, kind, principal, row, payload, paid, summary, *, digest=None):
         ref = 'cf_' + secrets.token_hex(24)
@@ -241,7 +247,8 @@ class WorkbenchActions:
         project = self.project
         task = task_id(project, body.get('task_key'))
         row = row_for(self.store, db, project, task, body.get('expected_version'))
-        require(row['state'] in ('awaiting_script_review', 'rejected'), 'WORKBENCH_EDIT_STATE_DENIED')
+        require(row['state'] in ('awaiting_script_review', 'rejected') and stage_status(db, row)[0] == 'script',
+                'WORKBENCH_EDIT_STATE_DENIED')
         current = json.loads(row['input'])
         script = current['script']
         setup = meta(db, 'setup:project:' + project) or {}
@@ -264,7 +271,7 @@ class WorkbenchActions:
                           confirmation=self._preview(db, 'edit', actor, row, {'draft': draft}, False,
                                                      '确认保存脚本新版本', digest=sha(draft)),
                           brief=brief('脚本改稿预览已生成。', '核对差异后确认。', '尚未写入任务账本。'))
-        return envelope('review_or_edit_script', project, self.clock(), result)
+        return self._envelope(db,'review_or_edit_script', project, self.clock(), result)
 
     def _repair_preview(self, db, actor, body):
         bounded(body.get('instruction', ''), 2000)
@@ -279,7 +286,7 @@ class WorkbenchActions:
         require(previous.get('failure_code') or db.execute(
             "SELECT 1 FROM audit WHERE project=? AND task=? AND revision=? AND action='provider_failed_no_retry'",
             (self.project, row['id'], row['revision'])).fetchone(), 'WORKBENCH_DEFINITE_VIDEO_FAILURE_REQUIRED')
-        return envelope('repair_and_schedule', self.project, self.clock(), {
+        return self._envelope(db,'repair_and_schedule', self.project, self.clock(), {
             'phase': 'preview', 'brief': brief('已准备修复预览。', '核对新版本及费用。'),
             'diff': {'format': 'unified', 'summary': '保留旧失败版本，创建新版本',
                      'patch': '- state: failed\n+ state: ' + ('ready (approved queue)' if schedule else 'ready')},
@@ -299,7 +306,7 @@ class WorkbenchActions:
         require(isinstance(annotations, list) and len(annotations) <= 8 and isinstance(statuses, list) and len(statuses) <= 8,
                 'WORKBENCH_REVIEW_NOTES_INVALID')
         require('[VF_' not in feedback, 'WORKBENCH_REVIEW_NOTES_INVALID')
-        known = meta(db, f"workbench:notes:{project}:{row['id']}:{row['revision']}") or {}
+        known = notes_for(db, project, row['id'], row['revision'])
         prepared = {}
         for note in statuses:
             require(isinstance(note, dict) and set(note) == {'id', 'status'} and pattern(note['id'], SHA)
@@ -312,14 +319,14 @@ class WorkbenchActions:
             bounded(note['comment'], 1000, nonempty=True)
         require(decision == 'accept' or feedback.strip() or annotations, 'REVIEW_FEEDBACK_REQUIRED')
         if decision == 'accept':
-            remaining = unresolved(db, project, row['id'], row['revision'])
+            remaining = sum(status != 'resolved' for status in known.values())
             delta = sum((updated != 'resolved') - (known[k] != 'resolved') for k, updated in prepared.items())
             require(not annotations and remaining + delta == 0, 'WORKBENCH_REVIEW_NOTES_UNRESOLVED')
         advance = boolean(body, 'advance_next_stage')
         require(not advance or decision == 'accept' and stage in ('script', 'storyboard'), 'WORKBENCH_ADVANCE_INVALID')
         value = {'stage': stage, 'decision': decision, 'feedback': feedback, 'advance': advance,
                  'notes': {**known, **prepared}, 'annotations': annotations, 'notes_digest': fingerprint(known)}
-        return envelope('submit_review_decision', project, self.clock(), {
+        return self._envelope(db,'submit_review_decision', project, self.clock(), {
             'phase': 'prepare', 'brief': brief('审核结论待确认。', '确认前核对版本和费用。'),
             'confirmation': self._preview(db, 'review', actor, row, value, advance, '确认审核结论'),
         })
@@ -338,7 +345,7 @@ class WorkbenchActions:
             row = self._first_script_row(db, source, body.get('expected_version'))
         else:
             row = row_for(self.store, db, self.project, source['task'], body.get('expected_version'))
-        return envelope('submit_review_decision', self.project, self.clock(), {
+        return self._envelope(db,'submit_review_decision', self.project, self.clock(), {
             'phase': 'prepare', 'brief': brief('费用审批待确认。', '核对计划摘要和单次调用范围。'),
             'confirmation': self._preview(db, 'approve', actor, row, {'plan_type': kind, 'plan_id': plan_id,
                                          'plan_sha256': plan_sha}, True, '确认单次费用审批'),
@@ -401,7 +408,7 @@ class WorkbenchActions:
                 db.execute("UPDATE tasks SET state='rejected' WHERE project=? AND id=? AND revision=?",
                            (project, task, revision))
             self.store._create_task(db, actor, project, task, {**current, 'script': payload['draft']}, revision)
-            notes = meta(db, f'workbench:notes:{project}:{task}:{revision}')
+            notes = notes_for(db, project, task, revision)
             if notes:
                 save(db, f'workbench:notes:{project}:{task}:{revision + 1}',
                      dict.fromkeys(notes, 'pending'))
@@ -412,7 +419,7 @@ class WorkbenchActions:
                           board_writeback=enqueue(db, project, ref, row, newer, 'edit', ''),
                           video_spending_approved=False)
         elif kind == 'review':
-            prior_notes = meta(db, f'workbench:notes:{project}:{task}:{revision}') or {}
+            prior_notes = notes_for(db, project, task, revision)
             require(fingerprint(prior_notes) == payload['notes_digest'], 'WORKBENCH_REVIEW_NOTES_CHANGED')
             feedback = payload['feedback']
             annotations = payload['annotations']
@@ -444,7 +451,7 @@ class WorkbenchActions:
                           next_stage_plan=next_plan)
         skill = {'repair': 'repair_and_schedule', 'edit': 'review_or_edit_script',
                  'review': 'submit_review_decision', 'approve': 'submit_review_decision'}[kind]
-        result = envelope(skill, project, self.clock(), {
+        result = self._envelope(db,skill, project, self.clock(), {
             **result, 'brief': brief('已记录已确认的操作。', '回读结果。'),
         })
         self.store.audit(db, actor, 'workbench_' + kind, project, task, revision)

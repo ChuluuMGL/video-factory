@@ -97,7 +97,7 @@ def serve(store, project, port, stop, *, execution_token=None, master_key=None,
         scheduler = Scheduler(store, project, execution_token=execution_token, master_key=master_key,
                               media_root=media_root, interval=interval, **({'dispatch': dispatch} if dispatch else {}))
         with AgentServer(('127.0.0.1', port), AgentAPI(store, project, scheduler,
-                         plans_enabled=plans_enabled, script_plans=script_plans, employee_access=employee_access)) as server, \
+                         plans_enabled=plans_enabled, script_plans=script_plans, employee_access=employee_access, media_root=media_root)) as server, \
                 (native_receiver(store, project, native_files, scheduler) if native_files else nullcontext()):
             thread = threading.Thread(target=scheduler.run, args=(stop,), name='vf-local-scheduler')
             thread.start()

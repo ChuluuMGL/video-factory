@@ -80,3 +80,28 @@ class WorkbenchTests(unittest.TestCase):
         self.assertTrue(reply['review_recorded'])
         self.assertFalse(reply['next_stage_plan']['enqueued'])
         self.assertFalse(reply['next_stage_plan']['video_spending_approved'])
+
+    def test_media_handles_are_short_lived_version_bound_and_path_free(self):
+        import hashlib
+        from video_factory.runtime_store import canonical, exclusive_write
+        from video_factory.workbench_media import WorkbenchMedia
+        self.task('video', 'awaiting_video_review')
+        clip = self.root / 'synthetic.mp4'
+        data = b'synthetic bytes, not a real clip'
+        exclusive_write(clip, data)
+        artifact = {'sha256': hashlib.sha256(data).hexdigest(), 'location': str(clip),
+                    'verification': 'full_decode_passed'}
+        with self.store.connect() as db:
+            db.execute('UPDATE tasks SET artifact=? WHERE project=? AND id=?', (canonical(artifact), PROJECT, 'video'))
+        now = [1000]
+        self.api.media = WorkbenchMedia(self.store, PROJECT, self.root, clock=lambda: now[0])
+        row = self.call('reviews', stage='video')['items'][0]
+        token = row['preview']['media_preview_token']
+        self.assertNotIn(str(clip), str(row))
+        stream, size = self.api.media.open(token)
+        with stream:
+            self.assertEqual(stream.read(), data)
+        self.assertEqual(size, len(data))
+        now[0] += 300
+        with self.assertRaisesRegex(RuntimeFault, 'TOKEN_EXPIRED'):
+            self.api.media.open(token)

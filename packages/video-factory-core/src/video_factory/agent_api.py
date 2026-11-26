@@ -2,21 +2,24 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import TCPServer
 import io
+import shutil
 
 from .onboarding import read_json
 from .feishu_bridge import meta
 from .runtime_store import RuntimeFault, canonical, identifier
 from .agent_plans import VideoPlans, authorize
 from .agent_script_plans import ScriptPlans
-from .workbench_actions import FIELDS as WORKBENCH_FIELDS, WorkbenchActions
+from .workbench_actions import FIELDS as WORKBENCH_FIELDS, WorkbenchActions, row_for, task_id
+from .workbench_media import WorkbenchMedia
 
 
 class AgentAPI:
-    def __init__(self, store, project, scheduler, *, plans_enabled=False, script_plans=None, employee_access=None):
+    def __init__(self, store, project, scheduler, *, plans_enabled=False, script_plans=None, employee_access=None, media_root=None):
         self.store, self.project, self.scheduler = store, identifier(project), scheduler
         self.plans_enabled = plans_enabled
         self.script_plans = script_plans
         self.employee_access = employee_access
+        self.media = WorkbenchMedia(store, project, media_root)
 
     def call(self, route, token, body, *, principal=None):
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
@@ -32,10 +35,11 @@ class AgentAPI:
             if op in ('stats', 'failures', 'reviews'):
                 with self.store.connect() as db:
                     authorize(db, token, self.project, workbench=True)
-                    return actions.read(db, op, params)
+                    return actions.read(db, op, params, self.media.issue)
             return actions.action(op, token, principal, params)
         fields = {
             '/v1/agent/capabilities': {'project'},
+            '/v1/agent/media/preview-token': {'project', 'task_key', 'expected_version'},
             '/v1/agent/status': {'project'},
             '/v1/agent/project_stats': {'project'},
             '/v1/agent/list_failures': {'project', 'after'},
@@ -82,9 +86,13 @@ class AgentAPI:
                 return plans.prepare(token, body.get('task'), body.get('revision'), body.get('request_id'))
             return plans.submit(token, body.get('plan_id'), body.get('plan_sha256'))
         with self.store.connect() as db:
-            value, _ = authorize(db, token, self.project, workbench=route.endswith('/capabilities'))
+            value, _ = authorize(db, token, self.project, workbench=route.endswith(('/capabilities', '/media/preview-token')))
+            if route.endswith('/media/preview-token'):
+                row = row_for(self.store, db, self.project, task_id(self.project, body.get('task_key')),
+                              body.get('expected_version'))
+                return {'schema': 'vf-agent-media-v1', 'project': self.project, **self.media.issue(row)}
             if route.endswith('/capabilities'):
-                abilities = []
+                abilities = ['media_preview'] if self.media.root is not None else []
                 if principal and value.get('workbench_principal') == principal:
                     policy = meta(db, 'workbench:delegation:' + self.project) or {}
                     roles = set(value.get('workbench_roles', [])) & set(policy.get(principal, []))
@@ -103,7 +111,7 @@ class AgentAPI:
                                      + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
                                          'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),
                         'unavailable': ['prepare_plan', 'submit_plan'] + ([] if 'approve_plan' in abilities else ['approve_plan']) + [
-                                        'media_preview', 'shot_repair'] + ([] if scripts else ['script_content']),
+                                        'shot_repair'] + (['media_preview'] if self.media.root is None else []) + ([] if scripts else ['script_content']),
                         'mutations_allowed': enabled or scripts, 'approval_authority': 'local_administrator',
                         'script_plan_available': scripts}
             if route.endswith('/status'):
@@ -188,6 +196,20 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(403, {'error': 'LOCAL_ORIGIN_DENIED'})
         elif self.path == '/healthz':
             self.reply(200, {'status': 'up', 'scope': 'local_kernel_candidate'})
+        elif self.path.startswith('/v1/agent/media/stream/'):
+            try:
+                stream, size = self.server.api.media.open(self.path.rsplit('/', 1)[1])
+            except (RuntimeFault, OSError):
+                self.reply(404, {'error': 'WORKBENCH_MEDIA_UNAVAILABLE'})
+                return
+            with stream:
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp4')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Content-Length', str(size))
+                self.end_headers()
+                shutil.copyfileobj(stream, self.wfile)
         else:
             self.reply(404, {'error': 'ROUTE_NOT_FOUND'})
 

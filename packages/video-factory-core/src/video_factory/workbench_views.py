@@ -1,5 +1,6 @@
 """Content-safe projections for the six-operation workbench protocol."""
 from datetime import datetime, timezone
+from hashlib import sha256
 import json
 import re
 
@@ -84,7 +85,7 @@ def first_script_row(db, project, source):
             'configuration_digest': config[0], 'state': 'script_plan_unsubmitted', 'artifact': None}
 
 
-def _stage_status(db, row):
+def stage_status(db, row):
     stage, status = STATUS.get(row['state'], ('script', 'unknown'))
     if row['state'] == 'failed':
         script = meta(db, script_key(row['project'], row['id'], row['revision']))
@@ -110,7 +111,7 @@ def rows(db, project, cursor=''):
                       LATEST + ' AND t.id>? ORDER BY t.id', (project, cursor))
 
 
-def projection(db, project, endpoint, body, now):
+def projection(db, project, endpoint, body, now, *, media_preview=None):
     stage_filter = get_stage(body)
     native = meta(db, 'native:config:' + project) or {}
     board = 'feishu_bitable' if native.get('enabled') else 'self_hosted'
@@ -122,7 +123,7 @@ def projection(db, project, endpoint, body, now):
         phases = {stage: {'total': 0, 'awaiting_review': 0, 'failed': 0} for stage in STAGES}
         missing = 0
         for row in rows(db, project):
-            stage, status = _stage_status(db, row)
+            stage, status = stage_status(db, row)
             if stage_filter not in ('all', stage):
                 continue
             if WINDOWS[window] is not None:
@@ -157,7 +158,7 @@ def projection(db, project, endpoint, body, now):
     products = {product['sku_id']: product for product in
                 setup.get('configuration', {}).get('project', {}).get('products', [])}
     for row in rows(db, project, cursor):
-        stage, status = _stage_status(db, row)
+        stage, status = stage_status(db, row)
         common = {'task_key': project + ':' + row['id'], 'task_id': row['id'],
                   'revision': row['revision'], 'version_token': version(row), 'stage': stage,
                   'canonical_status': status, 'updated_at': iso(row['touched_at'])}
@@ -170,14 +171,19 @@ def projection(db, project, endpoint, body, now):
             plan_id = job.get('agent_plan_id')
             plan = meta(db, 'agent:script:plan:' + plan_id) if isinstance(plan_id, str) and SHA.fullmatch(plan_id) else None
             plan_sha = plan.get('plan_sha256') if plan and plan.get('project') == project else None
-            notes = unresolved(db, project, row['id'], row['revision'])
+            if not isinstance(plan_sha, str) or not SHA.fullmatch(plan_sha):
+                plan_sha = None
+            artifact_sha = artifact.get('sha256', '')
+            media = media_preview(row) if media_preview else {'media_preview_token': None}
+            notes = notes_for(db, project, row['id'], row['revision'])
             common.update(sku_id=payload['sku_id'], sku_name=text(products.get(payload['sku_id'], {}).get('name')),
                           plan_id=plan_id if plan_sha else None, plan_sha256=plan_sha,
-                          unresolved_notes_count=notes,
-                          preview={'kind': 'text_excerpt' if stage == 'script' else 'media_unavailable',
+                          unresolved_notes_count=sum(status != 'resolved' for status in notes.values()),
+                          note_statuses=[{'id': key, 'status': status} for key, status in notes.items()],
+                          preview={'kind': 'text_excerpt' if stage == 'script' else ('media' if media['media_preview_token'] else 'media_unavailable'),
                                    'excerpt': text(payload['script']) if stage == 'script' else None,
-                                   'media_preview_token': None,
-                                   'artifact_sha256': artifact.get('sha256') if artifact else None,
+                                   **media,
+                                   'artifact_sha256': artifact_sha if isinstance(artifact_sha, str) and SHA.fullmatch(artifact_sha) else None,
                                    'decode_verified': True if artifact.get('verification') == 'full_decode_passed' else None,
                                    'content_is_instruction': False})
         else:
@@ -212,24 +218,43 @@ def projection(db, project, endpoint, body, now):
     }, board=board)
 
 
-def unresolved(db, project, task, revision):
-    notes = meta(db, f'workbench:notes:{project}:{task}:{revision}') or {}
-    # Imported historical reviewer comments are stored in review receipts.
-    # Unparseable structured feedback must not clear an acceptance fence.
+def notes_for(db, project, task, revision):
+    """Merge local annotations with the existing workbench feedback envelopes."""
+    notes = dict(meta(db, f'workbench:notes:{project}:{task}:{revision}') or {})
     prior = db.execute("SELECT receipt FROM events WHERE "
                        "json_extract(receipt,'$.project')=? AND json_extract(receipt,'$.task')=? "
-                       "AND json_extract(receipt,'$.revision')<=? ORDER BY rowid DESC LIMIT 1",
-                       (project, task, revision)).fetchone()
-    if prior:
-        feedback = json.loads(prior[0]).get('feedback', '')
-        if isinstance(feedback, str) and '[VF_SCRIPT_NOTES_V1]' in feedback:
-            try:
-                bundle = json.loads(feedback.rsplit('[VF_SCRIPT_NOTES_V1]', 1)[1])
-                if not isinstance(bundle.get('notes'), list):
+                       "AND json_extract(receipt,'$.revision')<=? "
+                       "AND (receipt LIKE '%[VF_SCRIPT_NOTES_V1]%' OR receipt LIKE '%[VF_NOTE_STATUS_V1]%') "
+                       "ORDER BY rowid DESC LIMIT 1", (project, task, revision)).fetchone()
+    if not prior:
+        return notes
+    feedback = json.loads(prior[0]).get('feedback', '')
+    try:
+        if '[VF_NOTE_STATUS_V1]' in feedback:
+            marker = '\n\n[VF_NOTE_STATUS_V1]\n'
+            if not feedback.startswith(marker):
+                raise ValueError
+            saved = json.loads(feedback[len(marker):])
+            if (saved['schema'] != 'vf-note-status-v1' or type(saved['revision']) is not int
+                    or not 1 <= saved['revision'] <= revision or not 1 <= len(saved['items']) <= 8):
+                raise ValueError
+            for item in saved['items']:
+                if not SHA.fullmatch(item['id']) or item['status'] not in ('pending', 'needs_changes', 'resolved'):
                     raise ValueError
-                for index, note in enumerate(bundle['notes']):
-                    note_id = note.get('id') or fingerprint(note)
-                    notes.setdefault(note_id, 'pending')
-            except (TypeError, ValueError, AttributeError):
-                return 1 + sum(status != 'resolved' for status in notes.values())
-    return sum(status != 'resolved' for status in notes.values())
+                notes.setdefault(item['id'], item['status'] if saved['revision'] == revision else 'pending')
+            feedback = saved['feedback']
+        if '[VF_SCRIPT_NOTES_V1]' in feedback:
+            _, encoded = feedback.rsplit('\n\n[VF_SCRIPT_NOTES_V1]\n', 1)
+            bundle = json.loads(encoded)
+            if (bundle['schema'] != 'vf-script-notes-v1' or not 1 <= len(bundle['notes']) <= 8
+                    or not SHA.fullmatch(bundle['plan_id']) or not SHA.fullmatch(bundle['script_sha256'])
+                    or type(bundle['revision']) is not int or not 1 <= bundle['revision'] <= revision):
+                raise ValueError
+            for index, note in enumerate(bundle['notes']):
+                values = [bundle['plan_id'], bundle['revision'], bundle['script_sha256'],
+                          note['line'], note['quote'], note['comment'], index]
+                encoded = json.dumps(values, ensure_ascii=False, separators=(',', ':'))
+                notes.setdefault(sha256(encoded.encode()).hexdigest(), 'pending')
+    except (KeyError, ValueError, TypeError, AttributeError):
+        notes['invalid_history'] = 'pending'
+    return notes

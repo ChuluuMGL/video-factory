@@ -89,6 +89,10 @@ def flush(store, project, native, config, authorization):
             check(db, item)
             link = meta(db, source_key(project, item['task']))
         client = native.client(context)
+        from .feishu_native_sync import schema
+        fields, live_names = schema(client, base, table, context['target'])
+        if fields != config['fields'] or live_names != names:
+            raise RuntimeFault('WORKBENCH_BOARD_SCHEMA_CHANGED')
         record = (client.record(base, table, link['record_id']) if link
                   else client.find_task(base, table, names['task'], item['task']))
         remote, record_id = record['fields'], record['record_id']
