@@ -79,10 +79,13 @@ def configured_script_plans(store, project, enabled, token_file, open_id):
 
 def serve(store, project, port, stop, *, execution_token=None, master_key=None,
           media_root=None, interval=5, plans_enabled=False, script_plans=None, on_ready=lambda value: None,
-          dispatch=None, native_files=None, on_locked=lambda: None, employee_access=None):
+          dispatch=None, native_files=None, on_locked=lambda: None, employee_access=None, lock_held=False):
     if type(port) is not int or not 0 <= port <= 65535:
         raise RuntimeFault('PORT_INVALID')
-    with runtime_lock(store.root):
+    with (nullcontext() if lock_held else runtime_lock(store.root)):
+        if not lock_held:
+            with store.connect() as db:
+                automation.clear_local_sessions(db)
         on_locked()
         if native_files and dispatch is not None:
             raise RuntimeFault('LOCAL_NATIVE_CUSTOM_DISPATCH_DENIED')

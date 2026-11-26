@@ -24,6 +24,8 @@ class AgentAPI:
         fields = {
             '/v1/agent/capabilities': {'project'},
             '/v1/agent/status': {'project'},
+            '/v1/agent/project_stats': {'project'},
+            '/v1/agent/list_failures': {'project', 'after'},
             '/v1/agent/tasks': {'project', 'after'},
             '/v1/agent/task': {'project', 'task', 'revision'},
             '/v1/agent/video/prepare': {'project', 'task', 'revision', 'request_id'},
@@ -72,7 +74,8 @@ class AgentAPI:
                 enabled = self.plans_enabled and value['scope'] == 'agent_plan'
                 scripts = self.script_plans is not None and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
-                        'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt']
+                        'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt',
+                                      'project_stats', 'list_failures']
                                      + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
                                      + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
                                          'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),
@@ -82,6 +85,13 @@ class AgentAPI:
                         'script_plan_available': scripts}
             if route.endswith('/status'):
                 return self.scheduler.status()
+            if route in ('/v1/agent/project_stats', '/v1/agent/list_failures'):
+                from .project_observations import stats, failures
+                after = body.get('after', '')
+                if after != '':
+                    identifier(after)
+                report = stats(db, self.project) if route.endswith('/project_stats') else failures(db, self.project, after)
+                return {'schema': 'vf-agent-project-observation-v1', 'project': self.project, **report}
             columns = 't.id,t.revision,t.state,t.input_digest,t.configuration_digest'
             if route.endswith('/tasks'):
                 after = body.get('after', '')

@@ -108,7 +108,11 @@ def main(argv=None):
     template.add_argument("--credential-name", default="Video Factory worker")
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
+    from . import local_service
+    local_service.register(commands)
     args = parser.parse_args(argv)
+    if args.command == "local-service":
+        return local_service.cli(args)
     if args.command in ('local-run', 'agent'):
         return run_entry_cli(args)
     if args.command == 'local-setup':

@@ -67,6 +67,29 @@ class LocalNativeTests(unittest.TestCase):
         with self.store.connect() as db:
             self.assertEqual(meta(db, 'local:scheduler:cursor:brand'), {'after': ''})
 
+    def test_update_sends_only_semantically_changed_fields(self):
+        self.task()
+        self.remote.record_fields['脚本'] = [{'type': 'text', 'text': 'Generated fixture draft'}]
+        self.remote.record_fields['审核意见'] = [{'type': 'text', 'text': ''}]
+        with patch('video_factory.feishu_native_sync.NativeSync', return_value=self.native), \
+                patch('video_factory.base_results.BaseResults.sync', return_value={'status': 'disabled'}), \
+                patch.object(self.remote, 'update_record', wraps=self.remote.update_record) as put:
+            self.scheduler().tick()
+            put.assert_called_once()
+            fields = put.call_args.args[3]
+            self.assertNotIn('脚本', fields)
+            self.assertNotIn('审核意见', fields)
+            self.assertEqual(fields['状态'], '脚本待审核')
+            self.scheduler().tick()
+            put.assert_called_once()
+
+    def test_result_client_serializes_empty_text_as_null(self):
+        from video_factory.feishu_results_client import ResultClient
+        c = ResultClient('synthetic-application-token')
+        with patch.object(c, 'put', return_value={'record': {'record_id': 'recFixture'}}) as put:
+            c.update_record('basFixture', 'tblFixture', 'recFixture', {'text': '', 'attachment': []})
+        self.assertEqual(put.call_args.args[1], {'fields': {'text': None, 'attachment': []}})
+
     def test_revocation_prevents_remote_io(self):
         self.task()
         automation.revoke(self.store, self.admin, hashlib.sha256(self.execution.encode()).hexdigest())

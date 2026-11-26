@@ -13,7 +13,7 @@
 
 ## 已安装候选的运行与外部 Codex
 
-同版本业务安装新增 `vf-run` 和 `vf-agent`。本人先运行 `vf-run inspect --plan <原计划>`，核对返回摘要后运行 `vf-run start --plan <原计划> --expect-plan <摘要>`。默认只读；正常停止用 Ctrl-C，最长两小时，到期不续权。
+同版本业务安装新增 `vf-run` 和 `vf-agent`。本人先运行 `vf-run inspect --plan <原计划>`，核对返回摘要后运行 `vf-run start --plan <原计划> --expect-plan <摘要>`。默认只读常驻，正常停止用 Ctrl-C。可用 `--max-runtime` 限时，或显式生成用户服务模板。
 
 Codex 只使用返回的连接路径：`vf-agent --connection <connection.json> capabilities`，然后 `tasks/status`。请求 JSON 只包含非秘密参数；不要读取或输出相邻 token 文件。不要让模型运行管理员批准命令或收集管理员密码。`--allow-plans` 必须由负责人在 inspect/start 同时明确选择；本人官方飞书授权后可准备计划。`prepare-script` 使用 `record/request_id/expected_revision`，`submit-script` 使用 `plan_id/plan_sha256`；未获负责人批准必须停止，不尝试绕过。
 
