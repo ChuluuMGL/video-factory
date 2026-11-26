@@ -94,19 +94,6 @@ verify the scheduler is stopped before invoking it. The command takes the
 existing tick lock and verifies the local window is closed and trial disabled.
 Refusals that cannot access the stopped ledger are reported to stdout.
 
-The independent acceptance harness is
-`packages/video-factory-core/tools/validate_shadow_copy_write.py`. It requires
-an owner-approved private config and its SHA-256, an existing copy-scoped token,
-and a fresh private state directory. It uses a dedicated table containing only
-the seeded test row. Limits are 15 GETs, one append POST, and two PUTs. A fresh
-process checks the cleared value with the write budget already exhausted.
-The harness never prepares the human-owned field and never refreshes credentials.
-
-The copy writer sends JSON `null` to clear text in PUT. The validation harness
-rejects a raw empty string instead of rewriting the payload.
-Its HTTP exits reject any field outside identity and machine output before
-reserving a write. The new interpreter opens the validation ledger read-only.
-It has at most one GET from the remaining aggregate budget, zero POST and PUT,
-and logs each reserved attempt before sending so the parent can reconcile
-even when the child times out or exits on a signal. Stop reports contain
-allowlisted diagnostic codes and transport metadata only.
+The copy writer encodes cleared text as JSON null in PUT. The M1 port includes
+the recovery command and synthetic regression tests from the validated tag.
+The tag's separate live acceptance harness is intentionally outside this port.

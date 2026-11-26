@@ -135,6 +135,9 @@ class SetupTests(unittest.TestCase):
         bind(self.store, self.admin, self.plan, 'synthetic-user', client_factory=Client)
         with self.store.connect() as db:
             old_keys = [tuple(row) for row in db.execute('SELECT * FROM vault ORDER BY alias')]
+            db.execute("INSERT INTO tasks(project,id,revision,state,input,input_digest,configuration_digest) "
+                       "VALUES ('brand_one','history',1,'accepted','{}','before','configuration')")
+            old_tasks = [tuple(row) for row in db.execute('SELECT * FROM tasks')]
             key = 'agent:script:plan:fixture'
             save(db, key, {'project': self.plan['project'], 'expires_at': 123})
         self.plan['products'][0]['truth_source'] = 'Updated synthetic facts'
@@ -145,6 +148,7 @@ class SetupTests(unittest.TestCase):
         self.assertTrue(self.put({})['reused'])
         with self.store.connect() as db:
             self.assertEqual([tuple(row) for row in db.execute('SELECT * FROM vault ORDER BY alias')], old_keys)
+            self.assertEqual([tuple(row) for row in db.execute('SELECT * FROM tasks')], old_tasks)
             self.assertEqual(meta(db, 'feishu:binding:brand_one')['submitters'], ['ou_second'])
             self.assertEqual(meta(db, key)['expires_at'], 0)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM audit WHERE action='local_business_setup_updated'").fetchone()[0], 1)
@@ -152,6 +156,24 @@ class SetupTests(unittest.TestCase):
         self.plan['binding']['table_id'] = 'tblOther'
         with self.assertRaisesRegex(RuntimeFault, 'TARGET_OR_ACCOUNT_IMMUTABLE'):
             provision(self.store, self.admin, self.plan, self.key, {}, update=True)
+
+    def test_reference_refresh_preserves_old_private_copy(self):
+        self.put()
+        plan = self.video_plan()
+        add_video(self.store, self.admin, self.plan, plan, self.key, 'synthetic-video-secret')
+        with self.store.connect() as db:
+            old = meta(db, 'video:profile:brand_one')['assets']['sku_one']
+        old_path = Path(old['assets_root']) / old['specification']['references'][0]['path']
+        source = Path(plan['video']['assets']['sku_one']['assets_root']) / 'fixture.png'
+        source.write_bytes(b'synthetic-replacement')
+        ref = plan['video']['assets']['sku_one']['specification']['references'][0]
+        ref['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.assertTrue(provision(self.store, self.admin, plan, self.key, {}, update=True)['updated'])
+        with self.store.connect() as db:
+            new = meta(db, 'video:profile:brand_one')['assets']['sku_one']
+        self.assertEqual(old_path.read_bytes(), b'synthetic-image')
+        self.assertEqual((Path(new['assets_root']) / new['specification']['references'][0]['path']).read_bytes(),
+                         b'synthetic-replacement')
 
     def test_unsupported_model_or_secret_in_plan_is_rejected(self):
         self.plan['script_model'] = 'unknown'

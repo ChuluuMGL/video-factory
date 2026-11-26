@@ -153,5 +153,5 @@ vfctl local-service stop --name daily
 本机 Agent 新增同项目只读动作 `project_stats` 和 `list_failures`，需已授权的 Agent
 连接。统计只看每项最新版本，成功率以最终通过、失败、退回三类为分母，未结案时为
 null。失败清单列出失败和提交结果未知的任务，返回脱敏错误码，每页最多 100 项。
-另四项工作台动作留待规范审定。停机时可用
-[影子副本写入恢复](SHADOW_COPY_WRITE_RECOVERY.md) 管理已存在的影子写入 intent，工具不重发远端写请求。
+另四项工作台动作留待规范审定。停机后使用 `python -m video_factory.shadow_copy_recovery --help`
+查看影子副本的写入恢复命令。工具不会重发远端写请求。
