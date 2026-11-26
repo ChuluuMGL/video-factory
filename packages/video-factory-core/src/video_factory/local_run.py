@@ -1,4 +1,4 @@
-"""Owner-started, bounded local service and a credential-hiding Agent client.
+"""Owner-started, resident local service and a credential-hiding Agent client.
 
 No owner credential reaches the Agent interface. Same-OS account access remains
 trusted; project API capabilities are not an OS sandbox for arbitrary shell code.
@@ -14,6 +14,7 @@ import signal
 import sys
 import tempfile
 import threading
+import time
 
 from . import automation
 from .feishu_bridge import meta
@@ -21,10 +22,12 @@ from .feishu_client import FeishuClient
 from .local_setup import authorize_feishu, provision, validate
 from .local_runtime import configured_script_plans, serve
 from .runtime_cli import secret_input
+from .scheduler import runtime_lock
 from .runtime_store import RuntimeFault, RuntimeStore, canonical, exclusive_write, fingerprint, private_directory, private_file
 
 ROUTES = {
     'capabilities': ('capabilities', set()), 'status': ('status', set()),
+    'project_stats': ('project_stats', set()), 'list_failures': ('list_failures', {'after'}),
     'tasks': ('tasks', {'after'}), 'task': ('task', {'task', 'revision'}),
     'catalog': ('script/catalog', set()), 'plans': ('script/plans', {'after'}),
     'script-content': ('script/content', {'plan_id', 'plan_sha256'}),
@@ -45,8 +48,19 @@ def read_plan(path):
     return plan
 
 
-def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hours=2, employee_config=None):
-    if type(hours) is not int or not 1 <= hours <= 2: raise RuntimeFault('LOCAL_RUN_MAX_TWO_HOURS')
+def runtime_limit(hours, seconds):
+    if hours is not None:
+        if seconds is not None or type(hours) is not int or not 1 <= hours <= 168:
+            raise RuntimeFault('LOCAL_RUN_RUNTIME_INVALID')
+        seconds = hours * 3600
+    if seconds is not None and (type(seconds) is not int or not 1 <= seconds <= 604800):
+        raise RuntimeFault('LOCAL_RUN_RUNTIME_INVALID')
+    return seconds
+
+
+def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hours=None,
+               max_runtime=None, employee_config=None):
+    limit = runtime_limit(hours, max_runtime)
     with store.connect() as db:
         if not meta(db, 'local:setup:' + plan['project']): raise RuntimeFault('LOCAL_RUN_SETUP_REQUIRED')
     provision(store, admin, plan, key, {})
@@ -56,6 +70,7 @@ def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hou
         native = meta(db, 'native:config:' + project)
         if binding != plan['binding']: raise RuntimeFault('LOCAL_RUN_BINDING_REQUIRED')
         if execute and (not native or not native.get('enabled')): raise RuntimeFault('LOCAL_RUN_NATIVE_ENABLE_REQUIRED')
+        if execute and limit is None: raise RuntimeFault('LOCAL_RUN_PAID_RUNTIME_LIMIT_REQUIRED')
         tasks = [dict(row) for row in db.execute('SELECT id,revision,state,input_digest,configuration_digest,provider_id FROM tasks WHERE project=? ORDER BY id,revision', (project,))]
         # Bind queued jobs and owner approvals too, not just visible task state.
         jobs = []
@@ -73,7 +88,7 @@ def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hou
     value = {'schema': 'vf-local-start-v1', 'project': project, 'setup_sha256': fingerprint(plan),
              'binding_sha256': fingerprint(binding), 'native_sha256': fingerprint(native),
              'agent_scope': 'agent_plan' if allow_plans else 'agent_read',
-             'execute_approved': execute, 'hours': hours, 'tasks': tasks, 'jobs': jobs,
+             'execute_approved': execute, 'max_runtime': limit, 'tasks': tasks, 'jobs': jobs,
              'requires_per_task_approval': True, 'automatic_resubmit': False,
              'employee_access': {'configuration_sha256':fingerprint(employee), 'scope':'agent_plan' if employee['allow_plans'] else 'agent_read', 'expires_at':employee['expires_at'],
                                  'repair':employee.get('repair')} if employee else None}
@@ -81,13 +96,19 @@ def start_plan(store, admin, plan, key, *, allow_plans=False, execute=False, hou
 
 
 @contextmanager
-def capabilities(store, admin, project, hours, allow_plans, execute):
+def capabilities(store, admin, project, hours, allow_plans, execute, *, max_runtime=None):
     """Revoke only grants issued by this start, including partial failures."""
     keys = []
     try:
-        agent = automation.issue(store, admin, project, hours, scope='agent_plan' if allow_plans else 'agent_read')
+        limit = runtime_limit(hours, max_runtime)
+        scope = 'agent_plan' if allow_plans else 'agent_read'
+        agent = (automation.issue(store, admin, project, (limit + 3599) // 3600, scope=scope)
+                 if limit else automation.issue_local_session(store, admin, project, scope=scope))
         keys.append(agent['key_id'])
-        execution = automation.issue_execution(store, admin, project, hours) if execute else None
+        execution = None
+        if execute:
+            if limit is None: raise RuntimeFault('LOCAL_RUN_PAID_RUNTIME_LIMIT_REQUIRED')
+            execution = automation.issue_execution(store, admin, project, (limit + 3599) // 3600)
         if execution: keys.append(execution['key_id'])
         yield agent, execution
     finally:
@@ -105,7 +126,16 @@ def identity(store, plan, key, token_file):
 
 
 def run(store, admin, plan, key, args, *, emit, stop=None):
-    expected = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
+    with runtime_lock(store.root):
+        with store.connect() as db:
+            automation.clear_local_sessions(db)
+        return _run_locked(store, admin, plan, key, args, emit=emit, stop=stop)
+
+
+def _run_locked(store, admin, plan, key, args, *, emit, stop):
+    max_runtime = getattr(args, 'max_runtime', None)
+    limit = runtime_limit(args.hours, max_runtime)
+    expected = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, max_runtime=getattr(args, 'max_runtime', None), employee_config=getattr(args, 'employee_config', None))
     if args.expect_plan != expected['plan_sha256']: raise RuntimeFault('LOCAL_RUN_START_PLAN_CHANGED')
     if args.execute_approved and not args.dedicated_app: raise RuntimeFault('LOCAL_FEISHU_DEDICATED_APP_REQUIRED')
     delegated = identity(store, plan, key, args.user_token_file) if args.allow_plans else None
@@ -114,9 +144,10 @@ def run(store, admin, plan, key, args, *, emit, stop=None):
     if getattr(args, 'employee_config', None):
         from .employee_access import configuration, EmployeeAccess
         config = configuration(args.employee_config, plan, allow_plans=args.allow_plans)
-        config['expires_at'] = min(config['expires_at'], __import__('time').time()+args.hours*3600)
+        if limit is not None:
+            config['expires_at'] = min(config['expires_at'], time.time() + limit)
         employees = EmployeeAccess(store, admin, plan, config, key)
-    with capabilities(store, admin, plan['project'], args.hours, args.allow_plans, args.execute_approved) as (agent, execution), \
+    with capabilities(store, admin, plan['project'], args.hours, args.allow_plans, args.execute_approved, max_runtime=max_runtime) as (agent, execution), \
             tempfile.TemporaryDirectory(prefix='agent-session-', dir=store.root) as directory:
         session = Path(directory); session.chmod(0o700)
         exclusive_write(session / 'agent.token', agent['token'].encode())
@@ -129,7 +160,7 @@ def run(store, admin, plan, key, args, *, emit, stop=None):
             if not media.exists(): media.mkdir(mode=0o700)
             private_directory(media)
         def preflight():
-            current = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
+            current = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, max_runtime=getattr(args, 'max_runtime', None), employee_config=getattr(args, 'employee_config', None))
             if current['plan_sha256'] != args.expect_plan: raise RuntimeFault('LOCAL_RUN_START_PLAN_CHANGED')
             if employees: employees.start()
             else:
@@ -142,14 +173,19 @@ def run(store, admin, plan, key, args, *, emit, stop=None):
             emit({**value, 'connection': str(session / 'connection.json'), 'expires_at': agent['expires_at'],
                   'stop': 'Ctrl-C', 'owner_approval_exposed': False,
                   'employee_origin': 'http://127.0.0.1:'+str(value['port']) if employees else None})
-        timer = threading.Timer(args.hours * 3600, stop.set); timer.daemon = True; timer.start()
+        timer = None
+        if limit is not None:
+            timer = threading.Timer(limit, stop.set)
+            timer.daemon = True
+            timer.start()
         try:
             serve(store, plan['project'], args.port, stop, execution_token=execution['token'] if execution else None,
                   master_key=key if execution else None, media_root=media if execution else None,
                   plans_enabled=args.allow_plans, script_plans=scripts, on_ready=ready, on_locked=preflight,
-                  native_files=(session / 'execution.token', store.root / 'master.key') if execution else None, employee_access=employees)
+                  native_files=(session / 'execution.token', store.root / 'master.key') if execution else None, employee_access=employees, lock_held=True)
         finally:
-            timer.cancel(); stop.set()
+            if timer is not None: timer.cancel()
+            stop.set()
             if employees: employees.close()
     emit({'status': 'stopped', 'session_grants_revoked': True, 'project': plan['project']})
 
@@ -163,7 +199,6 @@ def agent_call(connection, operation, body):
     config = json.loads(connection.read_text())
     if set(config) != {'schema','project','port','expires_at','scope'} or config['schema'] != 'vf-agent-connection-v1':
         raise RuntimeFault('AGENT_CONNECTION_INVALID')
-    import time
     if type(config['port']) is not int or not 1 <= config['port'] <= 65535 or config['expires_at'] <= time.time():
         raise RuntimeFault('AGENT_CONNECTION_EXPIRED_OR_INVALID')
     route, fields = ROUTES[operation]
@@ -187,12 +222,13 @@ def agent_call(connection, operation, body):
 
 
 def register(commands):
-    p = commands.add_parser('local-run', help='inspect or start an owner-approved, bounded business service')
+    p = commands.add_parser('local-run', help='inspect or start an owner-approved local business service')
     p.add_argument('action', choices=('inspect','start','approve-script','approve-video','revoke-script','revoke-video','employee-status','employee-suspend','employee-resume'))
     p.add_argument('--root', type=Path, required=True); p.add_argument('--plan', type=Path, required=True)
     p.add_argument('--password-file', type=Path); p.add_argument('--user-token-file', type=Path)
     p.add_argument('--allow-plans', action='store_true'); p.add_argument('--execute-approved', action='store_true')
-    p.add_argument('--dedicated-app', action='store_true'); p.add_argument('--hours', type=int, default=2)
+    p.add_argument('--dedicated-app', action='store_true'); p.add_argument('--hours', type=int, help='legacy bounded duration in hours')
+    p.add_argument('--max-runtime', type=int, help='optional maximum runtime in seconds')
     p.add_argument('--port', type=int, default=8788); p.add_argument('--expect-plan')
     p.add_argument('--employee-config', type=Path)
     p.add_argument('--expected-employee-version', type=int); p.add_argument('--request-id')
@@ -218,7 +254,7 @@ def cli(args):
             from .employee_access import manage
             emit(manage(store, admin, plan['project'], args.action.removeprefix('employee-'), expected_version=args.expected_employee_version, request_id=args.request_id)); return 0
         key = secret_input(store.root / 'master.key', '').encode()
-        checked = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, employee_config=getattr(args, 'employee_config', None))
+        checked = start_plan(store, admin, plan, key, allow_plans=args.allow_plans, execute=args.execute_approved, hours=args.hours, max_runtime=getattr(args, 'max_runtime', None), employee_config=getattr(args, 'employee_config', None))
         if args.action == 'inspect': emit(checked); return 0
         if args.action != 'start':
             action, stage = args.action.split('-')

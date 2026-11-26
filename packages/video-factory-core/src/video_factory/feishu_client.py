@@ -2,17 +2,51 @@
 import json
 import os
 import re
-from urllib.error import HTTPError
-from http.client import HTTPSConnection
+import socket
+import ssl
+import time
+import threading
+from urllib.error import HTTPError, URLError
+from http.client import HTTPSConnection, IncompleteRead
 from urllib.parse import urlencode
 from urllib.request import Request, ProxyHandler, build_opener
 from .h3_provider import NoRedirect, TunnelHandler
 from .runtime_store import RuntimeFault
+from .feishu_diagnostics import response_context
 
 HOST='open.feishu.cn'
 # Real device-flow tokens can exceed 4 KiB. Keep the same bounded limit at
 # OAuth receipt and API use; the token remains opaque and memory-only.
 MAX_USER_TOKEN_LENGTH = 16384
+READ_TIMEOUT_SECONDS = 30
+READ_RATE_LIMIT_ERRORS = frozenset((
+    "FEISHU_READ_REJECTED_CODE_1254290", "FEISHU_READ_HTTP_429",
+))
+# A failed connection has no authenticated response. Let the durable health
+# probe establish recovery, without a burst of new connections in this tick.
+READ_HOLD_ERRORS = READ_RATE_LIMIT_ERRORS | frozenset((
+    "FEISHU_READ_CONNECTION_FAILED",
+))
+# Shared across source/copy clients in a worker; opt-in readers only.
+_read_pace_lock = threading.Lock()
+_last_read_started = None
+READ_MIN_INTERVAL_SECONDS = 0.5
+
+
+def _pace_read():
+    global _last_read_started
+    with _read_pace_lock:
+        now = time.monotonic()
+        if _last_read_started is not None:
+            wait = READ_MIN_INTERVAL_SECONDS - (now - _last_read_started)
+            if wait > 0: time.sleep(wait)
+        _last_read_started = time.monotonic()
+
+# Only idempotent GETs may use these bounded transient recovery rules.
+READ_TRANSIENT_ERRORS = frozenset((
+    "FEISHU_READ_TIMEOUT", "FEISHU_READ_HTTP_502",
+    "FEISHU_READ_REJECTED_CODE_1254607",  # Feishu: Data not ready
+)) | READ_HOLD_ERRORS
 
 
 def resource(value,prefix=''):
@@ -33,12 +67,37 @@ class FeishuHandler(TunnelHandler):
 
 class FeishuClient:
     origin='https://'+HOST
-    def __init__(self,user_token):
+    def __init__(self,user_token,*,read_attempts=1):
         if not isinstance(user_token,str) or not user_token or len(user_token)>MAX_USER_TOKEN_LENGTH or any(c.isspace() for c in user_token):
             raise RuntimeFault('FEISHU_USER_TOKEN_REQUIRED')
+        if type(read_attempts) is not int or read_attempts not in (1,3):
+            raise RuntimeFault('FEISHU_READ_POLICY_INVALID')
         self.token=user_token
+        self.read_attempts=read_attempts
 
     def get(self,path):
+        # Opt-in for bounded shadow readers only. Never wraps a POST or PUT.
+        for attempt in range(self.read_attempts):
+            try:
+                if self.read_attempts == 3: _pace_read()
+                return self._get_once(path)
+            except RuntimeFault as error:
+                # Connection failures and throttling go to a durable hold.
+                # Only the independent GET probe may establish recovery.
+                if str(error) in READ_HOLD_ERRORS: raise
+                if str(error) not in READ_TRANSIENT_ERRORS or attempt+1==self.read_attempts:
+                    raise
+                time.sleep(attempt+1)
+
+    def _get_once(self,path):
+        context = {'method': 'GET'}
+        try:
+            return self._get_with_context(path, context)
+        except RuntimeFault as error:
+            error.request_context = context
+            raise
+
+    def _get_with_context(self, path, context):
         # The origin is code-owned; path is assembled from validated IDs only.
         handlers=[ProxyHandler({}),NoRedirect()]
         if os.environ.get('VF_WORKER_EGRESS')=='1':
@@ -46,27 +105,47 @@ class FeishuClient:
             handlers.append(FeishuHandler())
         try:
             request=Request(self.origin+'/open-apis'+path,headers={'Authorization':'Bearer '+self.token},method='GET')
-            with build_opener(*handlers).open(request,timeout=15) as response:
+            with build_opener(*handlers).open(request,timeout=READ_TIMEOUT_SECONDS) as response:
+                response_context(context, response.status, getattr(response, 'headers', None))
                 raw=response.read(2*1024*1024+1)
-                if response.status!=200 or len(raw)>2*1024*1024:raise ValueError
-                result=json.loads(raw)
+                if response.status!=200:raise RuntimeFault('FEISHU_READ_HTTP_'+str(response.status))
+                if len(raw)>2*1024*1024:raise RuntimeFault('FEISHU_READ_RESPONSE_TOO_LARGE')
+                try:result=json.loads(raw)
+                except (ValueError,UnicodeError):raise RuntimeFault('FEISHU_READ_INVALID_JSON') from None
+                if not isinstance(result,dict):raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 code=result.get('code')
                 if type(code) is int and 0<code<1000000000:
+                    context['feishu_code'] = code
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code))
-                if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):raise ValueError
+                if type(code) is not int or code!=0 or not isinstance(result.get('data'),dict):
+                    raise RuntimeFault('FEISHU_READ_INVALID_RESPONSE')
                 return result['data']
         except HTTPError as error:
+            response_context(context, error.code, error.headers)
             try:
                 raw=error.read(65537)
                 result=json.loads(raw) if len(raw)<=65536 else {}
                 code=result.get('code') if isinstance(result,dict) else None
+                if error.code in (401,403) and code in (1254607,1254290):
+                    raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
                 if type(code) is int and 0<code<1000000000:
+                    context['feishu_code'] = code
                     raise RuntimeFault('FEISHU_READ_REJECTED_CODE_'+str(code)) from None
             except RuntimeFault:raise
             except Exception:pass
             raise RuntimeFault('FEISHU_READ_HTTP_'+str(error.code)) from None
         except RuntimeFault:raise
-        except Exception:raise RuntimeFault('FEISHU_READ_OR_USER_AUTH_FAILED') from None
+        except Exception as error:
+            # Never expose URLs, token headers, upstream messages or response
+            # bodies. A transport fault is not proof of expired identity.
+            reason=error.reason if isinstance(error,URLError) else error
+            if isinstance(reason,ssl.SSLError):code='TLS_FAILED'
+            elif isinstance(reason,(TimeoutError,socket.timeout)):code='TIMEOUT'
+            elif isinstance(reason,socket.gaierror):code='DNS_FAILED'
+            elif isinstance(reason,IncompleteRead):code='TRUNCATED_RESPONSE'
+            elif isinstance(reason,(ConnectionError,OSError)):code='CONNECTION_FAILED'
+            else:code='TRANSPORT_FAILED'
+            raise RuntimeFault('FEISHU_READ_'+code) from None
 
     def identity(self):
         data=self.get('/authen/v1/user_info')

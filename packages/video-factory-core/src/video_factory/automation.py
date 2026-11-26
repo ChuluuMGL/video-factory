@@ -12,8 +12,25 @@ def issue(store,token,project,ttl_hours=24,*,scope='queue_read'):
     identifier(project)
     maximum=8760 if scope=='approved_execution' else 168
     if type(ttl_hours) is not int or not 1<=ttl_hours<=maximum:raise RuntimeFault('AUTOMATION_TTL_INVALID')
+    return _issue(store, token, project, scope, time.time()+3600*ttl_hours)
+
+
+def issue_local_session(store, token, project, *, scope):
+    if scope not in ('agent_read', 'agent_plan'):
+        raise RuntimeFault('AUTOMATION_SCOPE_INVALID')
+    return _issue(store, token, identifier(project), scope, 253402300799, local_session=True)
+
+
+def clear_local_sessions(db):
+    for row in db.execute("SELECT key,value FROM meta WHERE key LIKE 'automation:key:%'").fetchall():
+        if json.loads(row['value']).get('local_session') is True:
+            db.execute('DELETE FROM meta WHERE key=?', (row['key'],))
+
+
+def _issue(store, token, project, scope, expires_at, *, local_session=False):
     raw=secrets.token_urlsafe(32);key=hashlib.sha256(raw.encode()).hexdigest()
-    value={'project':project,'scope':scope,'expires_at':time.time()+3600*ttl_hours}
+    value={'project':project,'scope':scope,'expires_at':expires_at}
+    if local_session: value['local_session']=True
     with store.connect() as db:
         actor=store.authorize(db,token,'admin')
         if not db.execute('SELECT 1 FROM projects WHERE id=?',(project,)).fetchone():raise RuntimeFault('PROJECT_MISSING')

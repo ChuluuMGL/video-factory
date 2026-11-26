@@ -24,7 +24,7 @@ class EntryTests(unittest.TestCase):
                                     port=0,user_token_file=None,expect_plan=None)
         self.args.expect_plan = self.inspect()['plan_sha256']
 
-    def inspect(self, **kwargs): return start_plan(self.store,self.admin,self.plan,self.key,**kwargs)
+    def inspect(self, **kwargs): return start_plan(self.store,self.admin,self.plan,self.key,**({'hours': self.args.hours} | kwargs))
 
     def keys(self):
         with self.store.connect() as db: return db.execute("SELECT COUNT(*) FROM meta WHERE key LIKE 'automation:key:%'").fetchone()[0]
@@ -41,7 +41,8 @@ class EntryTests(unittest.TestCase):
 
     def test_paid_mode_needs_enabled_native_and_bound_plan(self):
         with self.assertRaisesRegex(RuntimeFault,'NATIVE_ENABLE_REQUIRED'): self.inspect(execute=True)
-        with self.assertRaisesRegex(RuntimeFault,'MAX_TWO_HOURS'): self.inspect(hours=3)
+        self.assertEqual(self.inspect(hours=3)['max_runtime'], 10800)
+        with self.assertRaisesRegex(RuntimeFault,'RUNTIME_INVALID'): self.inspect(hours=0)
         with self.store.connect() as db: save(db,'feishu:binding:brand_one',{})
         with self.assertRaisesRegex(RuntimeFault,'BINDING_REQUIRED'): self.inspect()
 
@@ -86,6 +87,51 @@ class EntryTests(unittest.TestCase):
             self.assertFalse(thread.is_alive());self.assertEqual(errors,[]);self.assertEqual(self.keys(),0)
             self.assertFalse(connection.exists());self.assertTrue(output[-1]['session_grants_revoked'])
             with self.store.connect() as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],0)
+
+    def test_resident_skips_timer_and_explicit_duration_stops(self):
+        from video_factory import automation
+        from video_factory.scheduler import runtime_lock
+        self.args.hours = None
+        self.args.expect_plan = self.inspect()['plan_sha256']
+        stale = automation.issue_local_session(self.store, self.admin, 'brand_one', scope='agent_read')
+        seen = []
+        def inspect_live(*args, **kwargs):
+            kwargs['on_locked']()
+            with self.store.connect() as db:
+                from video_factory.feishu_bridge import meta
+                self.assertIsNone(meta(db, 'automation:key:' + stale['key_id']))
+            with self.assertRaisesRegex(RuntimeFault, 'ALREADY_RUNNING'):
+                with runtime_lock(self.state): self.fail('overlapping run')
+            kwargs['on_ready']({'port': 8788})
+            seen.append(self.keys())
+        with patch('video_factory.local_run.serve', side_effect=inspect_live), patch('video_factory.local_run.threading.Timer') as timer:
+            run(self.store,self.admin,self.plan,self.key,self.args,emit=lambda _:None)
+            timer.assert_not_called()
+            self.args.max_runtime = 60
+            self.args.expect_plan = self.inspect(max_runtime=60)['plan_sha256']
+            run(self.store,self.admin,self.plan,self.key,self.args,emit=lambda _:None)
+            self.assertEqual(timer.call_args.args[0], 60)
+            timer.return_value.start.assert_called_once()
+            timer.return_value.cancel.assert_called_once()
+        self.assertEqual(seen, [1, 1])
+        self.assertEqual(self.keys(), 0)
+
+    def test_user_service_templates_and_scoped_manager(self):
+        import plistlib
+        from video_factory.local_service import manager, template
+        argv = ['/private/path with space/python', '-I', '/x%"$']
+        plist = plistlib.loads(template('launchd', 'trial', argv))
+        self.assertEqual(plist['ProgramArguments'], argv)
+        self.assertFalse(plist['KeepAlive'])
+        unit = template('systemd', 'trial', argv).decode()
+        self.assertIn('UMask=0077', unit)
+        self.assertIn('%%', unit)
+        self.assertIn('$$', unit)
+        self.assertIn('Restart=no', unit)
+        self.assertEqual(manager('systemd', 'stop', 'trial'),
+                         ['systemctl', '--user', 'stop', 'video-factory-trial.service'])
+        self.assertEqual(manager('launchd', 'status', 'trial')[-1].split('/')[-1],
+                         'com.video-factory.trial')
 
     def test_numeric_loopback_bind_does_not_require_dns(self):
         from video_factory.agent_api import AgentServer

@@ -8,6 +8,7 @@ import json
 import time
 import uuid
 
+from .script_week_io import CopyOnlyWeekWriter
 from .base_results import BaseResults
 from .feishu_bridge import meta, save, plain_text, select_text
 from .feishu_client import resource
@@ -233,18 +234,22 @@ class NativeSync:
                 self._upload_step(client, base, key, item, artifact, media_root, project, context, authorize)
                 return {'status': 'video_upload_in_progress', 'task': task, 'revision': revision, 'feishu_writes': 1}
         remote = client.record(base, table, record_id)['fields']
-        def matches():
-            for name, value in expected.items():
-                actual = remote.get(name)
-                if value in ('', []) and actual in (None, '', []): continue
-                if isinstance(value, list):
-                    if not isinstance(actual, list) or [x.get('file_token') for x in actual] != [x['file_token'] for x in value]: return False
-                else:
-                    try:
-                        if (select_text(actual) if name == names['status'] else plain_text(actual)) != value: return False
-                    except RuntimeFault: return False
-            return True
-        if matches():
+        def matches_field(name, value):
+            actual = remote.get(name)
+            if name == names['status']:
+                try:
+                    return select_text(actual) == value
+                except RuntimeFault:
+                    return False
+            if name == names['video']:
+                return (actual in (None, '', []) if not value else isinstance(actual, list)
+                        and all(isinstance(item, dict) for item in actual)
+                        and [item.get('file_token') for item in actual] ==
+                        [item['file_token'] for item in value])
+            return CopyOnlyWeekWriter._same_value(actual, value)
+
+        changed = {name: value for name, value in expected.items() if not matches_field(name, value)}
+        if not changed:
             with self.store.connect() as db:
                 authorize(db); current = meta(db, key)
                 if current['snapshot'] != snapshot: raise RuntimeFault('FEISHU_NATIVE_SNAPSHOT_CHANGED')
@@ -269,9 +274,9 @@ class NativeSync:
                 raise RuntimeFault('FEISHU_NATIVE_RECORD_WRITE_UNKNOWN_OR_CONFLICT')
             current['steps']['record'] = {'status': 'in_flight', 'fields_sha256': fingerprint(expected)}
             save(db, key, current)
-        client.update_record(base, table, record_id, expected)
+        client.update_record(base, table, record_id, changed)
         remote = client.record(base, table, record_id)['fields']
-        if matches():
+        if all(matches_field(name, value) for name, value in expected.items()):
             with self.store.connect() as db:
                 authorize(db); current = meta(db, key)
                 if current['snapshot'] != snapshot: raise RuntimeFault('FEISHU_NATIVE_SNAPSHOT_CHANGED')

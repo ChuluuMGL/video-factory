@@ -1,21 +1,23 @@
 """Owner-only local business configuration; no containers, model calls or grants.
 
-A non-secret plan is immutable except for explicit script-only to video setup. Configuration and encrypted keys
+An owner can update project content and members without replacing the ledger. Configuration and encrypted keys
 commit together. Binding is a separate read-only Feishu gate and can be resumed.
 The fake trial ledger is never adopted. No execution capability is issued here.
 """
 from contextlib import contextmanager
+from copy import deepcopy
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import time
 
 from cryptography.fernet import Fernet
 
-from .feishu_bridge import FeishuBridge, configuration, meta, save
+from .feishu_bridge import FeishuBridge, configuration, meta, save, target
 from .feishu_client import resource
 from .runtime_cli import secret_input
 from .runtime_store import (RuntimeFault, RuntimeStore, canonical, exclusive_write,
@@ -77,7 +79,136 @@ def snapshots(db, project):
                                                     ('ls_' + fingerprint(project)[:24] + '_*',))]}
 
 
-def provision(store, admin, plan, master_key, secrets):
+def reference_bytes(path):
+    if not path.is_absolute() or path.resolve() != path:
+        raise RuntimeFault('H3_REFERENCE_PATH_INVALID')
+    if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):
+        raise RuntimeFault('H3_REFERENCE_FORMAT_OR_SIZE_INVALID')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeFault('H3_REFERENCE_PATH_INVALID')
+        maximum = 30 * 1024 * 1024
+        if info.st_size > maximum:
+            raise RuntimeFault('H3_REFERENCE_FORMAT_OR_SIZE_INVALID')
+        data = stream.read(maximum + 1)
+        if not data or len(data) > maximum:
+            raise RuntimeFault('H3_REFERENCE_FORMAT_OR_SIZE_INVALID')
+    return data
+
+
+def managed_assets(root, plan):
+    if not plan['video']:
+        return None
+    assets = deepcopy(plan['video']['assets'])
+    parent = root / 'references'
+    for sku, item in assets.items():
+        if not isinstance(item, dict) or set(item) != {'assets_root', 'specification'}:
+            raise RuntimeFault('VIDEO_ASSET_FIELDS_INVALID')
+        source = Path(item['assets_root'])
+        if not source.is_absolute() or '..' in source.parts or source.resolve() != source:
+            raise RuntimeFault('H3_REFERENCE_PATH_INVALID')
+        spec = item['specification']
+        if (not isinstance(spec, dict) or set(spec) != {'duration', 'references'}
+                or type(spec['duration']) is not int or not 4 <= spec['duration'] <= 15
+                or not isinstance(spec['references'], list) or not 1 <= len(spec['references']) <= 9):
+            raise RuntimeFault('H3_SPECIFICATION_INVALID')
+        destination = parent / plan['project'] / sku
+        for directory in (parent, destination.parent, destination):
+            directory.mkdir(mode=0o700, exist_ok=True)
+            private_directory(directory)
+        total = 0
+        for ref in spec['references']:
+            if (not isinstance(ref, dict) or set(ref) != {'path', 'sha256'}
+                    or not isinstance(ref['path'], str) or not isinstance(ref['sha256'], str)
+                    or not re.fullmatch('[a-f0-9]{64}', ref['sha256'])):
+                raise RuntimeFault('H3_REFERENCE_INVALID')
+            relative = Path(ref['path'])
+            if relative.is_absolute() or '..' in relative.parts:
+                raise RuntimeFault('H3_REFERENCE_PATH_INVALID')
+            data = reference_bytes(source / relative)
+            total += len(data)
+            if total > 45 * 1024 * 1024 or hashlib.sha256(data).hexdigest() != ref['sha256']:
+                raise RuntimeFault('H3_REFERENCE_CHANGED_OR_TOO_LARGE')
+            name = ref['sha256'] + relative.suffix.lower()
+            path = destination / name
+            if path.exists() or path.is_symlink():
+                private_file(path)
+                if reference_bytes(path) != data:
+                    raise RuntimeFault('H3_MANAGED_REFERENCE_CHANGED')
+            else:
+                exclusive_write(path, data)
+            ref['path'] = name
+        item['assets_root'] = str(destination)
+    return assets
+
+
+def revoke_unused_approvals(db, project):
+    """Fence old approvals without rewriting submitted or uncertain receipts."""
+    for row in db.execute("""SELECT key,value FROM meta WHERE key LIKE 'agent:script:plan:%'
+                              OR key LIKE 'agent:video:plan:%' OR key LIKE 'worker:%'
+                              OR key LIKE 'script:job:%'""").fetchall():
+        key, raw = row
+        value = json.loads(raw)
+        plan = value.get('plan', {})
+        if (value.get('project') or plan.get('project')) != project:
+            continue
+        if key.startswith('agent:') and not value.get('submitted'):
+            value.update(revoked=True, expires_at=0)
+        elif key.startswith('script:job:') and value.get('state') == 'queued':
+            value.update(state='cancelled', expires_at=0, approval_revoked='local_configuration_changed')
+            db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=? AND state='script_queued'",
+                       (project, plan['task'], plan['revision']))
+        elif key.startswith('worker:'):
+            current = db.execute('SELECT state FROM tasks WHERE project=? AND id=? AND revision=?',
+                                 (project, plan.get('task'), plan.get('revision'))).fetchone()
+            if not current or current[0] != 'ready':
+                continue
+            value.update(expires_at=0, approval_revoked='local_configuration_changed')
+        else:
+            continue
+        save(db, key, value)
+
+
+def update_configuration(store, db, admin, actor, plan, previous, digest, secrets, master_key):
+    project = plan['project']
+    setup = meta(db, 'setup:project:' + project)
+    app = meta(db, 'setup:feishu-app:' + project)
+    script = meta(db, 'script:profile:' + project)
+    video = meta(db, 'video:profile:' + project)
+    binding_key = 'feishu:binding:' + project
+    binding = meta(db, binding_key)
+    pinned_target = target(binding) if binding else previous.get('binding_target')
+    if (app['app_id'] != plan['app_id'] or script['billing_owner'] != plan['billing_owner']
+            or (pinned_target is not None and pinned_target != target(plan['binding']))):
+        raise RuntimeFault('LOCAL_SETUP_TARGET_OR_ACCOUNT_IMMUTABLE')
+    if bool(video) != bool(plan['video']) or secrets:
+        raise RuntimeFault('LOCAL_SETUP_USE_EXPLICIT_VIDEO_SETUP')
+    tx = TransactionStore(store, db)
+    setup['configuration']['project']['products'] = plan['products']
+    setup['plan_sha256'] = digest
+    save(db, 'setup:project:' + project, setup)
+    if video:
+        if video['region'] != plan['video']['region']:
+            raise RuntimeFault('LOCAL_SETUP_TARGET_OR_ACCOUNT_IMMUTABLE')
+        assets = managed_assets(store.root, plan)
+        if video['assets'] != assets:
+            configure(tx, admin, project, video['credential_ref'], plan['billing_owner'],
+                      video['region'], assets, local_assets=True)
+    if binding and binding != plan['binding']:
+        save(db, binding_key, plan['binding'])
+        from .employee_access import revoke_grants
+        revoke_grants(db, project)
+    revoke_unused_approvals(db, project)
+    store.audit(db, actor, 'local_business_setup_updated', project)
+    sequence = db.execute('SELECT MAX(seq) FROM audit').fetchone()[0]
+    save(db, 'local:setup-audit:' + project + ':' + str(sequence),
+         {'before_sha256': previous['plan_sha256'], 'after_sha256': digest})
+    return {'reused': False, 'updated': True, 'plan_sha256': digest}
+
+
+def provision(store, admin, plan, master_key, secrets, *, update=False):
     digest = validate(plan); project = plan['project']; receipt_key = 'local:setup:' + project
     with store.connect() as db:
         actor = store.authorize(db, admin, 'admin')
@@ -88,11 +219,18 @@ def provision(store, admin, plan, master_key, secrets):
             raise RuntimeFault('LOCAL_SETUP_DEPLOYMENT_CHANGED')
         previous = meta(db, receipt_key)
         if previous:
-            if previous['plan_sha256'] != digest or previous['snapshot'] != snapshots(db, project):
-                raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
-            for alias, revision in previous['snapshot']['keys']:
+            if previous['snapshot'] != snapshots(db, project):
+                raise RuntimeFault('LOCAL_SETUP_CONFIGURATION_DRIFT')
+            for alias, _ in previous['snapshot']['keys']:
                 TransactionStore(store, db).resolve_secret(alias, master_key)
-            return {'reused': True, 'plan_sha256': digest}
+            if previous['plan_sha256'] == digest:
+                return {'reused': True, 'plan_sha256': digest}
+            if not update:
+                raise RuntimeFault('LOCAL_SETUP_CHANGED_RUN_SETUP')
+            result = update_configuration(store, db, admin, actor, plan, previous, digest, secrets, master_key)
+            save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project),
+                                   'binding_target': target(plan['binding'])})
+            return result
         if db.execute('SELECT 1 FROM projects WHERE id=?', (project,)).fetchone():
             raise RuntimeFault('LOCAL_SETUP_EXISTING_PROJECT_NOT_OWNED')
         expected = {'app', 'script'} | ({'video'} if plan['video'] else set())
@@ -116,8 +254,9 @@ def provision(store, admin, plan, master_key, secrets):
         profile(tx, admin, project, 'secret:' + aliases['script'], plan['billing_owner'])
         if plan['video']:
             configure(tx, admin, project, 'secret:' + aliases['video'], plan['billing_owner'],
-                      plan['video']['region'], plan['video']['assets'], local_assets=True)
-        save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project)})
+                      plan['video']['region'], managed_assets(store.root, plan), local_assets=True)
+        save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project),
+                               'binding_target': target(plan['binding'])})
         store.audit(db, actor, 'local_business_setup', project)
     return {'reused': False, 'plan_sha256': digest}
 
@@ -128,7 +267,7 @@ def bind(store, admin, plan, user_token, *, client_factory=None):
         store.authorize(db, admin, 'admin')
         saved = meta(db, 'local:setup:' + plan['project'])
         if not saved or saved['plan_sha256'] != fingerprint(plan) or saved['snapshot'] != snapshots(db, plan['project']):
-            raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
+            raise RuntimeFault('LOCAL_SETUP_CHANGED_RUN_SETUP')
         old = meta(db, 'feishu:binding:' + plan['project'])
         if old is not None and old != plan['binding']: raise RuntimeFault('LOCAL_SETUP_BINDING_CHANGED')
     bridge = FeishuBridge(store, **({'client_factory': client_factory} if client_factory else {}))
@@ -155,7 +294,7 @@ def add_video(store, admin, previous, plan, master_key, video_secret=None):
             raise RuntimeFault('LOCAL_SETUP_DEPLOYMENT_CHANGED')
         saved = meta(db, receipt_key)
         if not saved or saved['snapshot'] != snapshots(db, project):
-            raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
+            raise RuntimeFault('LOCAL_SETUP_CHANGED_RUN_SETUP')
         tx = TransactionStore(store, db)
         for alias, revision in saved['snapshot']['keys']:
             tx.resolve_secret(alias, master_key)
@@ -164,7 +303,7 @@ def add_video(store, admin, previous, plan, master_key, video_secret=None):
         if saved['plan_sha256'] == digest and meta(db, transition_key) == transition:
             return {'reused': True, 'video_added': True, 'plan_sha256': digest}
         if saved['plan_sha256'] != old_digest or meta(db, 'video:profile:' + project) is not None:
-            raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
+            raise RuntimeFault('LOCAL_SETUP_CHANGED_RUN_SETUP')
         if (not isinstance(video_secret, str) or not 16 <= len(video_secret) <= 4096
                 or any(c.isspace() for c in video_secret)):
             raise RuntimeFault('LOCAL_SETUP_RAW_KEY_REQUIRED')
@@ -173,12 +312,13 @@ def add_video(store, admin, previous, plan, master_key, video_secret=None):
             raise RuntimeFault('LOCAL_SETUP_SECRET_ALREADY_PRESENT')
         tx.put_secret(admin, alias, video_secret, master_key)
         configure(tx, admin, project, 'secret:' + alias, plan['billing_owner'],
-                  plan['video']['region'], plan['video']['assets'], local_assets=True)
+                  plan['video']['region'], managed_assets(store.root, plan), local_assets=True)
         setup = meta(db, 'setup:project:' + project)
         setup['plan_sha256'] = digest
         save(db, 'setup:project:' + project, setup)
         save(db, transition_key, transition)
-        save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project)})
+        save(db, receipt_key, {'plan_sha256': digest, 'snapshot': snapshots(db, project),
+                               'binding_target': target(plan['binding'])})
         store.audit(db, actor, 'local_video_added', project)
     return {'reused': False, 'video_added': True, 'plan_sha256': digest}
 
@@ -212,12 +352,10 @@ def interactive_plan(read=input):
         for product in plan['products']:
             path = Path(ask(product['sku_id'] + ' 的本机参考图片绝对路径'))
             if not path.is_absolute() or path.resolve() != path: raise RuntimeFault('H3_REFERENCE_PATH_INVALID')
-            private_directory(path.parent)
-            if not path.is_file() or path.stat().st_size > 30 * 1024 * 1024:
-                raise RuntimeFault('H3_REFERENCE_FORMAT_OR_SIZE_INVALID')
+            data = reference_bytes(path)
             assets[product['sku_id']] = {'assets_root': str(path.parent), 'specification': {
                 'duration': int(ask('视频秒数（4–15）')), 'references': [
-                    {'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}]}}
+                    {'path': path.name, 'sha256': hashlib.sha256(data).hexdigest()}]}}
         plan['video'] = {'model': chosen, 'region': region, 'assets': assets}
     else: raise RuntimeFault('LOCAL_SETUP_VIDEO_MODEL_UNSUPPORTED')
     validate(plan)
@@ -309,8 +447,6 @@ def cli(args):
                 if meta(db, MARKER) != {'deployment': plan['deployment']}:
                     raise RuntimeFault('LOCAL_SETUP_RUNTIME_NOT_OWNED')
                 existing = meta(db, 'local:setup:' + plan['project'])
-                if existing and existing['plan_sha256'] != digest and not previous:
-                    raise RuntimeFault('LOCAL_SETUP_CHANGED_USE_NEW_PROJECT')
             key_path = root / 'master.key'
             if not key_path.exists():
                 with store.connect() as db:
@@ -328,7 +464,7 @@ def cli(args):
                 values['app'] = secret_input(args.app_secret_file, '飞书 App Secret（隐藏输入）: ')
                 values['script'] = secret_input(args.script_key_file, 'DeepSeek 官方 Key（隐藏输入）: ')
                 if plan['video']: values['video'] = secret_input(args.video_key_file, 'MiniMax 原始 Key（隐藏输入）: ')
-            if not previous: result = provision(store, admin, plan, key, values)
+            if not previous: result = provision(store, admin, plan, key, values, update=True)
             values.clear()
             result.update({'project': plan['project'], 'configuration_saved': True, 'provider_requests': 0,
                            'paid_execution_enabled': False, 'feishu_binding_verified': False,

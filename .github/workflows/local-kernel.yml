@@ -54,6 +54,9 @@ jobs:
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_native.py' -v
       - name: Exercise continuous original-row business flow with synthetic providers
         run: python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_business_flow.py' -v
+      - name: Exercise workbench observations and stopped Feishu copy recovery
+        working-directory: packages/video-factory-core/tests
+        run: python -m unittest -v test_project_observations test_copy_update_recovery test_copy_review_fixes test_resolve_adversarial test_shadow_copy_recovery test_script_week_projection
       - name: Install and exercise n8n-free local fake profile
         run: |
           python -m unittest discover -s packages/video-factory-core/tests -p 'test_local_sandbox.py' -v

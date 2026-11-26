@@ -62,10 +62,10 @@ with tempfile.TemporaryDirectory() as tmp:
         assert not Path(ready['connection']).exists()
     plan['products'][0]['name'] = 'changed'; Path(plan_path).write_text(json.dumps(plan))
     result = subprocess.run(base, capture_output=True, text=True, timeout=30)
-    assert result.returncode == 2 and 'LOCAL_SETUP_CHANGED_USE_NEW_PROJECT' in result.stdout
+    assert result.returncode == 0 and json.loads(result.stdout)['updated'] is True, result.stdout
     assert (root / 'business/runtime.sqlite3').is_file()
     receipt = {'installed_business_launcher': True, 'new_configuration': True, 'restart_resume': True,
-               'changed_plan_rejected': True, 'fake_ledger_created': False, 'model_calls': 0,
+               'configuration_update_verified': True, 'fake_ledger_created': False, 'model_calls': 0,
                'installed_run_and_agent': True, 'readonly_start_stop_restart': True, 'cross_project_client_rejected': True,
                'session_credentials_removed': True, 'live_feishu_tested': False, 'human_installation_tested': False}
     target = Path('.runtime/local-kernel-evidence'); target.mkdir(parents=True, exist_ok=True)

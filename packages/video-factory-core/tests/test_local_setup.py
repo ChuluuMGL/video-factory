@@ -73,7 +73,7 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'LOCAL_SETUP_CHANGED'): self.put({})
         self.plan = plan()
         with self.store.connect() as db: save(db, 'script:profile:brand_one', {'changed': True})
-        with self.assertRaisesRegex(RuntimeFault, 'LOCAL_SETUP_CHANGED'): self.put({})
+        with self.assertRaisesRegex(RuntimeFault, 'LOCAL_SETUP_CONFIGURATION_DRIFT'): self.put({})
 
     def test_missing_or_replaced_master_key_does_not_rotate_existing_credentials(self):
         self.put(); self.key = Fernet.generate_key()
@@ -110,18 +110,48 @@ class SetupTests(unittest.TestCase):
             bind(self.store, self.admin, self.plan, 'synthetic-user', client_factory=Client)
 
     def test_local_assets_use_private_user_folder_and_hash_validation(self):
-        assets = self.root / 'assets'; assets.mkdir(mode=0o700)
+        assets = self.root / 'assets'; assets.mkdir(mode=0o755)
+        assets.chmod(0o755)
         image = assets / 'product.png'; image.write_bytes(b'synthetic-image')
         self.plan['video'] = {'model': 'MiniMax-H3', 'region': 'cn', 'assets': {'sku_one': {
             'assets_root': str(assets), 'specification': {'duration': 5, 'references': [
                 {'path': 'product.png', 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()}]}}}}
         self.secrets['video'] = 'synthetic-video-secret'; self.put()
         with self.store.connect() as db:
-            self.assertEqual(meta(db, 'video:profile:brand_one')['assets']['sku_one']['assets_root'], str(assets))
+            spec = meta(db, 'video:profile:brand_one')['assets']['sku_one']
+            managed = Path(spec['assets_root'])
+            self.assertNotEqual(managed, assets)
+            self.assertEqual(managed.stat().st_mode & 0o777, 0o700)
+            copied = managed / spec['specification']['references'][0]['path']
+            self.assertEqual(copied.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(copied.read_bytes(), image.read_bytes())
         self.plan['project'] = 'brand_two'; image.write_bytes(b'changed')
         with self.assertRaisesRegex(RuntimeFault, 'H3_REFERENCE_CHANGED'): self.put()
         with self.store.connect() as db:
             self.assertIsNone(db.execute('SELECT 1 FROM projects WHERE id=?', ('brand_two',)).fetchone())
+
+    def test_incremental_setup_updates_owned_products_and_members(self):
+        self.put()
+        bind(self.store, self.admin, self.plan, 'synthetic-user', client_factory=Client)
+        with self.store.connect() as db:
+            old_keys = [tuple(row) for row in db.execute('SELECT * FROM vault ORDER BY alias')]
+            key = 'agent:script:plan:fixture'
+            save(db, key, {'project': self.plan['project'], 'expires_at': 123})
+        self.plan['products'][0]['truth_source'] = 'Updated synthetic facts'
+        self.plan['products'].append({'sku_id': 'sku_two', 'name': 'SKU 2', 'truth_source': 'Synthetic'})
+        self.plan['binding']['submitters'] = ['ou_second']
+        result = provision(self.store, self.admin, self.plan, self.key, {}, update=True)
+        self.assertTrue(result['updated'])
+        self.assertTrue(self.put({})['reused'])
+        with self.store.connect() as db:
+            self.assertEqual([tuple(row) for row in db.execute('SELECT * FROM vault ORDER BY alias')], old_keys)
+            self.assertEqual(meta(db, 'feishu:binding:brand_one')['submitters'], ['ou_second'])
+            self.assertEqual(meta(db, key)['expires_at'], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM audit WHERE action='local_business_setup_updated'").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM meta WHERE key LIKE 'local:setup-audit:%'").fetchone()[0], 1)
+        self.plan['binding']['table_id'] = 'tblOther'
+        with self.assertRaisesRegex(RuntimeFault, 'TARGET_OR_ACCOUNT_IMMUTABLE'):
+            provision(self.store, self.admin, self.plan, self.key, {}, update=True)
 
     def test_unsupported_model_or_secret_in_plan_is_rejected(self):
         self.plan['script_model'] = 'unknown'

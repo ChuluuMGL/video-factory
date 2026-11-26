@@ -32,7 +32,7 @@ vfctl local-setup --root "$HOME/vf-business" \
   --plan "$HOME/vf-local-config/project.json" --interactive --bind
 ```
 
-终端先询问项目、SKU、应用和测试表信息，再隐藏输入管理员密码与 Key。参考图放在权限 0700 的独立素材目录；向导检查绝对路径、符号链接、大小与 SHA256，不要求创建 `/work`，也不用 root。
+终端先询问项目、SKU、应用和测试表信息，再隐藏输入管理员密码与 Key。参考图可从普通可读目录选取。向导核验绝对路径、符号链接、大小和 SHA-256，复制到业务根目录的私有项目素材区，目录 0700、文件 0600。原图保留。
 
 最后只打开**飞书官方身份授权页面**。产品不启动安装网页，也不让 Agent 收集用户 token。完成授权后，程序只读核对组织和四个映射文本字段，保存绑定。配置保存和飞书核对分别报告；模型调用数为零。
 
@@ -60,7 +60,7 @@ vfctl local-setup --root "$HOME/vf-business" \
 - **中断、网络失败或授权过期：**保留同一 root 和计划，再执行相同命令；已经保存的 Key 会复用，不要求重输。飞书授权过期只重新授权，未完成外部写入不自动重试。
 - **新增项目：**使用同一个 root、不同的 project 标识和新的计划文件，沿用管理员密码；原项目不改。新项目的应用/模型凭据单独加密保存。
 - **补配视频：**首次选择 `skip` 的项目可使用下述显式续接，不重建项目或重审已通过的脚本。
-- **其他配置变更：**同项目的 SKU、既有模型、应用或目标表不一致仍会停止，不静默覆盖。
+- **增量变更：**先停止该业务目录的服务，再编辑私有计划并重新运行 setup。可更新 SKU、卖点、参考图和绑定成员。历史任务与加密凭据保留，审计保存变更前后摘要。未执行的旧批准失效。已绑定的目标表、应用、计费归属和视频账号区域保持固定。
 - **文件保存：**`runtime.sqlite3` 保存配置和加密凭据，`master.key` 为本人所有的 0600 文件。保留两者的私有备份；加密不能抵御拥有同一 OS 账户读取权限的人。
 
 ### 脚本已跑通，之后补视频
@@ -81,7 +81,7 @@ vfctl local-setup --root "$HOME/vf-business" \
 
 | 提示 | 操作 |
 | --- | --- |
-| `LOCAL_SETUP_CHANGED_USE_NEW_PROJECT` | 原计划或已保存配置发生变化；回到原计划核对，不删除数据库重建 |
+| `LOCAL_SETUP_CHANGED_RUN_SETUP` / `LOCAL_SETUP_CONFIGURATION_DRIFT` | 计划修改先走 setup；已保存配置漂移需核对账本和备份 |
 | `LOCAL_SETUP_RUNTIME_NOT_OWNED` / `LOCAL_FAKE_PROFILE_NO_EXTERNAL_IO` | 使用新业务目录；不能采用历史或假模型账本 |
 | `SECRET_DECRYPT_FAILED` / `LOCAL_SETUP_MASTER_KEY_MISSING_RESTORE_BACKUP` | 停止，恢复匹配的私有主密钥；不可生成新密钥替换 |
 | `DIRECTORY_OWNER_ONLY_REQUIRED` | 核对路径后为本人专用目录设置 0700，勿递归修改共享资料目录 |
@@ -113,7 +113,7 @@ vfctl local-setup --root "$HOME/vf-business" \
 ~/VideoFactory/vf-agent --connection /实际返回路径/connection.json tasks
 ```
 
-CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定回环地址的 Agent 路由，没有管理员审批、任意 URL 或 Shell 入口。连接最长两小时；Ctrl-C 正常停止，立即撤销本次创建的权限并清理临时文件。再次启动保留原账本；崩溃留下的凭据到期失效，不自动续期。
+CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定回环地址的 Agent 路由，没有管理员审批、任意 URL 或 Shell 入口。默认本地服务常驻。可在 inspect 和 start 同时指定 `--max-runtime`（秒）限制运行时长。Ctrl-C 正常停机时撤销本次权限，再次启动保留账本并清理上次异常退出的常驻授权。员工接入仍保留独立短期身份窗口；启用已批准付费执行需要显式限制本次时长及逐项审批。
 
 **允许提出计划：**两条负责人命令都加 `--allow-plans`。启动时本人通过官方飞书授权页验证提交身份。Agent 可查看项目资料、准备脚本修订和视频计划；尚未开启调度时不会生成。接线不把管理员密码、用户 token 或模型 Key 放进 Codex 上下文。
 
@@ -126,3 +126,32 @@ CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定�
 业务安装包的停机备份可以保存已登记成片。恢复到全新目录时保留任务、成片摘要、原审核事件及原始路径描述；私有映射索引只把对应成片定位到新目录中的同摘要文件。读取仍验证权限、符号链接和文件摘要，不按文件名猜测来源。
 
 这是同核心版本的离线恢复，不是跨版本升级。原商品参考图、私有项目计划仍须单独保留；恢复不启动调度、不恢复临时授权、不调用模型，也不替代人工审核。操作入口及安装包版本以安装包 BUSINESS_BUNDLE.md 为准。
+
+
+## 用户后台服务与工作台
+
+要在后台运行默认只读服务，先用相同计划和运行时长参数完成 `vf-run inspect`。
+在安装环境的 `vfctl` 上执行：
+
+```sh
+vfctl local-service render --platform launchd --name daily \
+  --root /绝对路径/业务目录 --plan /绝对路径/project.json \
+  --password-file /绝对路径/私有密码文件 --expect-plan 已验核的摘要 \
+  --output /绝对路径/输出.plist
+vfctl local-service start --name daily
+vfctl local-service status --name daily
+vfctl local-service stop --name daily
+```
+
+渲染只生成 0600 文件。macOS 在准备启动时，由安装者放置为
+`~/Library/LaunchAgents/com.video-factory.daily.plist`。Linux 使用 `--platform systemd`
+生成 `~/.config/systemd/user/video-factory-daily.service`，放置后执行
+`systemctl --user daemon-reload`。控制命令按当地平台调用用户服务管理器。
+不自动注册或启用开机自启，不自动重试失败的启动。配置、计划或账本发生变动时，
+重新核对 inspect 输出并更新模板。运营工作台负责页面展示。
+
+本机 Agent 新增同项目只读动作 `project_stats` 和 `list_failures`，需已授权的 Agent
+连接。统计只看每项最新版本，成功率以最终通过、失败、退回三类为分母，未结案时为
+null。失败清单列出失败和提交结果未知的任务，返回脱敏错误码，每页最多 100 项。
+另四项工作台动作留待规范审定。停机时可用
+[影子副本写入恢复](SHADOW_COPY_WRITE_RECOVERY.md) 管理已存在的影子写入 intent，工具不重发远端写请求。
