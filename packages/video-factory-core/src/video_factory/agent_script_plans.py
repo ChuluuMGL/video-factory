@@ -77,7 +77,7 @@ class ScriptPlans:
         plan = saved['source_plan']
         job = meta(db, job_key(self.project, plan['task'], plan['revision']))
         enqueued = bool(saved.get('submitted') and job and job.get('agent_plan_id') == saved['plan_id'])
-        row = db.execute('SELECT state,input_digest FROM tasks WHERE project=? AND id=? AND revision=?',
+        row = db.execute('SELECT state,input_digest,revision,artifact,configuration_digest FROM tasks WHERE project=? AND id=? AND revision=?',
                          (self.project, plan['task'], plan['revision'])).fetchone()
         latest = db.execute('SELECT MAX(revision) FROM tasks WHERE project=? AND id=?',
                             (self.project, plan['task'])).fetchone()[0]
@@ -85,7 +85,10 @@ class ScriptPlans:
                  'execution_conflict' if saved.get('submitted') else 'expired' if saved['expires_at'] <= time.time()
                  else 'approved' if saved.get('approved_by') else 'prepared')
         result = job.get('result') if enqueued else None
-        return {'schema': 'vf-agent-script-plan-v1', 'project': self.project, 'task': plan['task'],
+        from .workbench_views import first_script_row, version
+        version_row = row or (first_script_row(db, self.project, plan) if latest is None else None)
+        return {'version_token': version(version_row) if version_row else None,
+                'schema': 'vf-agent-script-plan-v1', 'project': self.project, 'task': plan['task'],
                 'revision': plan['revision'], 'sku_id': plan['sku']['sku_id'], 'plan_id': saved['plan_id'],
                 'plan_sha256': saved['plan_sha256'], 'request_id': saved['request_id'], 'phase': phase,
                 'expires_at': saved['expires_at'], 'model': plan['profile']['model'], 'max_submissions': 1,

@@ -4,9 +4,11 @@ from socketserver import TCPServer
 import io
 
 from .onboarding import read_json
+from .feishu_bridge import meta
 from .runtime_store import RuntimeFault, canonical, identifier
 from .agent_plans import VideoPlans, authorize
 from .agent_script_plans import ScriptPlans
+from .workbench_actions import FIELDS as WORKBENCH_FIELDS, WorkbenchActions
 
 
 class AgentAPI:
@@ -16,11 +18,22 @@ class AgentAPI:
         self.script_plans = script_plans
         self.employee_access = employee_access
 
-    def call(self, route, token, body):
+    def call(self, route, token, body, *, principal=None):
         if not isinstance(token, str) or not 20 <= len(token) <= 256:
             raise RuntimeFault('AUTH_AGENT_REQUIRED')
         if not isinstance(body, dict) or body.get('project') != self.project:
             raise RuntimeFault('AUTH_AGENT_PROJECT_DENIED')
+        op = route.removeprefix('/v1/agent/')
+        if route.startswith('/v1/agent/') and op in WORKBENCH_FIELDS:
+            params = {key: value for key, value in body.items() if key != 'project'}
+            if set(params) - WORKBENCH_FIELDS[op]:
+                raise RuntimeFault('WORKBENCH_FIELDS_INVALID')
+            actions = WorkbenchActions(self.store, self.project, self.script_plans)
+            if op in ('stats', 'failures', 'reviews'):
+                with self.store.connect() as db:
+                    authorize(db, token, self.project, workbench=True)
+                    return actions.read(db, op, params)
+            return actions.action(op, token, principal, params)
         fields = {
             '/v1/agent/capabilities': {'project'},
             '/v1/agent/status': {'project'},
@@ -69,17 +82,27 @@ class AgentAPI:
                 return plans.prepare(token, body.get('task'), body.get('revision'), body.get('request_id'))
             return plans.submit(token, body.get('plan_id'), body.get('plan_sha256'))
         with self.store.connect() as db:
-            value, _ = authorize(db, token, self.project)
+            value, _ = authorize(db, token, self.project, workbench=route.endswith('/capabilities'))
             if route.endswith('/capabilities'):
+                abilities = []
+                if principal and value.get('workbench_principal') == principal:
+                    policy = meta(db, 'workbench:delegation:' + self.project) or {}
+                    roles = set(value.get('workbench_roles', [])) & set(policy.get(principal, []))
+                    abilities.extend(name for role, name in (
+                        ('repair', 'repair_and_schedule'), ('review', 'submit_review_decision'),
+                        ('edit', 'edit_commit'), ('cost', 'approve_plan')) if role in roles)
+                native = meta(db, 'native:config:' + self.project) or {}
+                if native.get('enabled') and self.scheduler.status().get('feishu_writeback') == 'enabled_requires_readback':
+                    abilities.append('native_record_submission')
                 enabled = self.plans_enabled and value['scope'] == 'agent_plan'
                 scripts = self.script_plans is not None and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
                         'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt',
-                                      'project_stats', 'list_failures']
+                                      'project_stats', 'list_failures', 'list_reviews', 'review_or_edit_script'] + abilities
                                      + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
                                      + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
                                          'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),
-                        'unavailable': ['prepare_plan', 'approve_plan', 'submit_plan',
+                        'unavailable': ['prepare_plan', 'submit_plan'] + ([] if 'approve_plan' in abilities else ['approve_plan']) + [
                                         'media_preview', 'shot_repair'] + ([] if scripts else ['script_content']),
                         'mutations_allowed': enabled or scripts, 'approval_authority': 'local_administrator',
                         'script_plan_available': scripts}
@@ -174,7 +197,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(403, {'error': 'LOCAL_ORIGIN_DENIED'})
                 return
             lengths = self.headers.get_all('Content-Length', [])
-            limit = 65536 if self.path == '/v1/agent/script/prepare' else 8192
+            limit = 65536 if self.path in ('/v1/agent/script/prepare', '/v1/agent/review/prepare') else 8192
             if (self.headers.get('Transfer-Encoding') or len(lengths) != 1
                     or not lengths[0].isdigit() or not 0 < int(lengths[0]) <= limit
                     or self.headers.get_content_type() != 'application/json'):
@@ -192,7 +215,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if len(headers) != 1 or not headers[0].startswith('Bearer '):
                 raise RuntimeFault('AUTH_AGENT_REQUIRED')
-            result = self.server.api.call(self.path, headers[0][7:], body)
+            principal = self.headers.get_all('X-Workbench-Principal', [])
+            if len(principal) > 1:
+                raise RuntimeFault('AUTH_WORKBENCH_ROLE_DENIED')
+            result = self.server.api.call(self.path, headers[0][7:], body,
+                                          **({'principal': principal[0]} if principal else {}))
             self.reply(200, result)
         except RuntimeFault as error:
             self.reply(401 if str(error).startswith('AUTH_') else 409, {'error': str(error)})

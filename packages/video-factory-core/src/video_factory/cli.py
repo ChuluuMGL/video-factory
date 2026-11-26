@@ -108,9 +108,12 @@ def main(argv=None):
     template.add_argument("--credential-name", default="Video Factory worker")
     canary = commands.add_parser("canary", help="rehearse normal and repair lanes without any provider")
     canary.add_argument("--project-dir", type=Path, required=True)
-    from . import local_service
+    from . import local_service, workbench_delegation
+    workbench_delegation.register(commands)
     local_service.register(commands)
     args = parser.parse_args(argv)
+    if args.command == "workbench-delegate":
+        return workbench_delegation.cli(args)
     if args.command == "local-service":
         return local_service.cli(args)
     if args.command in ('local-run', 'agent'):

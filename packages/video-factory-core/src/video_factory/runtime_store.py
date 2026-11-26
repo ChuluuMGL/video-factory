@@ -374,7 +374,7 @@ class RuntimeStore:
 
     def _review(self, db, actor, event, project, task, revision, stage, decision, feedback=""):
         identifier(event)
-        if stage not in ("script", "video") or decision not in ("accept", "reject"):
+        if stage not in ("script", "storyboard", "video") or decision not in ("accept", "reject"):
             raise RuntimeFault("REVIEW_INVALID")
         if not isinstance(feedback,str) or len(feedback)>8000 or (decision=="reject" and not feedback.strip()):
             raise RuntimeFault("REVIEW_FEEDBACK_REQUIRED")
@@ -387,7 +387,7 @@ class RuntimeStore:
         row = self._current(db,project,task,revision)
         if row["state"] != "awaiting_"+stage+"_review":
             raise RuntimeFault("REVIEW_STATE_CONFLICT")
-        state = "rejected" if decision=="reject" else ("ready" if stage=="script" else "accepted")
+        state = "rejected" if decision=="reject" else ("ready" if stage in ("script", "storyboard") else "accepted")
         receipt = {"actor":actor,"project":project,"task":task,"revision":revision,"state":state,"feedback":feedback}
         db.execute("UPDATE tasks SET state=? WHERE project=? AND id=? AND revision=?",(state,project,task,revision))
         db.execute("INSERT INTO events VALUES(?,?,?)",(event,request_digest,canonical(receipt)))
