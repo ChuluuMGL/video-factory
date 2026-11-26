@@ -82,7 +82,7 @@ class ReviewFixTests(unittest.TestCase):
         self.assertEqual(failure_context(e),{'error':'COPY_OPERATION_FAILED'})
     def test_process_exit_after_committed_intent_never_replays(self):
         # Real RuntimeStore transaction and a real child exit after intent commit.
-        root=Path(self.tmp.name)/'crash';root.mkdir(mode=0o700)
+        root=Path(self.tmp.name).resolve()/'crash';root.mkdir(mode=0o700)
         db=root/'runtime.sqlite3'
         with sqlite3.connect(db) as d:
             d.execute('CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT)')

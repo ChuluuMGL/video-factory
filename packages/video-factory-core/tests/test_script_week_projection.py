@@ -1,12 +1,18 @@
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import Mock
-from test_script_jobs import ScriptTests
+from review_fixture import Fixture
 from video_factory.script_week_projection import WeekProjection
 from video_factory.runtime_store import RuntimeFault
 
 class ProjectionTests(unittest.TestCase):
-    setUp=ScriptTests.setUp
-    tearDown=ScriptTests.tearDown
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.f = Fixture(Path(directory.name).resolve())
+        self.addCleanup(self.f.close)
+
     def adapter(self):
         self.writer=Mock(base='basCopy',table='tblCopy',identity_field='Task')
         self.writer.append.return_value={'record_id':'recNew','writes':1}
