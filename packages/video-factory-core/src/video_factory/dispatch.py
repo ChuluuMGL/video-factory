@@ -109,9 +109,17 @@ def dispatch_with_results(store, token, project, master_key, media_root, *,
             import re
             code = str(error) if isinstance(error, RuntimeFault) and re.fullmatch('[A-Z0-9_]{1,100}', str(error)) else 'FEISHU_NATIVE_REVIEW_FAILED'
             native_review = {'status':'attention_required','error':code,'automatic_resubmit':False}
+    board_writeback = None
+    if native_context:
+        from .workbench_writeback import flush
+        try:
+            board_writeback = flush(store, project, native, native_config, lambda db: authorize(db, token, project))
+        except RuntimeFault:
+            board_writeback = {'status': 'attention_required', 'automatic_resubmit': False}
     result = dispatch_one(store, token, project, master_key, media_root,
                           after=after, on_selected=on_selected)
     result['native_review'] = native_review
+    if board_writeback is not None: result['workbench_writeback'] = board_writeback
     if native_context:
         try:
             result['native_sync'] = native.sync(project, media_root, lambda db: authorize(db, token, project))

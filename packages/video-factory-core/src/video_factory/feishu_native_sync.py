@@ -169,10 +169,14 @@ class NativeSync:
             if not config or not config['enabled']: return {'status': 'disabled', 'feishu_writes': 0}
             if self.results.context(db, project) != config['context']:
                 raise RuntimeFault('FEISHU_NATIVE_CONTEXT_CHANGED')
-            rows = db.execute("SELECT * FROM tasks WHERE project=? AND state IN ('awaiting_script_review','awaiting_video_review') ORDER BY id LIMIT 1001",(project,)).fetchall()
+            rows = db.execute("SELECT t.* FROM tasks t WHERE t.project=? AND t.state IN ('awaiting_script_review','awaiting_video_review') AND t.revision=(SELECT MAX(v.revision) FROM tasks v WHERE v.project=t.project AND v.id=t.id) ORDER BY t.id LIMIT 1001",(project,)).fetchall()
             if len(rows)>1000: raise RuntimeFault('FEISHU_NATIVE_QUEUE_CAPACITY')
             selected = None
+            from .workbench_writeback import pending_edits
+            edits = pending_edits(db, project)
             for row in rows:
+                if (row['id'], row['revision']) in edits:
+                    continue
                 item = meta(db, item_key(project, row['id'], row['revision'], row['state']))
                 if not item or not item['complete']:
                     selected = dict(row); break

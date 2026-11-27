@@ -26,12 +26,14 @@ def employee_authorization(token):
     finally: _employee_context.reset(marker)
 
 
-def authorize(db, token, project, *, write=False):
+def authorize(db, token, project, *, write=False, workbench=False):
     if not isinstance(token, str) or not 20 <= len(token) <= 256:
         raise RuntimeFault('AUTH_AGENT_REQUIRED')
     key_id = hashlib.sha256(token.encode()).hexdigest()
     value = meta(db, 'automation:key:' + key_id) or {}
     scopes = ('agent_plan',) if write else ('agent_read', 'agent_plan')
+    if workbench:
+        scopes += ('agent_workbench',)
     if (value.get('scope') not in scopes or value.get('project') != project
             or value.get('expires_at', 0) <= time.time()):
         raise RuntimeFault('AUTH_AGENT_DENIED')
@@ -95,7 +97,7 @@ class VideoPlans:
         job = meta(db, job_key(self.project, saved['task'], saved['revision']))
         # Presence of another path's job is not proof this plan was submitted.
         submitted = bool(saved.get('submitted') and job and job.get('agent_plan_id') == saved['plan_id'])
-        row = db.execute('SELECT state,provider_id,artifact,input_digest,configuration_digest FROM tasks '
+        row = db.execute('SELECT state,provider_id,artifact,input_digest,configuration_digest,revision FROM tasks '
                          'WHERE project=? AND id=? AND revision=?',
                          (self.project, saved['task'], saved['revision'])).fetchone()
         latest = db.execute('SELECT MAX(revision) FROM tasks WHERE project=? AND id=?',
@@ -107,7 +109,9 @@ class VideoPlans:
         state = row['state'] if row else 'missing'
         receipt = bool(submitted and (job.get('provider_receipt') or (row and row['provider_id'])))
         artifact = json.loads(row['artifact']) if submitted and row and row['artifact'] else None
-        return {'schema': 'vf-agent-video-plan-v1', 'project': self.project,
+        from .workbench_views import version
+        return {'version_token': version(row) if row else None,
+                'schema': 'vf-agent-video-plan-v1', 'project': self.project,
                 'task': saved['task'], 'revision': saved['revision'], 'plan_id': saved['plan_id'],
                 'plan_sha256': saved['plan_sha256'], 'request_id': saved['request_id'],
                 'phase': phase, 'expires_at': saved['expires_at'],

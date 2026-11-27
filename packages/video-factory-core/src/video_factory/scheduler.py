@@ -91,7 +91,7 @@ class Scheduler:
             if 'next_after' in result:
                 self._checkpoint(result['next_after'])
             pending_io = any(result.get(name, {}).get('status') == 'attention_required'
-                             for name in ('native_review', 'native_sync', 'base_results'))
+                             for name in ('native_review', 'native_sync', 'base_results', 'workbench_writeback'))
             self._update(state='attention_required' if pending_io else 'waiting', last_task=result.get('task'),
                          last_error='FEISHU_RECONCILIATION_REQUIRED' if pending_io else
                          'RECONCILIATION_REQUIRED' if result.get('blocked') else None)
