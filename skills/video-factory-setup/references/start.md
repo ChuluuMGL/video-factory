@@ -6,10 +6,10 @@
 
 用简短选项询问：第一次安装 / 新增项目 / 继续上次安装 / 排查问题。沿用用户已经提供的答案。首次遇到 Agent、Skill、Base 或 SKU 时，用一句话解释含义；面向用户报告具体对象和下一步，不使用“受控候选”“回读”“同版验证”等内部简写。
 
-- 已有服务：先读取客户交接中的主机、stack、CLI 和 session，实际查询版本与状态；不用最新包覆盖旧服务。
-- 新增项目：原 session 只作配置来源，新 session 使用独立路径；同一 stack。继续按 operations.md 第 3 节完成。
-- 首次部署：先识别已有 n8n 和飞书，再决定是否需要新装基础服务；不要先要求服务器。
-- 继续安装：先读原状态，不创建替代 session、不删除未知 Base 创建日志。
+- 已有服务：先读取客户交接中的主机或本机安装目录、stack/business 根目录、CLI 和 session/plan，实际查询版本与状态；不用最新包覆盖旧服务。
+- 新增项目：已有本机无 n8n 常驻目录时复用同一安装目录与新计划文件；已有服务器完整栈时原 session 只作配置来源，新 session 使用独立路径，继续按 operations.md 第 3 节完成。
+- 首次部署：先确认用户打算走无 n8n 本机常驻路线、接入/安装便携 n8n，还是部署 Ubuntu 完整栈；不要先要求购买服务器或预装 n8n。
+- 继续安装：先读原状态，不创建替代 session 或新账本、不删除未知 Base 创建日志或未决写入意图。
 
 ## 2. 安装本 Skill
 
@@ -19,13 +19,13 @@
 
 在安装人员的私有终端运行 `python3 scripts/choose_install_path.py`，或由 Agent 按相同顺序问三个问题。不要将答案中的密码或 Key 写进文件。
 
-1. 已有 n8n 吗？选择没有、本机 Node.js、本机 Docker、其他服务器或 n8n Cloud；不确定可先选“不确定”。
+1. 打算怎样处理 n8n / 工作流运行方式？可选**不装 n8n 直接用无 n8n 本机常驻引擎（v0.3，macOS / Linux）**、还没有 n8n、本机 Node.js、本机 Docker、其他服务器或 n8n Cloud；不确定可先选“不确定”。
 2. 飞书应用和 Base 都有、只有一部分、都没有，还是不确定？
-3. 产品执行服务希望运行在已有 Ubuntu 主机、本机 Windows/Mac、其他服务器，还是尚未决定？
+3. 产品执行服务希望运行在**本机 macOS / Linux 无 n8n 常驻引擎（v0.3）**、已有 Ubuntu 24.04 x86_64 主机、本机 Windows/Mac/Linux（便携 n8n）、其他服务器，还是尚未决定？
 
-a37 完整 Skill 提供本机 Node.js、Docker 和已有 n8n 接入。已有实例先核对公共 API、版本及网络，保留原工作流、数据和凭据；没有 n8n 时由用户选择安装方式。Cloud SaaS 本轮未实测，说明该范围后由有相应实例的操作者验证。
-
-本机或已有 n8n 路线运行 `scripts/portable_n8n.py welcome`：连接或安装 n8n，选择项目，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a38/docs/product/PORTABLE_N8N.md) 继续。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。选择 Ubuntu 完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
+- **无 n8n 本机常驻路线（`local_resident_kernel_v03`）**：面向不会搭 n8n、不租服务器的 macOS / Linux（Python 3.11+）用户。使用 `scripts/install_local_kernel.py --mode business --root <全新目录>` 一键建立私有运行目录与 `vf-setup` / `vf-run` / `vf-agent`，按 [本机无 n8n 常驻指南](local-business.md) 逐步完成项目配置与参考图自动托管、停机增量改配置、飞书官方身份授权与原表接线，以及 `launchd` / `systemd` 用户级常驻启停。Windows 原生暂不支持该安装器，Windows 本机请走下方便携 n8n 路线。
+- **便携或已有 n8n 路线（`reuse_existing_n8n` / `portable_n8n_install_method`）**：已有实例先核对公共 API、版本及网络，保留原工作流、数据和凭据；没有 n8n 且希望使用 n8n 时运行 `scripts/portable_n8n.py welcome`，连接或安装 Node.js/Docker n8n，隐藏输入或复用凭据，检查飞书 Base 并导入关闭状态的脚本/视频/恢复工作流；按 [便携安装说明](https://github.com/ChuluuMGL/video-factory/blob/v0.1.0a38/docs/product/PORTABLE_N8N.md) 继续。Cloud SaaS 本轮未实测，说明范围后由实例操作者验证。负责人费用确认先做真实零费用事件验收，再显式启用单次计划。
+- **Ubuntu 完整栈路线（`managed_ubuntu_current_release`）**：选择 Ubuntu 24.04 x86_64 服务器完整栈才走下方服务器发行包；已有 Video Factory 项目沿原目录续接。
 
 ## 3. 取得服务器发行包
 

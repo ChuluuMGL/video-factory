@@ -1,157 +1,167 @@
-# 本机业务配置候选
+# 无 n8n 本机常驻引擎一键安装与业务配置指南（v0.3）
 
-本说明对应新增 `vfctl local-setup`，尚未发布到 a41。使用此分支构建并校验的核心 wheel；旧发行包和假模型体验包不会自动获得此命令。支持 macOS/Linux，Windows 原生另行验收。
+本指南面向不会搭建 n8n、不租服务器的 macOS 与 Linux（Python 3.11+）用户，说明如何通过 Setup Skill 与 `scripts/install_local_kernel.py --mode business` 在本机一键建立独立环境、SQLite 加密账本与常驻业务引擎（`vf-setup`、`vf-run`、`vf-agent` 及 `vfctl local-service`）。a41 旧固定服务器归档未内置此入口，请使用已核验的 v0.3 版本源码或同版本核心 wheel；Windows 原生暂不支持该安装器（Windows 本机请参考 [便携 n8n 指南](PORTABLE_N8N.md)）。
 
-本机业务数据必须放在**新目录**，不能把 `vfctl local` 的假模型账本转换成真实项目。现有 n8n/完整服务器部署不变。本步骤不安装容器、不启动执行、不提交任何模型请求。
+本机业务数据必须放在**全新私有目录**，不能把 `vfctl local`（`--mode fake-only`）的假模型演练账本转换成真实项目。现有 n8n 与 Ubuntu 服务器完整栈部署保持不变。全流程将**环境安装、项目配置、飞书身份、付费模型执行、人工验收**五者在文案与回执中严格分离。
 
-## 操作员的准备
+## 操作前准备
 
-准备专用飞书应用、已有测试 Base 与任务表、本人可访问该表的账号、商品 SKU 和真实资料。应用权限及记录变更订阅按 [原表审核说明](FEISHU_NATIVE_REVIEW.md) 配置。暂不支持这个入口自动新建 Base。
+准备专用飞书应用、已有测试 Base 与任务表、本人可访问该表的账号、商品 SKU 和真实资料。应用权限及记录变更订阅按 [原表审核说明](FEISHU_NATIVE_REVIEW.md) 配置；当前本机入口绑定已有测试表，暂不自动新建 Base。
 
-Agent 可以帮助查找组织、Base、表和字段 ID，整理非秘密 JSON。密码、App Secret、模型 Key 在终端隐藏输入；也可使用本人所有、权限 0600 的独立文件。不要放到聊天、JSON 计划、命令参数值、Git 或日志。
+Agent 可协助读取环境、查找组织/Base/表/字段 ID 并整理非秘密计划 JSON。管理员密码（至少 14 位）、飞书 App Secret、模型 API Key 仅在真实私有终端隐藏输入，或通过本人所有、权限 `0600` 的独立文件传入；严禁放进聊天记录、JSON 计划、命令行明文参数、Git 或日志。
 
-当前内核脚本模型是 `deepseek-flash`，视频是 MiniMax-H3（cn/global）。此候选不把便携 n8n 的全部模型支持当成本机内核支持。可输入 `skip` 暂不配置视频。
+当前本机内核支持的脚本模型固定为 `deepseek-flash`，视频模型固定为 `MiniMax-H3`（`cn` 或 `global`）；不把便携 n8n 的扩展供应商直接等同于本机内核已支持。首次配置可输入 `skip`（或设 `video: null`）暂不配置视频，先跑通脚本审核闭环。
 
-## 首次配置
+## 阶段一：一键安装独立环境（不收密钥、不启服务）
 
-候选源码安装器现支持 `--mode business`：
+使用 v0.3 安装器指定 `--mode business` 与一个父目录已存在、无符号链接的全新绝对路径：
 
 ```sh
-python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFactory" --package /绝对路径/已校验的候选.whl
+# 方式 A：在已核验的 v0.3 仓库目录直接安装
+python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFactory"
+
+# 方式 B：使用已校验的本地核心 wheel（可选离线依赖目录）
+python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFactory" \
+  --package /绝对路径/已校验的候选.whl --wheelhouse /绝对路径/wheels
 ```
 
-这会安装独立 Python 环境并生成 `~/VideoFactory/vf-setup`，不创建假模型账本。执行 `~/VideoFactory/vf-setup --plan /绝对路径/project.json --interactive --bind` 进入下面的问答，业务数据固定在 `~/VideoFactory/business`。尚未发布一键下载入口，必须使用同版本安装器和 wheel。
+安装器创建 `0700` 根目录、独立 `environment/` 虚拟环境，并生成三个绑定 `~/VideoFactory/business` 账本的固定启动器：`vf-setup`、`vf-run`、`vf-agent`（另含 `~/VideoFactory/environment/bin/vfctl`），不创建假模型账本、不安装容器、不启动进程、不调用模型。回执为 `installed: true`、`configuration_complete: false`、`production_ready: false`、`real_model_calls: 0`。
 
-macOS/Linux 的独立环境通过符号链接使用安装时的基础 Python；请保留该 Python，不要在系统仍使用它时卸载。旧安装器在 uv 管理的 macOS Python 上可能因复制可执行文件后找不到 `libpython` 而中止；保留失败目录，取得包含修复的同版本安装包后选择全新目录重试。不要手改原 ZIP 或把部分安装标记为成功。
+macOS / Linux 的独立虚拟环境通过符号链接引用安装时的基础 Python（修复旧安装器在 `uv` 管理的 macOS Python 上复制可执行文件导致丢失 `libpython` 的问题）；日常运行期间请保留该基础 Python。若安装中途异常中止，原目录与 `install.json`（`incomplete_preserved`）会保留供诊断，切勿手改半成品目录，修复前置条件后换全新目录重试。
 
-也可直接用已安装候选环境的 `vfctl`。在自己的目录准备一个仅本人可访问的计划目录：
+## 阶段二：首次项目配置与参考图自动托管
+
+准备一个仅本人可访问的私有配置目录，运行 `vf-setup`（或已安装环境中的 `vfctl local-setup --root "$HOME/VideoFactory/business"`）：
 
 ```sh
 mkdir -m 700 "$HOME/vf-local-config"
-vfctl local-setup --root "$HOME/vf-business" \
+"$HOME/VideoFactory/vf-setup" \
   --plan "$HOME/vf-local-config/project.json" --interactive --bind
 ```
 
-终端先询问项目、SKU、应用和测试表信息，再隐藏输入管理员密码与 Key。参考图可从普通可读目录选取。向导核验绝对路径、符号链接、大小和 SHA-256，复制到业务根目录的私有项目素材区，目录 0700、文件 0600。原图保留。
+1. **非秘密计划与离线预检**：终端先询问部署标识（`deployment`）、项目标识（`project`）、计费负责人（`billing_owner`）、专用飞书 `app_id`、SKU 列表（`sku_id`、`name`、`truth_source`）、测试表映射（`tenant_key`、`base_token`、`table_id` 及 `task`/`sku_id`/`script`/`source_revision` 四个字段 ID，`submitters`/`reviewers` 的 `open_id`）及模型配置。Agent 也可预先写入同一 `0600` JSON 并执行 `"$HOME/VideoFactory/vf-setup" --plan "$HOME/vf-local-config/project.json" --check` 做离线校验（`provider_requests: 0`、`writes: 0`）。
+2. **秘密加密入库**：管理员密码、飞书 App Secret、DeepSeek Key 与（启用视频时的）MiniMax Key 在终端隐藏输入（或传入本人 `0600` 的 `--password-file`、`--app-secret-file`、`--script-key-file`、`--video-key-file`），由 `business/master.key`（`0600`）加密保存在 `business/runtime.sqlite3`。
+3. **参考图自动核验与私有托管**：启用视频时，参考图可直接从本机普通可读目录选取（无符号链接绝对路径，支持 `.png`、`.jpg`、`.jpeg`、`.webp`，单张不超过 30 MiB，单 SKU 1–9 张合计不超过 45 MiB，视频时长 4–15 秒）。向导核验路径、大小与 SHA-256 后，自动复制到 `~/VideoFactory/business/references/<project>/<sku>/` 私有项目素材区（目录 `0700`、文件 `0600`，按 `<sha256>.<后缀>` 固化），原图保留在原位，无需建立 `/work` 或递归更改共享文件夹权限。
 
-最后只打开**飞书官方身份授权页面**。产品不启动安装网页，也不让 Agent 收集用户 token。完成授权后，程序只读核对组织和四个映射文本字段，保存绑定。配置保存和飞书核对分别报告；模型调用数为零。
+回执中 `configuration_saved: true` 仅代表本地配置与加密凭据已保存，`paid_execution_enabled: false`、`provider_requests: 0`。
 
-成功回执 `configuration_saved: true` 仅表示配置已保存。`feishu_binding_verified: true` 表示这次读到了真实表结构；两者都不表示生成、订阅或使用验收成功。
+## 阶段三：飞书官方身份授权与原表审核接线
 
-## 原表审核：先看计划，再明确启用
+1. **只读绑定核对（`--bind`）**：仅打开**飞书官方身份授权页面**（终端打印官方 `verification_uri` 与 `user_code`），产品不启动安装网页，也不让 Agent 收集用户 token。本人完成授权后，程序只读核对飞书租户与四个映射文本字段并保存绑定，返回 `feishu_binding_verified: true`。
+2. **原表审核先审阅后启用**：
+   ```sh
+   "$HOME/VideoFactory/vf-setup" \
+     --plan "$HOME/vf-local-config/project.json" --native-plan
+   ```
+   核对返回计划中的表、审核字段及订阅范围，确认专用飞书应用没有挂载其他长连接接收器后，使用刚返回的计划哈希显式启用：
+   ```sh
+   "$HOME/VideoFactory/vf-setup" \
+     --plan "$HOME/vf-local-config/project.json" \
+     --enable-native <刚核对的计划哈希> --dedicated-app
+   ```
+   此步骤仅修改测试表审核字段与订阅（返回 `native_review_enabled: true`），不调用模型、不发放执行密钥，也不自动启动后台调度；执行边界详见 [本机内核规范](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/LOCAL_AGENT_KERNEL.md)。
+
+## 续接、停机增量改配置、补配视频与新增项目
+
+- **中断、网络失败或授权过期**：保留同一安装目录与计划文件，重跑原命令即可自动复用已保存的加密 Key，无需重新输入；飞书授权过期仅需本人重新授权，未完成的外部写入不自动重发。
+- **停机增量改配置（更新商品、参考图与成员）**：先正常停止该业务目录正在运行的服务，编辑私有 `project.json` 后重新运行 `"$HOME/VideoFactory/vf-setup" --plan "$HOME/vf-local-config/project.json"`：
+  - 支持更新 SKU 列表、名称、`truth_source` 卖点规格、视频参考图（自动重新校验 SHA-256 并托管到私有素材区）以及 `binding` 中的 `submitters` / `reviewers` 成员。
+  - 历史任务、审核记录与加密凭据完整保留，审计表记录变更前后 `plan_sha256`（返回 `updated: true`）；同时自动吊销旧的员工短期凭证，并使尚未提交给供应商的待执行批准失效，不影响已提交或结果未知的任务回执。
+  - 已绑定的目标表（`tenant_key` / `base_token` / `table_id`）、专用 `app_id`、计费归属（`billing_owner`）和已启用视频项目的账号区域（`region`）保持不可变；更换这些边界请建立独立新项目。
+- **脚本跑通后补配视频（`--previous-plan`）**：首次将 `video` 设为 `null`（`skip`）的项目，先正常停止该目录的运行进程，保留原 `project.json` 供审计，复制为 `project-with-video.json` 并仅补齐 MiniMax-H3 的 `model`/`region`/`assets` 配置（其余字段保持一致），执行：
+  ```sh
+  "$HOME/VideoFactory/vf-setup" \
+    --previous-plan "$HOME/vf-local-config/project.json" \
+    --plan "$HOME/vf-local-config/project-with-video.json"
+  ```
+  终端验证管理员并隐藏输入视频 Key（支持本人 `0600` 的 `--password-file`、`--video-key-file`），在同一事务内写入视频凭据、托管参考图与变更回执，保留原任务版本、已审脚本与飞书绑定（`video_added: true`）。后续 `vf-run` 改用新计划文件重新 `inspect`；视频费用仍按任务单独审批。
+- **同底座新增项目**：使用同一个安装目录、不同的 `project` 标识和新的私有计划文件，沿用管理员密码；新项目的应用与模型凭据独立加密保存，原项目不受影响。
+- **私有备份边界**：请将 `business/runtime.sqlite3`、`business/master.key`（`0600`）与私有计划文件妥善离线备份；文件加密不能抵御拥有同一操作系统账户读取权限的进程或人员。
+
+## 阶段四：常驻运行、launchd / systemd 启停与逐单付费审批
+
+### 1. 前台常驻与受限 Codex 接入
+
+配置与绑定完成后，负责人在私有终端先核对启动计划摘要，再启动常驻引擎：
 
 ```sh
-vfctl local-setup --root "$HOME/vf-business" \
-  --plan "$HOME/vf-local-config/project.json" --native-plan
+"$HOME/VideoFactory/vf-run" inspect --plan "$HOME/vf-local-config/project.json"
+"$HOME/VideoFactory/vf-run" start --plan "$HOME/vf-local-config/project.json" \
+  --expect-plan <刚返回的plan_sha256>
 ```
 
-核对返回计划中的表、字段及订阅范围。确认专用应用没有其他事件接收器后，用刚返回的计划哈希启用：
+密码由终端隐藏输入（或传入 `0600` `--password-file`）。默认以**只读常驻**模式监听 `127.0.0.1:8788`（不连飞书接收器、不调模型；可在 `inspect` 与 `start` 同时加 `--max-runtime <秒>` 限制运行时长）。启动回执输出的临时 `connection.json` 可交给同一受控环境中的 Codex / Agent：
 
 ```sh
-vfctl local-setup --root "$HOME/vf-business" \
-  --plan "$HOME/vf-local-config/project.json" \
-  --enable-native <刚核对的计划哈希> --dedicated-app
+"$HOME/VideoFactory/vf-agent" --connection /实际返回路径/connection.json capabilities
+"$HOME/VideoFactory/vf-agent" --connection /实际返回路径/connection.json tasks
+"$HOME/VideoFactory/vf-agent" --connection /实际返回路径/connection.json project_stats
+"$HOME/VideoFactory/vf-agent" --connection /实际返回路径/connection.json list_failures
 ```
 
-这一步会按计划修改测试表审核字段/订阅，不调用模型。它不发放执行密钥，也不代表已开始后台调度。执行仍按 [本机内核](https://github.com/ChuluuMGL/video-factory/blob/codex/local-business-setup/docs/product/LOCAL_AGENT_KERNEL.md) 显式配置项目执行权限与每条费用审批；脚本通过不授权视频费用。同版本限时启动和执行权限见下文；开机自启及非作者独立安装仍待验收。
+Ctrl-C 正常停机时立即销毁临时会话并撤销本次授权；重启保留账本并清理上次异常退出遗留的本地会话凭据。
 
-## 续接与新增项目
+- **允许提出计划（`--allow-plans`）**：在 `inspect` 与 `start` 同时加 `--allow-plans`，启动时通过飞书官方授权验证提交人本人身份。Agent 可读取目录并准备脚本修订或视频计划，但未获负责人批准与执行开关前不会触发模型调用，也不会把管理员口令、用户 token 或模型 Key 暴露给 Agent。
+- **允许执行已批准任务（`--execute-approved`）与逐单计费确认**：先完成原表审核启用并核对待处理任务，在 `inspect` 与 `start` 同时加 `--execute-approved` 及明确运行时长上限（`--max-runtime 1..604800` 秒或 `--hours 1..168`），`start` 另加 `--dedicated-app`。每条脚本或视频计划仍须负责人在私有终端独立确认计费：
+  ```sh
+  "$HOME/VideoFactory/vf-run" approve-script --plan "$HOME/vf-local-config/project.json" \
+    --plan-id <计划ID> --plan-sha256 <计划摘要> --accept-provider-charges
+  "$HOME/VideoFactory/vf-run" approve-video --plan "$HOME/vf-local-config/project.json" \
+    --plan-id <计划ID> --plan-sha256 <计划摘要> --accept-provider-charges
+  ```
+  撤销尚未提交供应商的计划使用 `revoke-script` / `revoke-video`；脚本审核通过不自动授权视频费用。
 
-- **中断、网络失败或授权过期：**保留同一 root 和计划，再执行相同命令；已经保存的 Key 会复用，不要求重输。飞书授权过期只重新授权，未完成外部写入不自动重试。
-- **新增项目：**使用同一个 root、不同的 project 标识和新的计划文件，沿用管理员密码；原项目不改。新项目的应用/模型凭据单独加密保存。
-- **补配视频：**首次选择 `skip` 的项目可使用下述显式续接，不重建项目或重审已通过的脚本。
-- **增量变更：**先停止该业务目录的服务，再编辑私有计划并重新运行 setup。可更新 SKU、卖点、参考图和绑定成员。历史任务与加密凭据保留，审计保存变更前后摘要。未执行的旧批准失效。已绑定的目标表、应用、计费归属和视频账号区域保持固定。
-- **文件保存：**`runtime.sqlite3` 保存配置和加密凭据，`master.key` 为本人所有的 0600 文件。保留两者的私有备份；加密不能抵御拥有同一 OS 账户读取权限的人。
+### 2. 用户级后台常驻启停（macOS `launchd` / Linux `systemd`）
 
-### 脚本已跑通，之后补视频
+需要在关闭终端窗口后继续保持默认只读常驻时，先用相同计划（及可选 `--port`、`--max-runtime`）完成 `vf-run inspect` 拿到 `plan_sha256`，再使用安装环境中的 `vfctl local-service` 渲染 `0600` 用户服务定义并显式启停：
 
-此能力需要含 `--previous-plan` 的候选核心，旧安装包不会自动获得。先正常停止该业务目录的运行进程。保留原 `project.json`，复制为 `project-with-video.json`，仅把 `video: null` 改为 MiniMax-H3 的 `model/region/assets` 配置。商品、费用归属、飞书应用、绑定及人员均不得改变；参考图必须匹配该 SKU 和已审核脚本。
+- **macOS (`launchd`)**：
+  ```sh
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service render --platform launchd --name daily \
+    --root "$HOME/VideoFactory/business" --plan "$HOME/vf-local-config/project.json" \
+    --password-file "$HOME/vf-local-config/admin.pass" --expect-plan <已核对的plan_sha256> \
+    --output "$HOME/Library/LaunchAgents/com.video-factory.daily.plist"
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service start --name daily
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service status --name daily
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service stop --name daily
+  ```
+- **Linux (`systemd --user`)**：
+  ```sh
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service render --platform systemd --name daily \
+    --root "$HOME/VideoFactory/business" --plan "$HOME/vf-local-config/project.json" \
+    --password-file "$HOME/vf-local-config/admin.pass" --expect-plan <已核对的plan_sha256> \
+    --output "$HOME/.config/systemd/user/video-factory-daily.service"
+  systemctl --user daemon-reload
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service start --platform systemd --name daily
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service status --platform systemd --name daily
+  "$HOME/VideoFactory/environment/bin/vfctl" local-service stop --platform systemd --name daily
+  ```
 
-```sh
-~/VideoFactory/vf-setup \
-  --previous-plan /绝对路径/project.json \
-  --plan /绝对路径/project-with-video.json
-```
+渲染仅生成 `0600` 文件（回执 `{"state": "rendered", "enabled": false}`），不会静默注册开机自启，也不会对失败启动做无限自动重试（`KeepAlive=false` / `Restart=no`）。每次修改配置、补配视频或账本任务/待处理作业状态变动后，`start_plan` 的摘要会更新：请先 `stop` 服务，重新 `vf-run inspect` 并重新 `render` 模板（Linux 随后执行 `systemctl --user daemon-reload`），再启动并核对 `status` 为 `active`。电脑休眠或当前系统用户退出登录会暂停用户级服务。
 
-终端验证管理员并隐藏输入视频 Key；应用与脚本 Key 自动复用，不重新进行飞书授权。支持本人所有的 0600 `--password-file`、`--video-key-file`。程序在同一事务内保存视频凭据、配置和变更回执，保留原任务版本、审核事件、绑定及其他凭据。失败回滚；重复成功命令复用已有结果，不重复输入视频 Key。
+### 3. 工作台受限委托、员工短期接入与影子副本恢复
 
-成功后运行和续接改用新计划，原计划保留供审计。`video_added: true` 仅表示配置已补齐，不启动调度、不批准费用、不提交视频。使用新计划重新 `inspect`，明确核对单条视频费用计划后才执行。仍需要首次绑定的项目不会因此被算作绑定通过。
+- **工作台受限委托与观测动作**：已授权连接支持同项目只读观测（`project_stats` 按每项最新版本统计成功率，`list_failures` 分页返回失败与未知提交任务的脱敏错误码，`list_reviews` 与受限媒体预览令牌）。管理员可用 `"$HOME/VideoFactory/environment/bin/vfctl" workbench-delegate issue|revoke` 为项目内工作台主体按角色（`repair`、`edit`、`review`、`cost`，默认 24 小时、最长 168 小时）签发或吊销项目级短期凭证；受限写动作严格校验前序版本、原表投递状态与角色围栏。
+- **员工短期接入与隔离修复**：管理员可通过 `--employee-config` 绑定单名飞书员工短期接入（详见 [业务员工接入说明](BUSINESS_EMPLOYEE_ACCESS.md)），或为隔离副本启用固定类型源码修复预演（详见 [业务源码修复说明](BUSINESS_SOURCE_REPAIR.md)）。项目 API 权限不能防住同一操作系统账户下的任意 Shell 访问；正式协作须隔离 OS 账户或受限通道。
+- **影子副本未决写入对账**：停机且确认调度未运行时，可使用 `"$HOME/VideoFactory/environment/bin/python" -m video_factory.shadow_copy_recovery --help` 查看影子副本未决写入的只读 `inspect` 与显式 `resolve` 命令（详见 [影子副本写入恢复规范](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/SHADOW_COPY_WRITE_RECOVERY.md)），工具绝不盲目重发远端写请求。
+- **同核心版本成片离线搬迁**：停机备份恢复到全新目录时保留任务、成片摘要与原审核事件，仅按同摘要定位成片文件并复核权限与无符号链接；恢复后不自动启动调度、不恢复临时授权、不替代人工审核。
 
-## 常见错误
+## 常见错误与安全恢复
 
-| 提示 | 操作 |
+| 错误码 | 处理方式 |
 | --- | --- |
-| `LOCAL_SETUP_CHANGED_RUN_SETUP` / `LOCAL_SETUP_CONFIGURATION_DRIFT` | 计划修改先走 setup；已保存配置漂移需核对账本和备份 |
-| `LOCAL_SETUP_RUNTIME_NOT_OWNED` / `LOCAL_FAKE_PROFILE_NO_EXTERNAL_IO` | 使用新业务目录；不能采用历史或假模型账本 |
-| `SECRET_DECRYPT_FAILED` / `LOCAL_SETUP_MASTER_KEY_MISSING_RESTORE_BACKUP` | 停止，恢复匹配的私有主密钥；不可生成新密钥替换 |
-| `DIRECTORY_OWNER_ONLY_REQUIRED` | 核对路径后为本人专用目录设置 0700，勿递归修改共享资料目录 |
-| `FEISHU_OAUTH_DENIED_OR_EXPIRED` | 用原计划重新运行 `--bind`，本人重新授权；已保存配置仍在 |
-| `FEISHU_MAPPED_TEXT_FIELD_MISSING_OR_CHANGED` | 核对四个字段 ID 与文本类型；不要把状态单选字段映射成脚本字段 |
-| `LOCAL_RUNTIME_ALREADY_RUNNING` | 先正常停止这个业务目录的服务，再配置；不要杀死不明进程 |
+| `LOCAL_SETUP_CHANGED_RUN_SETUP` / `LOCAL_SETUP_CONFIGURATION_DRIFT` | 计划更新请先停机运行 `vf-setup`；已存配置漂移须核对账本与私有备份，禁止强改数据库 |
+| `LOCAL_SETUP_TARGET_OR_ACCOUNT_IMMUTABLE` | 已绑定的飞书表、`app_id`、计费归属或视频区域不可原地替换；请用新 `project` 建独立项目 |
+| `LOCAL_SETUP_RUNTIME_NOT_OWNED` / `LOCAL_FAKE_PROFILE_NO_EXTERNAL_IO` | 必须使用全新业务目录，不能采用其他部署或 `--mode fake-only` 假模型账本 |
+| `SECRET_DECRYPT_FAILED` / `LOCAL_SETUP_MASTER_KEY_MISSING_RESTORE_BACKUP` | 立即停止，从私有备份恢复匹配的 `master.key`；切勿生成新主密钥覆盖 |
+| `DIRECTORY_OWNER_ONLY_REQUIRED` | 为本人专用计划/业务目录设置 `0700`（文件 `0600`），勿递归改动共享资料目录 |
+| `FEISHU_OAUTH_DENIED_OR_EXPIRED` | 保留原目录与计划重跑 `--bind`，本人重新完成一次飞书官方授权 |
+| `FEISHU_MAPPED_TEXT_FIELD_MISSING_OR_CHANGED` | 核对四个映射字段 ID 及其文本类型，勿将状态单选列映射成脚本字段 |
+| `LOCAL_RUNTIME_ALREADY_RUNNING` | 先用 Ctrl-C 或 `vfctl local-service stop` 正常停止该目录服务，再执行配置变更 |
+| `LOCAL_RUN_START_PLAN_CHANGED` / `LOCAL_SERVICE_FAILED` | 重新执行 `vf-run inspect` 核对最新 `plan_sha256`，使用用户服务时同步重跑 `local-service render` |
 
-## 验收记录
+## 阶段五：人工验收边界
 
-云端测试覆盖原子回滚、凭据不覆盖、项目隔离、配置漂移、错误主密钥、绑定失败续接、CLI 退出撤销会话和本机素材校验。测试使用模拟身份/接口，不替代真实飞书和真实模型验收。
+云端 CI 已覆盖 macOS 与 Linux 的独立虚拟环境安装（含带空格路径与 `uv` 独立 Python 符号链接）、原子回滚、参考图校验托管、停机增量改配置、项目隔离、只读常驻启停、工作台角色围栏与影子副本未决写入恢复。
 
-非作者按同一候选安装后，分别记录：安装成功、配置成功、飞书授权/绑定、费用审批、脚本审核、视频回写。手动停止后重启核对历史任务和结果，无重复提交；真实退出登录/重启及自动启动仍需单独记录，不能用 CI 代替。
-
-## 同版本启动与 Codex 入口候选
-
-新业务安装同时交付 `vf-setup`、`vf-run`、`vf-agent`。原安装不会因只更新文档而增加命令；先核对同版本安装器与 wheel。
-
-配置与绑定完成后，负责人在自己的终端执行：
-
-```sh
-~/VideoFactory/vf-run inspect --plan /绝对路径/project.json
-~/VideoFactory/vf-run start --plan /绝对路径/project.json --expect-plan 刚返回的plan_sha256
-```
-
-密码由终端隐藏输入。默认只读，不启动飞书接收器、不执行任务。前台返回的 `connection` 路径可供同一受控环境中的 Codex 使用：
-
-```sh
-~/VideoFactory/vf-agent --connection /实际返回路径/connection.json capabilities
-~/VideoFactory/vf-agent --connection /实际返回路径/connection.json tasks
-```
-
-CLI 读取专用项目凭据，不将其打印到输出。请求只能走固定回环地址的 Agent 路由，没有管理员审批、任意 URL 或 Shell 入口。默认本地服务常驻。可在 inspect 和 start 同时指定 `--max-runtime`（秒）限制运行时长。Ctrl-C 正常停机时撤销本次权限，再次启动保留账本并清理上次异常退出的常驻授权。员工接入仍保留独立短期身份窗口；启用已批准付费执行需要显式限制本次时长及逐项审批。
-
-**允许提出计划：**两条负责人命令都加 `--allow-plans`。启动时本人通过官方飞书授权页验证提交身份。Agent 可查看项目资料、准备脚本修订和视频计划；尚未开启调度时不会生成。接线不把管理员密码、用户 token 或模型 Key 放进 Codex 上下文。
-
-**允许执行已批准任务：**先完成原表接线，核对当前待处理任务清单，再在 inspect/start 都加 `--execute-approved`，start 另加 `--dedicated-app`。这个动作可能推进清单中已获准的真实模型任务，不能当作免费试用开关；真实使用需事先明确费用与调用范围。每个脚本/视频计划仍须负责人独立批准，脚本审核通过不等于视频费用批准。负责人使用 `vf-run approve-script/approve-video --plan ... --plan-id ... --plan-sha256 ... --accept-provider-charges`；撤销使用对应 `revoke-script/revoke-video`，不能撤回已经提交给供应商的请求。Agent 不拥有这些管理员动作。
-
-这限制的是项目 API 权限，不能防住拥有服务器同一 OS 账户任意 Shell 权限的人。同事正式接入应使用独立 OS 账户或受限通道，只交付其专用连接权限；不要把管理员目录或 root SSH 当成 Agent 凭据。目前为前台启动，关闭终端即停止；开机自启和独立真人安装仍单独验收。
-
-## 同核心版本的成片搬迁
-
-业务安装包的停机备份可以保存已登记成片。恢复到全新目录时保留任务、成片摘要、原审核事件及原始路径描述；私有映射索引只把对应成片定位到新目录中的同摘要文件。读取仍验证权限、符号链接和文件摘要，不按文件名猜测来源。
-
-这是同核心版本的离线恢复，不是跨版本升级。原商品参考图、私有项目计划仍须单独保留；恢复不启动调度、不恢复临时授权、不调用模型，也不替代人工审核。操作入口及安装包版本以安装包 BUSINESS_BUNDLE.md 为准。
-
-
-## 用户后台服务与工作台
-
-要在后台运行默认只读服务，先用相同计划和运行时长参数完成 `vf-run inspect`。
-在安装环境的 `vfctl` 上执行：
-
-```sh
-vfctl local-service render --platform launchd --name daily \
-  --root /绝对路径/业务目录 --plan /绝对路径/project.json \
-  --password-file /绝对路径/私有密码文件 --expect-plan 已验核的摘要 \
-  --output /绝对路径/输出.plist
-vfctl local-service start --name daily
-vfctl local-service status --name daily
-vfctl local-service stop --name daily
-```
-
-渲染只生成 0600 文件。macOS 在准备启动时，由安装者放置为
-`~/Library/LaunchAgents/com.video-factory.daily.plist`。Linux 使用 `--platform systemd`
-生成 `~/.config/systemd/user/video-factory-daily.service`，放置后执行
-`systemctl --user daemon-reload`。控制命令按当地平台调用用户服务管理器。
-不自动注册或启用开机自启，不自动重试失败的启动。配置、计划或账本发生变动时，
-重新核对 inspect 输出并更新模板。运营工作台负责页面展示。
-
-本机 Agent 新增同项目只读动作 `project_stats` 和 `list_failures`，需已授权的 Agent
-连接。统计只看每项最新版本，成功率以最终通过、失败、退回三类为分母，未结案时为
-null。失败清单列出失败和提交结果未知的任务，返回脱敏错误码，每页最多 100 项。
-另四项工作台动作留待规范审定。停机后使用 `python -m video_factory.shadow_copy_recovery --help`
-查看影子副本的写入恢复命令。工具不会重发远端写请求。
+合成回归不替代真实业务验收。交付与自检时须分别记录五项真实证据：**环境安装、项目配置、飞书授权与原表事件、单次付费模型执行与解码、团队真人在飞书原表内的审核（及本机退出重登/重启恢复）**；未执行的项目如实记为“未执行”。

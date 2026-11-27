@@ -1,16 +1,17 @@
 # 安装平台与模型接口
 
-首次进入先选择已有 n8n、本机 Node.js、Docker 或服务器。**a36 完整 Skill 提供便携安装和已有实例接入**：Windows、Mac、Linux 与 Linux Docker 的真实 n8n 合成流程均通过，详见[安装使用与验收记录](PORTABLE_N8N.md)。已有实例通过公共 API 接入，不接管原数据库、不覆盖旧工作流。隔离环境的真实飞书、DeepSeek、单次 MiniMax H3 及当前负责人费用确认已有回执；第二账号和独立安装仍待验，Cloud SaaS 实测本轮跳过。
+首次进入先在三条并列路线中选择：**v0.3 无 n8n 本机常驻引擎（macOS / Linux）**、**便携或已有 n8n 接入**，或**Ubuntu 服务器完整栈**。不会搭建 n8n、不租服务器的 macOS / Linux（Python 3.11+）用户可直接走 [无 n8n 本机常驻指南](LOCAL_BUSINESS_SETUP.md)，一键建立独立虚拟环境与 SQLite 加密账本，自动托管参考图并支持增量改配置与 `launchd` / `systemd` 用户级常驻启停。**a36 完整 Skill 另提供便携 n8n 安装和已有实例接入**：Windows、Mac、Linux 与 Linux Docker 的真实 n8n 合成流程均通过，详见 [安装使用与验收记录](PORTABLE_N8N.md)。已有实例通过公共 API 接入，不接管原数据库、不覆盖旧工作流。隔离环境的真实飞书、DeepSeek、单次 MiniMax H3 及当前负责人费用确认已有回执；第二账号和独立安装仍待验，Cloud SaaS 实测本轮跳过。
 
-以下 Ubuntu 要求针对**旧的固定发行包完整服务栈**，不适用于上述便携路线。两条路线不能混用安装命令或回执。
+以下 Ubuntu 要求针对**固定发行包服务器完整服务栈**，不适用于无 n8n 本机常驻路线与便携 n8n 路线。三条路线不能混用安装命令或回执。
 
 先区分**操作电脑**和**运行服务器**。安装人员可以在 Windows、macOS 或 Linux 上使用 Agent，通过 SSH 管理客户服务器；这不会把服务安装到操作电脑。当前固定发行包只在客户自己的 **Ubuntu 24.04 x86_64** 主机上提供自动准备与完整栈部署。安装预检要求至少 4 GiB 内存、4 GiB **剩余**磁盘、Python 3.12、root、systemd、本地 Docker Engine 与 Compose 2.24+；4 GiB 剩余磁盘只是预检门槛，不是视频生产的容量建议。实际磁盘还要计入镜像、数据库、素材、成片和备份留存，按项目量规划并在上线前实测。安装器会核对本机 Unix Docker socket；不能指向远程 Docker daemon。
 
-| 位置 | n8n 本身 | 当前发行可用路线 | 使用方式 |
+| 位置 | n8n 本身 | 当前可用路线 | 使用方式 |
 |---|---|---|---|
+| macOS / Linux 本机（无 n8n） | 无需安装 n8n 或 Docker | v0.3 无 n8n 本机常驻路线（Python 3.11+） | 运行 `install_local_kernel.py --mode business` 生成 `vf-setup` / `vf-run` / `vf-agent`，支持 `launchd` / `systemd` 用户服务启停 |
 | Ubuntu 24.04 x86_64 服务器 | 可用 Docker Compose | 自动准备与完整部署路径 | 一客户一套服务，项目复用同一套 n8n |
-| Windows 电脑或服务器 | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | 便携 Node.js 或 Docker；完整栈另需 Ubuntu | 用完整 Skill 的 welcome 向导安装或接入 |
-| macOS 电脑或服务器 | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | 便携 Node.js 或 Docker；完整栈另需 Ubuntu | 用完整 Skill 的 welcome 向导安装或接入 |
+| Windows 电脑或服务器 | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | 便携 Node.js 或 Docker；完整栈另需 Ubuntu（无 n8n 安装器暂不支持 Windows 原生） | 用完整 Skill 的 welcome 向导安装或接入 |
+| macOS 电脑或服务器（使用 n8n） | 可在浏览器使用 n8n Cloud；本地可用 Node.js 或 Docker 运行 n8n | 无 n8n 本机常驻路线，或便携 Node.js / Docker | 按是否需要 n8n 选择 `install_local_kernel.py` 或 `portable_n8n.py welcome` |
 | 既有独立 n8n | 可以独立管理 | 通过公共 API 导入独立项目工作流 | 保留原数据库、凭据和工作流，配置本项目权限 |
 
 n8n 的编辑器本来就在浏览器中打开，浏览器界面并不能说明它运行在哪里。[n8n Cloud](https://docs.n8n.io/deploy/use-n8n-cloud.md) 由 n8n 托管，本机无需安装 Docker 或 n8n；[Node.js/npm 方式](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)可在本机启动并访问 `http://localhost:5678`，适合独立试用，但官方标注 npm 安装从 n8n 3.0 起弃用；自托管生产参考官方推荐的 [Docker Compose 安装](https://docs.n8n.io/deploy/host-n8n/install-options/install-using-docker-compose.md)。**单独启动 n8n 不等于完成飞书与模型配置**。旧固定包的完整服务栈还需 PostgreSQL、运行服务、私网 Runner、固定镜像、密钥和备份。不要在 Windows PowerShell、macOS 终端或 WSL2 中直接执行本发行包的 `bootstrap.sh` 并绕过平台检查；WSL2 和 Apple Silicon 的完整栈还未验收。

@@ -10,10 +10,10 @@
     return;
   }
   const intents = {
-    install: '请使用 Video Factory Setup Skill，先问我已有 n8n 的方式、飞书应用与 Base 的情况，再选择安装路线。保留已有服务；当前版本支持时再配置第一个测试项目，并询问是否需要后台自启。',
+    install: '请使用 Video Factory Setup Skill，先问我已有 n8n 的方式（或选择无 n8n 本机常驻引擎）、飞书应用与 Base 的情况，以及希望运行的位置，再选择安装路线。保留已有服务；当前版本支持时再配置第一个测试项目，并询问是否需要后台常驻启停。',
     project: '请使用 Video Factory Setup Skill，在同一客户的现有服务中新增项目。先检查已安装的服务与版本，复用服务，保留已有项目。',
     resume: '请使用 Video Factory Setup Skill，继续上次未完成的安装。先查阅上次安装记录，确认安装位置和已完成步骤；不重复创建尚未确认结果的资源。',
-    repair: '请使用 Video Factory Setup Skill，先读取我的私有安装交接记录，核对原主机、目录、项目和运行版本，再检查飞书、n8n、事件与已有模型任务回执。不要重装、清空记录或重新生成；需要新增费用、权限或停机时先让我确认。修复后核对原任务实际结果。'
+    repair: '请使用 Video Factory Setup Skill，先读取我的私有安装交接记录，核对原主机、目录、项目和运行版本，再检查飞书、常驻服务或 n8n、事件与已有模型任务回执。不要重装、清空记录或重新生成；需要新增费用、权限或停机时先让我确认。修复后核对原任务实际结果。'
   };
   let mode = 'install';
   function select(value) {

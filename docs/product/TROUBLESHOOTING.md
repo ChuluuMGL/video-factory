@@ -8,7 +8,7 @@
 
 Seedream 请求 `doubao-seedream-5-0-lite-260128` 时也接受官方同版本别名 `doubao-seedream-5-0-260128` 的响应，并同时记录请求与响应模型；不接受其他版本替换。依据：[火山方舟模型说明](https://docs.volcengine.com/docs/ark/seedream-4-0-5-0?lang=zh)。HTTP 200 仍须通过图片结构、附件上传与飞书回读才算完成。
 
-本机或已有 n8n 使用[a36 便携路线指南](PORTABLE_N8N.md)，固定服务器包仍要求 Ubuntu 24.04 x86_64。先核对路线与版本，不能把服务器包的限制套到便携路线。遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED` 等平台错误时，检查是否误用了服务器 bootstrap；保留现有 n8n，不绕过检查。
+本机无 n8n 常驻使用 [v0.3 本机无 n8n 常驻指南](LOCAL_BUSINESS_SETUP.md)，本机或已有 n8n 使用 [a36 便携路线指南](PORTABLE_N8N.md)，固定服务器包仍要求 Ubuntu 24.04 x86_64。先核对路线与版本，不能把服务器包的限制套到本机或便携路线。遇到 `UBUNTU_2404_X86_64_ROOT_REQUIRED` 等平台错误时，检查是否误用了服务器 bootstrap；保留现有环境与 n8n，不绕过检查。
 
 | 现象或错误 | 先检查 | 安全续接 |
 |---|---|---|
@@ -35,6 +35,16 @@ Seedream 请求 `doubao-seedream-5-0-lite-260128` 时也接受官方同版本别
 
 只有成功结果通过版本核对、飞书写入和回读，才进入「视频待审核」。查询恢复不会代替人工审核。该改动尚需发布及原项目升级，a40 已安装流程不会自动改变。
 
+
+## v0.3 无 n8n 本机常驻路线：配置、启停与对账
+
+| 现象或错误 | 处理方式 |
+|---|---|
+| `LOCAL_RUNTIME_ALREADY_RUNNING` | 该业务目录的 `vf-run` 或用户级后台服务正在运行；先用 Ctrl-C 或 `vfctl local-service stop --name <名称>` 正常停止，再执行 `vf-setup` 增量改配置或补配视频。 |
+| `LOCAL_SETUP_CHANGED_RUN_SETUP` / `LOCAL_RUN_START_PLAN_CHANGED` | 计划文件、已保存配置或账本任务/待处理作业摘要发生变化。改配置后先跑 `vf-setup`，再重新运行 `vf-run inspect` 获取最新 `plan_sha256`；使用 `launchd` / `systemd` 用户服务时须同步重新 `render` 模板（Linux 再运行 `systemctl --user daemon-reload`）。 |
+| `LOCAL_SETUP_TARGET_OR_ACCOUNT_IMMUTABLE` | 增量更新不允许修改已绑定的飞书组织/Base/表、专用 `app_id`、计费归属或视频区域；请换用新 `project` 标识建立独立项目。 |
+| `LOCAL_SERVICE_FAILED` | 核对 `--root`、`--plan`、`--password-file` 是否均为无符号链接绝对路径且权限为 `0600`（目录 `0700`），核对 `--expect-plan` 为 64 位小写十六进制摘要，macOS 确认 plist 已放置于 `~/Library/LaunchAgents/com.video-factory.<name>.plist`。 |
+| 影子副本写入报 `1254002` 或结果未决 | 确认调度已停机后，用安装环境 Python 执行 `python -m video_factory.shadow_copy_recovery inspect` 只读核对冻结票据与远端状态（`matches_pending` / `matches_prior` / `neither`），禁止清空意图或盲目重发写入。详见 [本机无 n8n 常驻指南](LOCAL_BUSINESS_SETUP.md)。 |
 
 ## a36 便携路线：终端与后台运行
 
