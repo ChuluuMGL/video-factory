@@ -5,10 +5,22 @@ import unittest
 import test_local_setup as fixture
 from video_factory.agent_api import AgentAPI
 from video_factory.runtime_store import RuntimeFault
+from video_factory.workbench_actions import revised
 from video_factory.workbench_delegation import delegation
 
 PROJECT = 'brand_one'
 PRINCIPAL = 'auth-' + 'a' * 64
+
+
+class ScriptEditRuleTests(unittest.TestCase):
+    def test_removes_leading_absolute_modifier_and_its_particle_per_line(self):
+        script = '绝对第一的保温杯，持续保温 24 小时。\n  全网第一 的 杯盖。\n全网绝对第一的杯身。'
+        edited = revised(script, '去掉绝对化用语，按商品事实修正时长', '保温 6 小时。')
+        self.assertEqual(edited, '保温杯，持续保温 6 小时。\n  杯盖。\n杯身。')
+
+    def test_leaves_unrelated_line_start_and_product_particle_in_place(self):
+        script = '的确能满足日常使用。\n磨砂的杯身，避免使用绝对第一。'
+        self.assertEqual(revised(script, '去掉绝对化用语', ''), '的确能满足日常使用。\n磨砂的杯身，避免使用。')
 
 
 class WorkbenchTests(unittest.TestCase):
