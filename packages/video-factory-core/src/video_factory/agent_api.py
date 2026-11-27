@@ -31,10 +31,15 @@ class AgentAPI:
             params = {key: value for key, value in body.items() if key != 'project'}
             if set(params) - WORKBENCH_FIELDS[op]:
                 raise RuntimeFault('WORKBENCH_FIELDS_INVALID')
-            actions = WorkbenchActions(self.store, self.project, self.script_plans, video_plans_enabled=self.plans_enabled)
-            if op in ('stats', 'failures', 'reviews'):
+            actions = WorkbenchActions(self.store, self.project, self.script_plans, video_plans_enabled=self.plans_enabled,
+                                       script_edit_key=getattr(self.scheduler, 'key', None))
+            if op in ('stats', 'failures', 'reviews', 'daily-triage', 'workbench/status'):
                 with self.store.connect() as db:
                     authorize(db, token, self.project, workbench=True)
+                    if op == 'workbench/status':
+                        native = meta(db, 'native:config:' + self.project) or {}
+                        return {'project': self.project, 'engineStatus': 'local_resident',
+                                'boardStatus': 'feishu' if native.get('enabled') else 'local'}
                     return actions.read(db, op, params, self.media.issue)
             return actions.action(op, token, principal, params)
         fields = {
@@ -106,7 +111,7 @@ class AgentAPI:
                 scripts = self.script_plans is not None and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
                         'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt',
-                                      'project_stats', 'list_failures', 'list_reviews', 'review_or_edit_script'] + abilities
+                                      'project_stats', 'list_failures', 'list_reviews', 'daily_triage', 'review_or_edit_script'] + abilities
                                      + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
                                      + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
                                          'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),

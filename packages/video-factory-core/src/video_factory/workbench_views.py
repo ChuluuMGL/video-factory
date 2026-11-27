@@ -9,6 +9,7 @@ from .h3_provider import REJECTION_CODES
 from .runtime_store import RuntimeFault, fingerprint, identifier
 from .script_jobs import key as script_key
 from .worker import job_key
+from .workbench_details import record_url
 
 STATUS = {
     'script_queued': ('script', 'queued'), 'submitted': ('video', 'running'),
@@ -111,10 +112,48 @@ def rows(db, project, cursor=''):
                       LATEST + ' AND t.id>? ORDER BY t.id', (project, cursor))
 
 
+def definite_video_failure(db, row):
+    job = meta(db, job_key(row['project'], row['id'], row['revision'])) or {}
+    return bool(job.get('failure_code') or db.execute(
+        "SELECT 1 FROM audit WHERE project=? AND task=? AND revision=? AND action='provider_failed_no_retry'",
+        (row['project'], row['id'], row['revision'])).fetchone())
+
+
+def daily_triage(db, project, now, board):
+    groups = [
+        {'kind': 'submission_unknown', 'count': 0, 'summary': '先核对供应商回执，禁止自动重排。', 'items': []},
+        {'kind': 'repairable_failures', 'count': 0, 'summary': '失败证据明确，可预览修复和排产。', 'items': []},
+        {'kind': 'awaiting_reviews', 'count': 0, 'summary': '脚本、分镜和成片等待人工审核。', 'items': []},
+    ]
+    for row in rows(db, project):
+        stage, status = stage_status(db, row)
+        if status == 'submission_unknown':
+            group = groups[0]
+        elif status == 'failed' and stage == 'video' and definite_video_failure(db, row):
+            group = groups[1]
+        elif status == 'awaiting_review':
+            group = groups[2]
+        else:
+            continue
+        group['count'] += 1
+        if len(group['items']) < 5:
+            group['items'].append({'task_id': row['id'], 'task_key': project + ':' + row['id'],
+                                   'stage': stage, 'version_token': version(row),
+                                   'canonical_status': status, **record_url(db, project, row)})
+    unknown, failures, reviews = (group['count'] for group in groups)
+    return envelope('daily_triage', project, now, {
+        'brief': brief(f'今日优先处理：{unknown} 条待核对回执、{failures} 条可修复失败、{reviews} 条待审核。',
+                       '先核对不确定的供应商回执，再处理失败和待审。'),
+        'triage': groups,
+    }, board=board)
+
+
 def projection(db, project, endpoint, body, now, *, media_preview=None):
     stage_filter = get_stage(body)
     native = meta(db, 'native:config:' + project) or {}
     board = 'feishu_bitable' if native.get('enabled') else 'self_hosted'
+    if endpoint == 'daily-triage':
+        return daily_triage(db, project, now, board)
     if endpoint == 'stats':
         window = body.get('window', '7d')
         if not isinstance(window, str) or window not in WINDOWS:
@@ -161,7 +200,7 @@ def projection(db, project, endpoint, body, now, *, media_preview=None):
         stage, status = stage_status(db, row)
         common = {'task_key': project + ':' + row['id'], 'task_id': row['id'],
                   'revision': row['revision'], 'version_token': version(row), 'stage': stage,
-                  'canonical_status': status, 'updated_at': iso(row['touched_at'])}
+                  'canonical_status': status, 'updated_at': iso(row['touched_at']), **record_url(db, project, row)}
         if endpoint == 'reviews':
             if status != 'awaiting_review' or stage_filter not in ('all', stage):
                 continue
@@ -200,11 +239,12 @@ def projection(db, project, endpoint, body, now, *, media_preview=None):
                 code = script['submission_error']
             elif video.get('failure_code') in REJECTION_CODES.values():
                 code = video['failure_code']
+            repairable = kind == 'failed' and stage == 'video' and definite_video_failure(db, row)
             common.update(raw_status=row['state'], failure_kind=kind, error_code=code,
                           diagnosis='请核对供应商回执。' if kind == 'submission_unknown' else '请核对任务状态与已保存回执。',
                           reconciliation_required=kind == 'submission_unknown', automatic_resubmit=False,
-                          repairable=kind == 'failed' and stage == 'video',
-                          suggested_repair_type='task_retry_from_stage' if kind == 'failed' and stage == 'video' else None)
+                          repairable=repairable,
+                          suggested_repair_type='task_retry_from_stage' if repairable else None)
         items.append(common)
         if len(items) > limit:
             break

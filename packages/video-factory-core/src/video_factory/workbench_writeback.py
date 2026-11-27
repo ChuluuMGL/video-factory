@@ -110,7 +110,9 @@ def flush(store, project, native, config, authorization):
                     names['script_digest']: hashlib.sha256(newer['script'].encode()).hexdigest(),
                     names['script']: newer['script']}
         if item['operation'] == 'edit':
-            expected[names['feedback']] = ''
+            # Revision and digest are automation fences. Keep the human's
+            # status and feedback columns intact when publishing an edit.
+            del expected[names['status']], expected[names['feedback']]
         if item['artifact'] and stage == '视频' and not CopyOnlyWeekWriter._same_value(
                 remote.get(names['video_digest']), item['artifact']['sha256']):
             raise RuntimeFault('WORKBENCH_BOARD_VERSION_CHANGED')
@@ -129,7 +131,8 @@ def flush(store, project, native, config, authorization):
                      names['script_digest']: hashlib.sha256(previous['script'].encode()).hexdigest()}
             # Never overwrite independently edited review feedback.
             if not all(_same(name, remote.get(name), value, names['status']) for name, value in prior.items()) or (
-                    item['old_state'] != 'rejected' and not CopyOnlyWeekWriter._same_value(remote.get(names['feedback']), '')):
+                    item['operation'] != 'edit' and item['old_state'] != 'rejected'
+                    and not CopyOnlyWeekWriter._same_value(remote.get(names['feedback']), '')):
                 raise RuntimeFault('WORKBENCH_BOARD_VERSION_CHANGED')
             with store.connect() as db:
                 check(db, item)
