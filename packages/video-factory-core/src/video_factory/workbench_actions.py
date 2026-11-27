@@ -17,6 +17,8 @@ PRINCIPAL = re.compile('auth-[a-f0-9]{64}')
 VERSION = re.compile(r'rev-[1-9][0-9]*-[a-f0-9]{64}')
 CONFIRMATION = re.compile('cf_[a-f0-9]{48}')
 RISK = re.compile('全网第一|绝对第一|最有效|百分之百|100%有效|国家级')
+LEADING_RISK_MODIFIER = re.compile(
+    rf'^([ \t]*)(?:全网(?=绝对第一))?(?:{RISK.pattern})[ \t]*的[ \t]*', re.MULTILINE)
 HOURS = re.compile(r'(\d+)\s*小时')
 FIELDS = {
     'stats': {'window', 'stage'},
@@ -131,6 +133,7 @@ def risks(script, facts):
 def revised(script, instruction, facts):
     result = script
     if re.search('绝对|违禁|绝对化', instruction):
+        result = LEADING_RISK_MODIFIER.sub(r'\1', result)
         result = RISK.sub('', result)
     pair = re.fullmatch(r'(?:将|把)“([^”]{1,300})”改为“([^”]{1,300})”[。]?', instruction)
     if pair and pair[1] in result:
