@@ -19,3 +19,10 @@
 远程输入无变化、同品牌多域名 401、邮箱无用户 ID、Base 可编辑但事件不达、限流后的字段续建，按 [客户远程安装与接管](customer-remote.md) 分层检查。SKU 关联字段在 search 与 GET 的结构不同，应先读取单记录再比较，不能把结构差异判断为商品丢失。
 
 源码 SKU 模块的 `CATALOG_TASK_ALREADY_PLANNED_USE_NEW_TASK` 要求保留旧计划并新建任务；`CATALOG_TASK_CHANGED_NO_WRITE` 表示写前发现编辑，应先核对当前行；`CATALOG_SNAPSHOT_NOT_PERSISTED` / `CATALOG_ATTACHMENTS_NOT_PERSISTED` 要求回读原行，不能盲目重放写入。模块尚未由 a41 welcome 自动安装。完整问题与未完成项见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
+
+## v0.3 无 n8n 本机常驻路线排查
+
+- `LOCAL_RUNTIME_ALREADY_RUNNING`：该业务目录已有正在运行的 `vf-run` 或用户后台服务；先用 Ctrl-C 或 `vfctl local-service stop --name <名称>` 正常停止，再执行 `vf-setup` 增量改配置或补配视频，不要强杀不明进程。
+- `LOCAL_SETUP_CHANGED_RUN_SETUP` / `LOCAL_RUN_START_PLAN_CHANGED`：私有计划、已存配置或账本任务/待处理作业发生了变化；先运行 `vf-setup`（如改了计划）并重新执行 `vf-run inspect` 获取最新 `plan_sha256`，若使用 `launchd`/`systemd` 用户服务则须同步重新 `render` 模板（Linux 再执行 `systemctl --user daemon-reload`）。
+- `LOCAL_SETUP_TARGET_OR_ACCOUNT_IMMUTABLE`：增量更新试图修改已绑定的飞书组织/Base/表、`app_id`、计费归属或视频区域；这些身份边界不可原地覆盖，请使用新 `project` 标识与新计划文件建立独立项目。
+- 影子副本未决写入（如飞书 `1254002`）：确认调度器已停机后，使用安装环境 Python 运行 `python -m video_factory.shadow_copy_recovery inspect` 只读核对远端行状态与冻结票据（区分 `matches_pending`、`matches_prior`、`neither`），禁止清空意图或盲目重发写入。详见 [本机无 n8n 常驻指南](local-business.md)。

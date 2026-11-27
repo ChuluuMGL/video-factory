@@ -42,6 +42,36 @@ class InstallPathTests(unittest.TestCase):
         self.assertTrue(result["current_release_can_complete"])
         self.assertTrue(any("飞书" in step for step in result["next_steps"]))
 
+    def test_n8n_free_local_resident_route_is_first_class_on_macos_and_linux(self):
+        for n8n, runtime, os_name in (
+            ("not-needed", "local-kernel", "Darwin"),
+            ("not-needed", "local-desktop", "Linux"),
+            ("none", "local-kernel", "Darwin"),
+        ):
+            with self.subTest(n8n=n8n, runtime=runtime, os_name=os_name):
+                result = MODULE.assess(
+                    {"n8n": n8n, "feishu": "partial", "runtime": runtime},
+                    observed={"os": os_name, "remote_instances_scanned": False},
+                )
+                self.assertEqual(result["route"], "local_resident_kernel_v03")
+                self.assertTrue(result["current_release_can_complete"])
+                self.assertEqual(result["entry"], "scripts/install_local_kernel.py --mode business")
+                self.assertFalse(result["software_installed"])
+                self.assertFalse(result["configuration_saved"])
+                self.assertFalse(result["feishu_verified"])
+                self.assertEqual(result["provider_requests"], 0)
+                self.assertFalse(result["production_accepted"])
+
+    def test_n8n_free_local_resident_route_declines_windows_native(self):
+        result = MODULE.assess(
+            {"n8n": "not-needed", "feishu": "ready", "runtime": "local-kernel"},
+            observed={"os": "Windows", "remote_instances_scanned": False},
+        )
+        self.assertEqual(result["route"], "local_resident_kernel_v03")
+        self.assertFalse(result["current_release_can_complete"])
+        self.assertIsNone(result["entry"])
+        self.assertTrue(any("Windows" in step for step in result["next_steps"]))
+
     def test_cloud_and_unknown_are_not_mislabeled_as_verified(self):
         for mode in ("cloud", "unknown"):
             result = self.assess(mode)

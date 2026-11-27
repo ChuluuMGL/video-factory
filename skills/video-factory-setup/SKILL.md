@@ -1,21 +1,39 @@
 ---
 name: video-factory-setup
-description: Install, configure, resume, inspect and repair a customer's self-hosted Video Factory CLI and n8n/PostgreSQL stack. Use when setting up Video Factory, adding a project, connecting Feishu Base, inspecting a failed setup, or planning a backup, restore or version upgrade. Distinguish CLI installation, infrastructure, Feishu identity and actual task acceptance.
+description: Install, configure, resume, inspect and repair a self-hosted Video Factory deployment across three first-class routes - the v0.3 n8n-free local resident engine on macOS/Linux, portable or existing n8n integration, and the Ubuntu PostgreSQL/n8n full stack. Keep installation, project configuration, Feishu identity, paid model execution and human acceptance strictly separate.
 ---
 
 # Video Factory 安装与维护
 
-这是 Video Factory 的安装与维护 Skill。首次进入先识别用户已有的 n8n、飞书和运行环境，再选择路径；不能预设每位用户都需要新购 Ubuntu 服务器。已安装客户可复用同一套服务新增项目。Skill 是 Agent 的安装维护指南，飞书 Base 是团队默认的任务入口。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
+这是 Video Factory 的安装与维护 Skill。首次进入先识别用户的运行条件与偏好，在**三条并列的一等安装路线**中选择，不预设每位用户都要搭 n8n 或新购 Ubuntu 服务器：
+1. **无 n8n 本机常驻路线（v0.3，macOS / Linux）**：不会搭 n8n、不租服务器时，用 `scripts/install_local_kernel.py --mode business` 在本机一键建立独立环境、SQLite 加密账本与常驻引擎（`vf-setup` / `vf-run` / `vf-agent` 及 `launchd` / `systemd` 用户服务）。
+2. **便携 / 已有 n8n 路线**：保留并接入已有的 Node.js / Docker / 服务器 n8n，或在本机安装便携 n8n（`scripts/portable_n8n.py welcome`）。
+3. **服务器完整栈路线（Ubuntu 24.04 x86_64）**：通过固定发行包部署产品服务、PostgreSQL、自带 n8n 与私网 Runner（`start.py` / `setup-run`）。
+
+同一客户可在已有底座上新增项目。Skill 是 Agent 的安装维护指南，飞书 Base 原任务表始终是团队日常入口。全流程必须将**环境安装、项目配置、飞书身份、付费模型执行、人工验收**五者在文案与回执中清晰分离。产品边界见随包 `docs/product/PRODUCT_SHAPE.md`。
 
 ## 开始前
 
-用户明确选择“不依赖 n8n、本地假模型试用”时，优先检查当前候选是否包含 `scripts/install_local_kernel.py` 和 `vfctl local`；按源码仓库的 `docs/product/LOCAL_FAKE_INSTALL.md` 使用全新私有目录安装。此候选只覆盖脚本排队、审核、修订、停止重启；无需 n8n、飞书或模型密钥，不创建生产连接，也不授予员工本机 owner 权限。a41 固定包不含此入口，缺失时明确说明，不能退而替用户安装 n8n 或启动旧系统。以下 n8n 问卷仅用于用户选择的既有发行路线。
+0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：打算不装 n8n 直接用本机常驻引擎还是使用/接入 n8n、飞书应用/Base 是否已有、产品执行服务打算放在哪里。该脚本只读识别环境，不安装软件、不收密钥、不扫远端。已有 n8n 时保留原实例与凭据，不建第二套 n8n；不会搭 n8n 且在 macOS / Linux 上时直接引导无 n8n 本机常驻路线。安装结束或暂停均按 [交接模板](references/handoff.md) 报告。
+   - 若用户只想做**零密钥本地假模型演练**（不连飞书、不调真实模型），使用 `scripts/install_local_kernel.py --mode fake-only --root <全新目录>`（详见仓库 `docs/product/LOCAL_FAKE_INSTALL.md`）；假模型目录绝不能转换成真实业务项目。
+1. 读取 [操作流程](references/operations.md) 或 [本机无 n8n 常驻指南](references/local-business.md)，定位请求属于安装、续接、增量改配置、新项目、检查还是恢复。沿用当前会话已授权对象；目标不明时先做只读核对，不猜测目录或主机。
+2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)，明确告知所选路线的系统要求与模型范围：**v0.3 无 n8n 本机常驻**要求 macOS 或 Linux 与 Python 3.11+（Windows 原生暂不支持，Windows 本机请走便携 n8n）；**已有 / 便携 n8n**按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 只读预检 API 与飞书；**Ubuntu 完整栈**要求 Ubuntu 24.04 x86_64、Python 3.12 + venv、root、本地 Docker/Compose，并核对可信 SSH 主机指纹。
+3. 核对固定版本、来源提交、归档 SHA256 与清单 SHA256（或 v0.3 候选 wheel 的 SHA256），先校验再执行。校验值须来自可信交付记录；a41 旧固定服务器归档未内置 `scripts/install_local_kernel.py`，缺失时明确说明获取方式，不擅自替用户改走安装 n8n 或租服务器。
+4. 只使用对应安装目录生成的启动器或 CLI 绝对路径。不要把 `isolated/vf` 或旧 canary 当作客户安装器；不建中央客户库、不自动启动旧 ECS、不另租服务器。
 
-0. 从安装页面或首次对话进入时，先读 [首次进入与获取发行版](references/start.md)。向用户提供首次部署、新增项目、续接、检查修复四种入口。**首次部署先运行或照着 `scripts/choose_install_path.py` 的三个问题询问**：现有 n8n 在哪里、飞书应用/Base 是否已有、产品执行服务打算放在哪里。这个脚本只识别环境，不安装软件、不读取密钥、不扫描远端。已有 n8n 时先保留原实例与凭据，不创建第二套 n8n。安装结束按 [交接模板](references/handoff.md) 报告。
-1. 读取 [操作流程](references/operations.md)，定位用户请求属于安装、续接、新项目、检查还是恢复。沿用当前会话已授权的对象和动作；缺少确切主机、目录或客户/项目时先做独立的只读检查，不猜测目标。
-2. 先读 [平台与模型矩阵](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/PLATFORMS_AND_MODELS.md)。按识别结果告知当前可执行的路线和缺口。**服务器完整栈部署**在 Ubuntu 24.04 x86_64 主机执行，要求 Python 3.12 + venv、root 和本地 Docker/Compose；远程连接须核对可信 SSH 主机指纹。已有本机 Node.js/Docker n8n、其他服务器 n8n 或 n8n Cloud 时，可先只读检查 API 和飞书环境；a37 可使用下方便携向导配置已有实例；不要运行完整栈命令覆盖已有 n8n。接入与验收按 [现有 n8n 路线](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/EXISTING_N8N_INTEGRATION.md) 完成并验收。
-3. 固定版本、来源提交、发行包 SHA256 和清单 SHA256。先验证归档，再解压或执行包内代码。校验值必须来自可信交付记录；包内自报哈希不是发布者身份验证。
-4. 只用该包安装的 CLI 绝对路径。不要把 `isolated/vf` 或旧四项目 canary 当作客户安装器。不创建中央客户数据库，不自动启动旧 ECS、不另租服务器。
+## 无 n8n 本机常驻路线（v0.3 一键安装与常驻运维）
+
+完整步骤与字段契约见 [本机无 n8n 常驻指南](references/local-business.md) 及 [本机业务配置文档](https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/LOCAL_BUSINESS_SETUP.md)。五道边界逐步推进，不在一步内混淆：
+
+1. **一键安装独立环境（不收密钥、不启服务）**：在 macOS / Linux（Python 3.11+）执行 `python3 scripts/install_local_kernel.py --mode business --root "$HOME/VideoFactory"`（离线或固定 wheel 加 `--package <已校验.whl>` 与可选 `--wheelhouse <依赖目录>`）。`--root` 必须是父目录已存在的全新无符号链接绝对路径。安装器创建 `0700` 目录、符号链接 `venv`（兼容 macOS `uv`/独立 Python，请保留基础解释器）及 `vf-setup`、`vf-run`、`vf-agent` 三个固定启动器。回执 `installed=true`、`configuration_complete=false`、`real_model_calls=0`。
+2. **项目配置与参考图自动托管**：Agent 可协助准备仅含非秘密字段的私有计划（如 `$HOME/vf-local-config/project.json`，目录 `0700`、文件 `0600`）并用 `<安装目录>/vf-setup --plan <计划文件> --check` 离线校验；或由本人在真实私有终端运行 `<安装目录>/vf-setup --plan <计划文件> --interactive --bind`。管理员密码（至少 14 位）、飞书 App Secret、DeepSeek 脚本 Key、MiniMax 视频 Key 仅通过隐藏 TTY 或本人 `0600` 文件输入，写入 `runtime.sqlite3` 与 `master.key`（`0600`）。配置视频（`MiniMax-H3`，`cn`/`global`）时，参考图可直接从普通可读目录选取（PNG/JPEG/WebP，单张 ≤30 MiB，每 SKU 1–9 张合计 ≤45 MiB）；向导校验无符号链接与 SHA-256 后自动复制到 `<安装目录>/business/references/<project>/<sku>/` 私有素材区（目录 `0700`、文件 `0600`），原图保留不动。
+3. **停机增量改配置与补配视频**：
+   - **增量更新商品、参考图与成员**：先正常停止该目录正在运行的服务，编辑私有计划 JSON 后重跑 `<安装目录>/vf-setup --plan <计划文件>`。已存加密凭据自动复用，无需重输 Key；可更新 `products`（SKU、名称、`truth_source` 卖点规格）、参考图（自动重验并托管）及 `binding` 的 `submitters`/`reviewers`。历史任务与审核记录保留，审计记录变更前后 `plan_sha256`，自动吊销旧员工短期授权并使未提交的待执行批准失效；已绑定的飞书租户/Base/表、`app_id`、`billing_owner` 和视频 `region` 保持不可变。
+   - **脚本跑通后补配视频**：首次视频选 `skip`（`video: null`）的项目，停机后保留原计划文件，复制新计划仅补齐 `video`，运行 `<安装目录>/vf-setup --previous-plan <原计划> --plan <新计划>` 并隐藏输入视频 Key，保留已审脚本与原表绑定（`video_added=true`）。
+4. **飞书官方身份授权与原表审核启用**：`--bind` 仅打开飞书官方授权页验证本人身份并只读核对四个映射文本字段（`feishu_binding_verified=true`）。随后先运行 `--native-plan` 审阅原表字段与订阅变更计划，确认专用应用无其他长连接接收器后，用 `--enable-native <计划哈希> --dedicated-app` 启用（`native_review_enabled=true`）。
+5. **常驻运行、`launchd` / `systemd` 启停与逐单付费审批**：
+   - **前台常驻与 Codex 接入**：先运行 `<安装目录>/vf-run inspect --plan <计划文件>` 取得 `plan_sha256`，再运行 `<安装目录>/vf-run start --plan <计划文件> --expect-plan <plan_sha256>`。默认只读常驻（`127.0.0.1:8788`），停机立即撤销本次会话连接；外部 Codex 仅凭返回的 `connection.json` 调用 `<安装目录>/vf-agent`（如 `capabilities`、`status`、`tasks`、`project_stats`、`list_failures`），不接触管理员口令或模型 Key。`--allow-plans`（需本人飞书授权）与 `--execute-approved`（须配 `--max-runtime <秒>` 或 `--hours 1..168`，且 `start` 加 `--dedicated-app`）必须显式分级开启；每笔脚本或视频模型调用仍须负责人独立执行 `vf-run approve-script` / `approve-video --accept-provider-charges` 确认。管理员另可用 `vfctl workbench-delegate issue|revoke` 签发项目限定的短期工作台角色凭证。
+   - **用户级后台常驻（`launchd` / `systemd`）**：先用相同参数跑 `vf-run inspect` 拿到 `plan_sha256`，再用 `<安装目录>/environment/bin/vfctl local-service render` 生成 `0600` 服务文件（回执 `enabled=false`，不静默注册开机自启，不失败自动重试）：macOS 输出到 `~/Library/LaunchAgents/com.video-factory.<name>.plist`，Linux 输出到 `~/.config/systemd/user/video-factory-<name>.service` 并执行 `systemctl --user daemon-reload`；随后使用 `vfctl local-service start|status|stop --name <name>` 启停与查状态。每次修改配置、补配视频或账本任务状态变化后，必须重新 `inspect` 并重新 `render`。项目 API 权限不替代同一 OS 账户的 Shell 隔离；真实飞书闭环、退出重登与真人表内审核仍须独立验收。
 
 ## 便携安装与已有 n8n 接入（a37 测试版）
 
@@ -82,9 +100,3 @@ a41 的视频查询在 queued/running 时返回明确 pending 回执。查询失
 代客户安装、远程输入失效、旧服务器隔离、第三方平台身份核对或客户自己的 Codex 接管时，读取 [客户远程安装与接管](references/customer-remote.md)。沿用授权 SSH/API，先盘点既有网站与数据库。使用 [交接模板](references/handoff.md) 给客户保存准确运行版本、目录、入口、启用状态和待验步骤；不把官网或常驻员工网页当作飞书日常入口。
 
 源码候选新增 `seedance-novai`，仅对应核实过的 `https://xinghezhiyun.com` 企业版，独立凭据且 `auto_asset=false`；只读认证通过，真实生成闭环未验。`portable_catalog.py` 提供单 SKU 快照模块，尚未接入 `welcome` 的自动建表与事件分发。两项均不在 a41 固定包，不向旧安装器虚构可用命令。详细范围见 `docs/product/CUSTOMER_DEPLOYMENT_LESSONS.md`。
-
-## 本机业务配置候选（未发行）
-
-在明确安装对应候选核心 wheel 后，使用 `vfctl local-setup` 创建或续接独立业务目录。先读 [业务配置向导](references/local-business.md)。不要把假模型目录改成真实项目，不调用完整栈向导，不把客户配置写入仓库。Agent 整理非秘密计划；本人通过隐藏 TTY/0600 文件输入密钥，飞书官方授权单独完成。`--native-plan` 只读准备；核对准确表及订阅范围后才用 `--enable-native` 与专用应用确认启用。首次跳过视频后，仅在核心支持时用 `--previous-plan` 显式补配视频，保留原脚本审核与绑定，不重建来绕过配置检查。配置、绑定、原表审核启用、任务费用审批、实际运行分别报告；不得把配置保存当作真实生成验收。
-
-同版本启动候选增加 `vf-run` / `vf-agent`，操作见上述业务配置指南。默认只读；允许计划、运行已批准任务、负责人逐项审批是独立步骤。Codex 仅用项目连接文件调用固定 Agent API，不接触管理员口令或用户 token；本机服务默认常驻，停机撤销本次授权。员工窗口仍限时。不要将同一 OS 账户的 Shell 访问误说成受到项目 API 权限保护。
