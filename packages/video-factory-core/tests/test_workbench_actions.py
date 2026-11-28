@@ -81,6 +81,81 @@ class WorkbenchTests(unittest.TestCase):
         self.assertTrue(self.call('script/edit-commit', **confirm)['replayed'])
         self.assertEqual(len(self.call('reviews')['items']), 1)
 
+    def test_model_edit_requires_cost_consent_and_replays_without_a_second_request(self):
+        from unittest.mock import patch
+        self.task('script', 'awaiting_script_review')
+        self.api.scheduler.key = self.key
+        row = self.call('reviews')['items'][0]
+        with patch('video_factory.workbench_actions.ScriptProvider') as provider:
+            provider.return_value.revise.return_value = {'script': '这里是通顺的新稿。'}
+            preview = self.call('script/edit-preview', task_key=row['task_key'],
+                                expected_version=row['version_token'], instruction='把中间那段删掉')
+            self.assertEqual(preview['mode'], 'edit_generate_preview')
+            self.assertIn('1 次 deepseek-flash', preview['cost_summary'])
+            consent = self.confirmation(preview)
+            with self.assertRaisesRegex(RuntimeFault, 'ROLE_DENIED'):
+                self.call('script/edit-generate', **consent, accept_provider_charges=True)
+            delegated = self.root / 'm5-cost-grant'
+            delegation(self.store, self.admin, PROJECT, PRINCIPAL, ['edit', 'cost'], output=delegated)
+            self.token = delegated.read_text()
+            with self.assertRaisesRegex(RuntimeFault, 'COST_CONSENT_REQUIRED'):
+                self.call('script/edit-generate', **consent, accept_provider_charges=False)
+            provider.return_value.revise.assert_not_called()
+            result = self.call('script/edit-generate', **consent, accept_provider_charges=True)
+            self.assertEqual(result['model_calls'], 1)
+            self.assertIn('+这里是通顺的新稿。', result['diff']['patch'])
+            self.assertIn('¥0', result['cost_summary'])
+            self.assertTrue(self.call('script/edit-generate', **consent, accept_provider_charges=True)['replayed'])
+            self.assertEqual(self.call('reviews')['items'][0]['revision'], 1)
+            commit = self.call('script/edit-commit', **self.confirmation(result),
+                               draft_sha256=result['diff']['draft_sha256'])
+            self.assertEqual(commit['new_revision'], 2)
+            self.assertEqual(commit['provider_requests'], 0)
+            provider.return_value.revise.assert_called_once()
+
+    def test_uncertain_model_edit_is_never_resent(self):
+        from unittest.mock import patch
+        self.task('script', 'awaiting_script_review')
+        self.api.scheduler.key = self.key
+        delegated = self.root / 'm5-cost-grant'
+        delegation(self.store, self.admin, PROJECT, PRINCIPAL, ['edit', 'cost'], output=delegated)
+        self.token = delegated.read_text()
+        row = self.call('reviews')['items'][0]
+        preview = self.call('script/edit-preview', task_key=row['task_key'],
+                            expected_version=row['version_token'], instruction='删掉中段')
+        with patch('video_factory.workbench_actions.ScriptProvider') as provider:
+            provider.return_value.revise.side_effect = TimeoutError()
+            for _ in range(2):
+                with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'):
+                    self.call('script/edit-generate', **self.confirmation(preview), accept_provider_charges=True)
+            provider.return_value.revise.assert_called_once()
+        self.assertEqual(self.call('reviews')['items'][0]['revision'], 1)
+
+    def test_daily_triage_counts_actionable_tasks_and_projects_only_bound_urls(self):
+        from video_factory.feishu_bridge import configuration, save, source_key, target
+        self.task('script', 'awaiting_script_review')
+        self.task('unknown', 'submission_unknown')
+        self.task('failure', 'failed')
+        self.task('unverified_failure', 'failed')
+        binding = configuration({**fixture.BINDING, 'web_host': 'tenant-test.feishu.cn'})
+        with self.store.connect() as db:
+            save(db, 'feishu:binding:' + PROJECT, binding)
+            save(db, source_key(PROJECT, 'script', 1), {
+                'snapshot': {'target': target(binding), 'record_id': 'recScript'},
+            })
+            save(db, source_key(PROJECT, 'unknown', 1), {
+                'snapshot': {'target': target(binding), 'record_id': 'recX&url=evil'},
+            })
+            self.store.audit(db, 'worker', 'provider_failed_no_retry', PROJECT, 'failure', 1)
+        result = self.call('daily-triage')
+        self.assertEqual([group['count'] for group in result['triage']], [1, 1, 1])
+        self.assertEqual(result['triage'][2]['items'][0]['feishu_record_url'],
+                         'https://tenant-test.feishu.cn/base/bascnFixture?table=tblFixture&record=recScript')
+        self.assertNotIn('feishu_record_url', result['triage'][0]['items'][0])
+        self.assertNotIn('feishu_record_url', result['triage'][1]['items'][0])
+        with self.assertRaisesRegex(RuntimeFault, 'FEISHU_WEB_HOST_INVALID'):
+            configuration({**binding, 'web_host': 'tenant.feishu.cn.evil.test'})
+
     def test_review_does_not_approve_paid_stage_without_role(self):
         self.task('story', 'awaiting_storyboard_review')
         row = self.call('reviews')['items'][0]
@@ -136,6 +211,40 @@ class WorkbenchTests(unittest.TestCase):
 
 
 class NativeWorkbenchTests(unittest.TestCase):
+    def test_edit_writeback_preserves_review_columns_and_receipt_reads_current_status(self):
+        import test_local_native
+        from video_factory.dispatch import authorize
+        from video_factory.feishu_bridge import meta
+        from video_factory.workbench_writeback import flush
+
+        test_local_native.LocalNativeTests.setUp(self)
+        test_local_native.LocalNativeTests.task(self)
+        signer = self.root / 'edit-grant'
+        delegation(self.store, self.admin, 'brand', PRINCIPAL, ['edit'], output=signer)
+        api = AgentAPI(self.store, 'brand', test_local_native.LocalNativeTests.scheduler(self))
+        api.scheduler.key = None  # This test exercises rule edits and synthetic Feishu writeback.
+        call = lambda route, **body: api.call('/v1/agent/' + route, signer.read_text(),
+                                             {'project': 'brand', **body}, principal=PRINCIPAL)
+        authorize_tick = lambda db: authorize(db, self.execution, 'brand')
+        self.native.sync('brand', self.root, authorize_tick)
+        row = call('reviews')['items'][0]
+        original = self.remote.record_fields['脚本']
+        preview = call('script/edit-preview', task_key=row['task_key'], expected_version=row['version_token'],
+                       instruction=f'将“{original}”改为“新版合成脚本”')
+        self.remote.record_fields['审核意见'] = '保留人工备注'
+        consent = WorkbenchTests.confirmation(preview)
+        result = call('script/edit-commit', **consent, draft_sha256=preview['diff']['draft_sha256'])
+        self.assertEqual(result['board_writeback'], 'reconciliation_required')
+        with self.store.connect() as db:
+            config = meta(db, 'native:config:brand')
+        self.assertEqual(flush(self.store, 'brand', self.native, config, authorize_tick)['status'], 'synced')
+        refreshed = call('workbench/receipt', confirmation_id=consent['confirmation_id'])
+        self.assertEqual(refreshed['board_writeback'], 'synced')
+        self.assertIn('回读确认', refreshed['change_summary'])
+        self.assertEqual(self.remote.record_fields['脚本'], '新版合成脚本')
+        self.assertEqual(self.remote.record_fields['审核意见'], '保留人工备注')
+        self.assertEqual(self.remote.record_fields['状态'], '脚本待审核')
+
     def test_ambiguous_native_review_write_is_never_repeated(self):
         import test_local_native
         from video_factory.dispatch import authorize

@@ -4,6 +4,7 @@ Approvals refer to immutable imported snapshots, not to a remotely locked row.
 No Feishu mutation, paid permission, user impersonation or generated local login.
 """
 import json
+import re
 from .feishu_client import FeishuClient,resource
 from .runtime_store import RuntimeFault,canonical,fingerprint,identifier
 
@@ -20,11 +21,17 @@ def save(db,key,value):
 def source_key(project,task,revision):return 'feishu:source:'+fingerprint([project,task,revision])
 
 
+FEISHU_WEB_HOST = re.compile(r'[a-z0-9-]+\.feishu\.cn')
+
+
 def configuration(value):
     required={'tenant_key','base_token','table_id','fields','submitters','reviewers'}
     scoped={'script_reviewers','video_reviewers'}
-    if not isinstance(value,dict) or set(value) not in (required,required|scoped):
+    if not isinstance(value,dict) or set(value)-{'web_host'} not in (required,required|scoped):
         raise RuntimeFault('FEISHU_BINDING_INVALID')
+    if 'web_host' in value:
+        if not isinstance(value['web_host'],str) or not FEISHU_WEB_HOST.fullmatch(value['web_host']):
+            raise RuntimeFault('FEISHU_WEB_HOST_INVALID')
     resource(value['tenant_key']);resource(value['base_token']);resource(value['table_id'],'tbl')
     if not isinstance(value['fields'],dict) or set(value['fields'])!={'task','sku_id','script','source_revision'}:
         raise RuntimeFault('FEISHU_FIELD_MAPPING_INVALID')
