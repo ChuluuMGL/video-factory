@@ -641,6 +641,8 @@ class WorkbenchActions:
                 next_plan = video_queue(self.store, db, project, actor, newer, ref)
             result.update(review_recorded=True, new_canonical_status=STATUS[receipt['state']][1],
                           board_writeback=writeback, next_stage_plan=next_plan)
+            if deferred:
+                result.update(new_revision=revision, schedule_pending=not next_plan['enqueued'])
         else:
             payload_data = json.loads(row['input'])
             self.store._create_task(db, actor, project, task, payload_data, revision)

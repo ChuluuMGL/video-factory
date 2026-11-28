@@ -1,5 +1,6 @@
 """Read-only projections of local ledger evidence. Never probe providers."""
 import json
+import re
 
 from .feishu_bridge import meta
 from .feishu_native_review import source_key, sync_key
@@ -20,6 +21,13 @@ EVENTS = {
     'artifact_recorded': 'artifact_verified',
     **{f'review_{stage}_{decision}': f'{stage}_{decision}'
        for stage in ('script', 'storyboard', 'video') for decision in ('accept', 'reject')},
+}
+EVENT_STATES = {
+    'script_request_reserved': 'submission_unknown', 'script_request_rejected': 'failed',
+    'script_received': 'awaiting_review', 'budget_blocked': 'failed',
+    'video_request_reserved': 'submission_unknown', 'video_receipt_recorded': 'running',
+    'video_failed': 'failed', 'artifact_verified': 'awaiting_review', 'video_accept': 'completed',
+    **{f'{stage}_reject': 'rejected' for stage in ('script', 'storyboard', 'video')},
 }
 ERRORS = frozenset(SCRIPT_ERRORS) | CONFIRMED_FAILURES | frozenset(VIDEO_REJECTIONS.values())
 BLOCKERS = ('FEISHU_RECONCILIATION_REQUIRED', 'RECONCILIATION_REQUIRED', 'SCHEDULER_STEP_FAILED')
@@ -63,22 +71,27 @@ def task_logs(db, project, task, revision, now):
     sku_bound = bool(sku and any(item.get('sku_id') == sku for item in products))
     assets = (meta(db, 'video:profile:' + project) or {}).get('assets', {})
     refs = assets.get(sku, {}).get('specification', {}).get('references', [])
+    refs = refs if isinstance(refs, list) else []
+    complete_refs = 1 <= len(refs) <= 9 and all(
+        isinstance(ref, dict) and isinstance(ref.get('sha256'), str) and re.fullmatch('[a-f0-9]{64}', ref['sha256'])
+        and isinstance(ref.get('path'), str) and bool(ref['path']) for ref in refs)
+    verified = writeback[0] == 'synced' if writeback else synced.get('complete') is True
+    wrote_back = ('not_configured' if not native.get('enabled') else 'synced' if verified else
+                  'readback_pending' if writeback or synced else 'not_observed')
     return envelope('inspect_task_logs', project, now, {
         'brief': brief(f'任务 v{revision} 当前阶段为 {stage}，状态为 {state}。'),
         'task_status': {'task_id': task, 'revision': revision, 'stage': stage,
                         'canonical_status': state, 'version_token': version(row), 'error_code': code,
                         'reconciliation_required': state == 'submission_unknown'},
-        'history': [{'event': EVENTS[item['action']], 'revision': item['revision'], 'at': iso(item['at'])}
+        'history': [{'event': EVENTS[item['action']], 'revision': item['revision'], 'at': iso(item['at']),
+                     'canonical_status': EVENT_STATES.get(EVENTS[item['action']])}
                     for item in reversed(events[:20])],
         'has_more': len(events) > 20,
         **record_url(db, project, row),
         'model_receipt': {'receipt_recorded': bool(script.get('provider_id') or video.get('provider_receipt') or row['provider_id']),
-                          'result_recorded': bool(row['artifact'] or script.get('state') in ('awaiting_review', 'awaiting_script_review'))},
-        'board_receipt': {'row_bound': linked,
-                          'status': ('not_configured' if not native.get('enabled') else
-                                     'synced' if (writeback and writeback[0] == 'synced') or synced.get('complete') else
-                                     'readback_pending' if writeback or synced else 'not_observed')},
-        'bindings': {'sku_bound': sku_bound, 'references_bound': bool(refs), 'reference_count': len(refs)},
+                          'result_recorded': bool(row['artifact'] or script.get('state') == 'received')},
+        'board_receipt': {'row_bound': linked, 'status': wrote_back},
+        'bindings': {'sku_bound': sku_bound, 'references_bound': complete_refs, 'reference_count': len(refs)},
     }, board='feishu_bitable' if native.get('enabled') else 'self_hosted')
 
 
@@ -103,7 +116,7 @@ def workflow_health(db, project, status, now):
                 'ready', 'read_only', 'running', 'waiting', 'attention_required', 'stopped') else 'unknown',
             'last_tick_at': iso(status.get('last_tick_at')),
             'execution_enabled': status.get('execution_enabled') is True,
-            'binding_configured': enabled,
+            'binding_configured': bool(meta(db, 'feishu:binding:' + project)),
             'board_connectivity': ('not_configured' if not enabled else
                                    'attention_required' if blocker == 'FEISHU_RECONCILIATION_REQUIRED' else
                                    'last_sync_observed' if observed == 'synced' else
