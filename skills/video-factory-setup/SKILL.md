@@ -59,7 +59,7 @@ description: Install, configure, resume, inspect and repair a self-hosted Video 
 
 ## 故障与验收
 
-- 先查 [检查与修复入口](references/troubleshooting.md)，只读核对当前 CLI 版本、Setup、stack 状态及准确错误码，再判断失败层。不要重装覆盖未知状态或直接改数据库“修正”为成功。已有 Issue 只是线索，不能代替本机回读；新问题由 Agent 准备脱敏复现，交客户或实施人员审核后提交。
+- 先查 [工作流排障与精准修复规则手册](references/repair-playbook.md) 与 [检查与修复入口](references/troubleshooting.md)，按“今日巡检 → 任务日志（`inspect_task_logs`）→ 引擎健康（`inspect_workflow_health`）或 n8n 节点（`inspect_n8n_workflow`）→ 精准分流修复”只读核对当前 CLI 版本、Setup、stack 状态及准确错误码，再判断失败层。同事可通过本机 Codex / Claude / Cursor 挂接 `employee-mcp` / `project-mcp` 自主排查；员工可只读排查、预审改稿、修复受控失败任务和创建 n8n 停用预览副本，生产 n8n 正式保存、付费视频批准、核心配置变更及 `submission_unknown` / 飞书 `1254002` 对账须由管理员确认执行（对应白名单文档见随包 `docs/product/REPAIR_PLAYBOOK.md`）。不要重装覆盖未知状态或直接改数据库“修正”为成功。已有 Issue 只是线索，不能代替本机回读；新问题由 Agent 准备脱敏复现，交客户或实施人员审核后提交。
 - 遇到 `DOCKER_ADDRESS_POOL_EXHAUSTED`，只读核对 Docker 网络及连接容器；只清理确认无容器且可重建的旧测试网络，再续接原 session。容器未启动时不得称飞书已授权。
 - 新建 Base 回执保存在客户数据库。读取失败后用原 session 续接；创建结果未知或恢复了未完成检查点时，读取 `setup-feishu status` 并核对远端，禁止直接清理日志重建。详见随包 `docs/product/BASE_CREATION.md`。
 - 已完成绑定的 Base 续接应保留用户后续修改的商品内容和测试任务脚本；核对原记录及 SKU、任务编号。身份字段或记录缺失时停止对账，不把内容改回初始化值。

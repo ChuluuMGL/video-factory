@@ -1,6 +1,6 @@
 # 检查与修复入口
 
-先只读核对正在运行的 CLI 版本、项目、原 Setup session、stack 状态和准确错误码；再区分安装、Docker、飞书身份、Base 记录、n8n、模型调用与媒体回写。不要重装覆盖未知状态，不要因超时重发付费任务。需要完整的分层排障索引时阅读仓库 `docs/product/TROUBLESHOOTING.md`；单独下载 Skill 时可访问 https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/TROUBLESHOOTING.md 。
+先只读核对正在运行的 CLI 版本、项目、原 Setup session、stack 状态和准确错误码；再区分安装、Docker、飞书身份、Base 记录、n8n、模型调用与媒体回写。不要重装覆盖未知状态，不要因超时重发付费任务。标准化自助排查决策树、本机 MCP 挂接（`employee-mcp` / `project-mcp`）及员工/管理员权限边界见 [工作流排障与精准修复规则手册](repair-playbook.md)；需要完整的分层排障索引时阅读仓库 `docs/product/TROUBLESHOOTING.md`；单独下载 Skill 时可访问 https://github.com/ChuluuMGL/video-factory/blob/main/docs/product/TROUBLESHOOTING.md 。
 
 - 安装中断：沿用原 session，核对已保存的步骤和固定发行版。
 - 依赖下载：在含下载错误分类的版本中，`DEPENDENCY_DOWNLOAD_INTERRUPTED` 表示连接或响应中断，`DEPENDENCY_DOWNLOAD_HTTP_REJECTED` 表示官方依赖源拒绝。先查服务器网络与磁盘，再续接同一已验证发行目录；只复用完整且哈希匹配的 wheel。不改用未知源、不绕过校验，不让用户重复输入产品密码。CLI 前缀若已部分安装，保留诊断并用新的独立空前缀；发行依赖目录和业务数据不删除。
