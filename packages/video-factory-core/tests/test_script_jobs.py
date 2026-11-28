@@ -138,16 +138,17 @@ class ScriptTests(unittest.TestCase):
 
         def run(task):
             jobs = ScriptJobs(RuntimeStore(self.f.store.root), provider=self.provider)
-            try:
-                return jobs.step(self.cap, project, task, 1, self.key)['state']
-            except RuntimeFault as error:
-                return str(error)
+            return jobs.step(self.cap, project, task, 1, self.key)
 
         self.provider.fail = True
         with ThreadPoolExecutor(max_workers=2) as pool:
-            self.assertCountEqual(pool.map(run, tasks), ['script_submission_unknown', 'SCRIPT_BUDGET_EXHAUSTED'])
+            results = list(pool.map(run, tasks))
+        self.assertCountEqual([result['state'] for result in results], ['script_submission_unknown', 'failed'])
+        self.assertIn('SCRIPT_BUDGET_EXHAUSTED', [result['error'] for result in results])
         with self.f.store.connect() as db:
             self.assertEqual(policy(db, project)['used_calls'], 1)
+            states = [meta(db, key(project, task, 1))['state'] for task in tasks]
+            self.assertCountEqual(states, ['submission_unknown', 'budget_blocked'])
         self.assertEqual(self.provider.calls, 1)
         with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_CANNOT_INCREASE'):
             configure(RuntimeStore(self.f.store.root), self.f.admin, project, 2)

@@ -300,7 +300,18 @@ class ScriptJobs:
             check=db.execute('SELECT revision FROM vault WHERE alias=?',(settings['credential_ref'][7:],)).fetchone()
             if not check or check[0]!=settings['credential_revision']:raise RuntimeFault('SCRIPT_CREDENTIAL_CHANGED')
             if fingerprint(self.bridge._binding(db,project))!=plan['binding_sha256'] or job['expires_at']<time.time():raise RuntimeFault('SCRIPT_PLAN_CHANGED')
-            reserve_script_call(db,project)
+            try:
+                reserve_script_call(db,project)
+            except RuntimeFault as error:
+                if str(error) != 'SCRIPT_BUDGET_EXHAUSTED':
+                    raise
+                job.update(state='budget_blocked', failure_code='SCRIPT_BUDGET_EXHAUSTED')
+                save(db,key(project,task,revision),job)
+                db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=?",
+                           (project,task,revision))
+                self.store.audit(db,'script-worker','script_budget_blocked',project,task,revision)
+                return {'state':'failed','error':'SCRIPT_BUDGET_EXHAUSTED','provider_requests':0,
+                        'automatic_resubmit':False}
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)

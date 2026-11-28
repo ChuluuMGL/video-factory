@@ -161,6 +161,21 @@ class WorkbenchTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault, 'FEISHU_WEB_HOST_INVALID'):
             configuration({**binding, 'web_host': 'tenant.feishu.cn.evil.test'})
 
+    def test_script_only_policy_blocks_advance_but_keeps_review_available(self):
+        from video_factory.script_budget import configure
+        self.task('script', 'awaiting_script_review')
+        row = self.call('reviews')['items'][0]
+        args = dict(task_key=row['task_key'], expected_version=row['version_token'],
+                    stage='script', decision='accept')
+        advanced = self.call('review/prepare', **args, advance_next_stage=True)
+        configure(self.store, self.admin, PROJECT, 2, disable_paid_video=True)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_PAID_VIDEO_DISABLED'):
+            self.call('review/prepare', **args, advance_next_stage=True)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_PAID_VIDEO_DISABLED'):
+            self.call('review/commit', **self.confirmation(advanced), accept_provider_charges=True)
+        review = self.call('review/prepare', **args)
+        self.assertTrue(self.call('review/commit', **self.confirmation(review))['review_recorded'])
+
     def test_review_does_not_approve_paid_stage_without_role(self):
         self.task('story', 'awaiting_storyboard_review')
         row = self.call('reviews')['items'][0]

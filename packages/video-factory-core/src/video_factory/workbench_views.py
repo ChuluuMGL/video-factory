@@ -244,13 +244,17 @@ def projection(db, project, endpoint, body, now, *, media_preview=None):
             confirmed = confirmed_script_failure(db, row) if kind == 'failed' and stage == 'script' else None
             if confirmed:
                 code = confirmed['failure_code']
+            elif kind == 'failed' and script.get('state') == 'budget_blocked':
+                code = 'SCRIPT_BUDGET_EXHAUSTED'
             elif script.get('submission_error') in SCRIPT_ERRORS:
                 code = script['submission_error']
             elif video.get('failure_code') in REJECTION_CODES.values():
                 code = video['failure_code']
             repairable = bool(confirmed) if stage == 'script' else kind == 'failed' and definite_video_failure(db, row)
             common.update(raw_status=row['state'], failure_kind=kind, error_code=code,
-                          diagnosis='请核对供应商回执。' if kind == 'submission_unknown' else '请核对任务状态与已保存回执。',
+                          diagnosis=('请核对供应商回执。' if kind == 'submission_unknown'
+                                     else '脚本模型额度已用尽，未发送请求。' if code == 'SCRIPT_BUDGET_EXHAUSTED'
+                                     else '请核对任务状态与已保存回执。'),
                           reconciliation_required=kind == 'submission_unknown', automatic_resubmit=False,
                           repairable=repairable,
                           suggested_repair_type='task_retry_from_stage' if repairable else None)

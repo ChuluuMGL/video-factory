@@ -460,6 +460,8 @@ class WorkbenchActions:
             require(not annotations and remaining + delta == 0, 'WORKBENCH_REVIEW_NOTES_UNRESOLVED')
         advance = boolean(body, 'advance_next_stage')
         require(not advance or decision == 'accept' and stage in ('script', 'storyboard'), 'WORKBENCH_ADVANCE_INVALID')
+        if advance:
+            require_paid_video(db, project)
         value = {'stage': stage, 'decision': decision, 'feedback': feedback, 'advance': advance,
                  'notes': {**known, **prepared}, 'annotations': annotations, 'notes_digest': fingerprint(known)}
         return self._envelope(db, 'submit_review_decision', project, self.clock(), {
@@ -476,6 +478,8 @@ class WorkbenchActions:
                 'WORKBENCH_FIELDS_INVALID')
         kind, plan_id, plan_sha = body.get('plan_type'), body.get('plan_id'), body.get('plan_sha256')
         require(kind != 'video' or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
+        if kind == 'video':
+            require_paid_video(db, self.project)
         plan = plan_for(db, self.project, kind, plan_id)
         require(plan.get('plan_sha256') == plan_sha and not plan.get('submitted') and not plan.get('revoked')
                 and plan['expires_at'] > self.clock(), 'WORKBENCH_PLAN_CHANGED')
@@ -598,6 +602,8 @@ class WorkbenchActions:
                           board_writeback=enqueue(db, project, ref, row, newer, 'edit', ''),
                           video_spending_approved=False)
         elif kind == 'review':
+            if payload['advance']:
+                require_paid_video(db, project)
             prior_notes = notes_for(db, project, task, revision)
             require(fingerprint(prior_notes) == payload['notes_digest'], 'WORKBENCH_REVIEW_NOTES_CHANGED')
             feedback = payload['feedback']
