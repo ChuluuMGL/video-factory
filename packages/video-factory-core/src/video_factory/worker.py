@@ -9,6 +9,7 @@ from pathlib import Path
 from .runtime_store import RuntimeFault, canonical, fingerprint, identifier, private_directory
 from .h3_provider import H3Provider, ProviderRejected, REJECTION_CODES, request_body, ORIGINS
 from .worker_media import collect, toolchain
+from .script_budget import require_paid_video
 
 
 def job_key(project,task,revision):
@@ -137,7 +138,10 @@ class Worker:
                 'automatic_resubmit':False,'human_acceptance':'separate_review_required'}
 
     def step(self,token,project,task,revision,master_key,media_root,*,allow_paid=False):
-        with self.store.connect() as db:row,value=self._load(db,token,project,task,revision)
+        with self.store.connect() as db:
+            row,value=self._load(db,token,project,task,revision)
+            if row['state']=='ready':
+                require_paid_video(db,project)
         plan=value['plan'];state=row['state'];provider_id=row['provider_id'] or value['provider_receipt']
         if state in ('awaiting_video_review','accepted','rejected','failed'):
             result={'state':state,'replayed':True,'provider_requests':0}
@@ -167,6 +171,7 @@ class Worker:
             with self.store.connect() as db:
                 current,latest=self._load(db,token,project,task,revision)
                 if current['state']!='ready':raise RuntimeFault('TASK_NOT_READY_NO_RESUBMIT')
+                require_paid_video(db,project)
                 if latest['plan_sha256']!=value['plan_sha256'] or latest['expires_at']<time.time():
                     raise RuntimeFault('WORKER_APPROVAL_EXPIRED_OR_CHANGED')
                 check=db.execute('SELECT revision FROM vault WHERE alias=?',(plan['credential_ref'][7:],)).fetchone()

@@ -9,7 +9,11 @@ from cryptography.fernet import Fernet
 from review_fixture import Fixture
 from video_factory.feishu_bridge import save,meta
 from video_factory.feishu_native_review import source_key as native_source_key
-from video_factory.runtime_store import RuntimeFault
+from video_factory.runtime_store import RuntimeFault, RuntimeStore
+from video_factory.agent_api import AgentAPI
+from video_factory.script_budget import configure, policy
+from video_factory.script_provider import ScriptProviderRejected
+from video_factory.workbench_delegation import delegation
 from video_factory.script_jobs import ScriptJobs,profile,key
 from video_factory.automation import issue_execution
 from video_factory.video_jobs import prepare as prepare_video
@@ -71,6 +75,83 @@ class ScriptTests(unittest.TestCase):
             self.assertEqual(saved['submission_error'],'SCRIPT_AUTH_REJECTED')
             self.step()
             self.assertEqual(generate.call_count,1)
+    def test_confirmed_script_repair_uses_shared_budget_and_preserves_original(self):
+        from types import SimpleNamespace
+        project = self.f.project
+        configure(self.f.store, self.f.admin, project, 2, disable_paid_video=True)
+        self.queue()
+        with patch.object(self.provider, 'generate', side_effect=ScriptProviderRejected('SCRIPT_RATE_LIMITED')):
+            self.assertEqual(self.step()['state'], 'failed')
+        with self.f.store.connect() as db:
+            old = meta(db, key(project, 'generated_one', 1))
+            self.assertEqual(policy(db, project)['used_calls'], 1)
+        principal = 'auth-' + 'a' * 64
+        grant = self.f.root / 'state' / 'repair-grant'
+        delegation(self.f.store, self.f.admin, project, principal, ['repair', 'cost', 'edit'], output=grant)
+        api = AgentAPI(self.f.store, project, SimpleNamespace(key=self.key))
+        def call(route, **body):
+            return api.call('/v1/agent/' + route, grant.read_text(), {'project': project, **body}, principal=principal)
+
+        failures = call('failures')['items']
+        self.assertEqual(len(failures), 1)
+        item = failures[0]
+        self.assertEqual(item['stage'], 'script')
+        self.assertTrue(item['repairable'])
+        self.assertEqual(item['error_code'], 'SCRIPT_RATE_LIMITED')
+        self.assertEqual(call('daily-triage')['triage'][1]['count'], 1)
+        preview = call('repair/preview', target_type='task_state', target_id=item['task_key'],
+                       expected_version=item['version_token'], repair_action='requeue_failed_task', reschedule=True)
+        self.assertIn('SCRIPT_RATE_LIMITED', preview['diagnosis_summary'])
+        self.assertIn('脚本生成队列', preview['change_summary'])
+        self.assertIn('1 次 deepseek-flash', preview['cost_summary'])
+        fields = ('confirmation_id', 'expected_digest', 'expected_version')
+        action = {name: preview['confirmation'][name] for name in fields}
+        with self.assertRaisesRegex(RuntimeFault, 'COST_CONSENT_REQUIRED'):
+            call('repair/apply', **action)
+        self.assertEqual(call('repair/apply', **action, accept_provider_charges=True)['new_revision'], 2)
+        self.assertTrue(call('repair/apply', **action, accept_provider_charges=True)['replayed'])
+        with self.f.store.connect() as db:
+            self.assertEqual(meta(db, key(project, 'generated_one', 1)), old)
+            self.assertEqual(policy(db, project)['used_calls'], 1)
+        restarted = ScriptJobs(RuntimeStore(self.f.store.root), provider=self.provider)
+        self.assertEqual(restarted.step(self.cap, project, 'generated_one', 2, self.key)['state'],
+                         'awaiting_script_review')
+        item = call('reviews')['items'][0]
+        edit = call('script/edit-preview', task_key=item['task_key'],
+                    expected_version=item['version_token'], instruction='改短')
+        consent = {name: edit['confirmation'][name] for name in fields}
+        with patch('video_factory.workbench_actions.ScriptProvider') as provider:
+            with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_EXHAUSTED'):
+                call('script/edit-generate', **consent, accept_provider_charges=True)
+            provider.return_value.revise.assert_not_called()
+        with self.f.store.connect() as db:
+            self.assertEqual(policy(db, project)['used_calls'], 2)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM tasks WHERE project=?', (project,)).fetchone()[0], 2)
+
+    def test_budget_is_atomic_across_two_different_jobs_and_unknown_consumes_slot(self):
+        project = self.f.project
+        configure(self.f.store, self.f.admin, project, 1, disable_paid_video=True)
+        tasks = ('generated_one', 'generated_two')
+        for task in tasks:
+            self.args['task'] = task
+            self.queue()
+
+        def run(task):
+            jobs = ScriptJobs(RuntimeStore(self.f.store.root), provider=self.provider)
+            try:
+                return jobs.step(self.cap, project, task, 1, self.key)['state']
+            except RuntimeFault as error:
+                return str(error)
+
+        self.provider.fail = True
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertCountEqual(pool.map(run, tasks), ['script_submission_unknown', 'SCRIPT_BUDGET_EXHAUSTED'])
+        with self.f.store.connect() as db:
+            self.assertEqual(policy(db, project)['used_calls'], 1)
+        self.assertEqual(self.provider.calls, 1)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_CANNOT_INCREASE'):
+            configure(RuntimeStore(self.f.store.root), self.f.admin, project, 2)
+
     def test_input_or_credential_drift_refused(self):
         planned=self.jobs.prepare('synthetic-user-token',**self.args)
         with self.assertRaisesRegex(RuntimeFault,'SCRIPT_PLAN_CHANGED'):self.jobs.submit('synthetic-user-token',planned['plan_sha256'],**(self.args|{'brief':'Changed'}))

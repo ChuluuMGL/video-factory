@@ -70,3 +70,26 @@ vfctl agent-script-plan approve --root /absolute/private/runtime --project test_
 尚需现有 Workflow Agent 的服务端适配与对话界面、受控脚本内容/视频预览接口、友好的身份授权与费用确认页面、金额预算，以及隔离真实飞书/模型和第二位使用者验收。#37 仍是单独未合并的原表生产入口，未在本候选中整体引入。该接口候选不代表这些阶段已完成。
 
 Workbench candidate: [controlled catalog, plan listing and content reads](AGENT_WORKBENCH_CONTENT.md). With this extension, agent_plan plus --agent-script-plans grants content access; agent_read remains metadata-only.
+
+## Project script-call budget
+
+Configure the budget before the first live request in a fresh acceptance ledger.
+For a script-only project with a two-call hard cap:
+
+```bash
+vfctl script-budget configure --root "$M5_STATE" --project "$M5_PROJECT" \
+  --admin-token-file "$M5_ADMIN_TOKEN_FILE" --max-calls 2 --disable-paid-video
+vfctl script-budget status --root "$M5_STATE" --project "$M5_PROJECT" \
+  --admin-token-file "$M5_ADMIN_TOKEN_FILE"
+```
+
+Initial generation, model edits, and repaired script runs share the same
+counter. The ledger records a slot before the provider request and keeps it
+on errors or unknown outcomes. The counter survives restart on the same
+ledger. A configured limit can be lowered, and a paid-video lock persists.
+Requests that predate support for this counter cannot be backfilled from usage
+receipts, so use a fresh ledger to enforce the acceptance run's total.
+
+In Workbench, confirmed script failures appear in daily triage and can be
+queued for a new version after cost consent. Reconciliation is required for
+unknown script or video submissions.

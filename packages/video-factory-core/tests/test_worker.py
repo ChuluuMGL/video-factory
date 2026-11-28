@@ -118,6 +118,14 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeFault,'EXPLICIT_PAID'):self.step()
         self.assertEqual(self.provider.calls,0)
 
+    def test_script_only_policy_blocks_an_already_approved_video(self):
+        from video_factory.script_budget import configure
+        self.approve()
+        configure(self.store, self.token, 'brand', 2, disable_paid_video=True)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_PAID_VIDEO_DISABLED'):
+            self.step(allow_paid=True)
+        self.assertEqual(self.provider.calls, 0)
+
     def test_success_waits_for_human_and_replays_without_submit(self):
         self.approve();self.assertEqual(self.step(allow_paid=True)['state'],'submitted')
         self.assertEqual(self.step()['state'],'awaiting_video_review')

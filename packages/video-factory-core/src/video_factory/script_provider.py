@@ -11,6 +11,16 @@ HOST='api.deepseek.com'
 MODEL='deepseek-flash'
 
 
+REJECTION_CODES = {400: 'SCRIPT_REQUEST_REJECTED', 401: 'SCRIPT_AUTH_REJECTED',
+                   402: 'SCRIPT_BALANCE_REJECTED', 403: 'SCRIPT_ACCESS_REJECTED',
+                   422: 'SCRIPT_REQUEST_REJECTED', 429: 'SCRIPT_RATE_LIMITED'}
+
+
+class ScriptProviderRejected(RuntimeFault):
+    """The fixed provider endpoint explicitly rejected the generation request."""
+
+
+
 class ScriptTunnel(HTTPSConnection):
     def __init__(self,host,**kwargs):
         if host!=HOST:raise RuntimeFault('SCRIPT_HOST_DENIED')
@@ -86,8 +96,8 @@ class ScriptProvider:
         except HTTPError as error:
             # Never retain upstream bodies, URLs or headers: they may contain
             # credentials or customer content. Classification does not retry.
-            code={400:'SCRIPT_REQUEST_REJECTED',401:'SCRIPT_AUTH_REJECTED',
-                  402:'SCRIPT_BALANCE_REJECTED',403:'SCRIPT_ACCESS_REJECTED',
-                  422:'SCRIPT_REQUEST_REJECTED',429:'SCRIPT_RATE_LIMITED'}.get(error.code)
-            raise RuntimeFault(code or 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
+            code = REJECTION_CODES.get(error.code)
+            if code:
+                raise ScriptProviderRejected(code) from None
+            raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None
         except Exception:raise RuntimeFault('SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY') from None

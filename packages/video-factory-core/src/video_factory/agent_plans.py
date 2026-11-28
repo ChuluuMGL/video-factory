@@ -13,6 +13,7 @@ import time
 
 from .feishu_bridge import meta, save
 from .runtime_store import RuntimeFault, RuntimeStore, fingerprint, identifier
+from .script_budget import require_paid_video
 from .worker import Worker, job_key
 
 
@@ -73,6 +74,7 @@ class VideoPlans:
         return saved
 
     def _prepare(self, db, actor, task, revision):
+        require_paid_video(db, self.project)
         row = self.store._current(db, self.project, task, revision)
         profile = meta(db, 'video:profile:' + self.project)
         sku = json.loads(row['input'])['sku_id']
@@ -85,6 +87,7 @@ class VideoPlans:
         return prepared, fingerprint(profile)
 
     def _fence(self, db, actor, saved):
+        require_paid_video(db, self.project)
         if saved.get('revoked') or saved['expires_at'] <= time.time():
             raise RuntimeFault('AGENT_PLAN_EXPIRED_OR_REVOKED')
         prepared, profile_digest = self._prepare(db, actor, saved['task'], saved['revision'])

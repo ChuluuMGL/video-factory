@@ -8,10 +8,25 @@ import re
 import time
 from .runtime_store import RuntimeFault,canonical,fingerprint,identifier
 from .feishu_bridge import FeishuBridge,meta,save,plain_text,select_text
-from .script_provider import ScriptProvider,MODEL
+from .script_budget import reserve_script_call
+from .script_provider import MODEL, REJECTION_CODES, ScriptProvider, ScriptProviderRejected
 
 
 def key(project,task,revision):return 'script:job:'+fingerprint([project,task,revision])
+
+
+CONFIRMED_FAILURES = frozenset(REJECTION_CODES.values()) | {'SCRIPT_INTERRUPTED_BEFORE_SUBMISSION'}
+
+
+def confirmed_failure(db, row):
+    if row['state'] != 'failed':
+        return None
+    saved = meta(db, key(row['project'], row['id'], row['revision']))
+    if (saved and saved['state'] == 'failed' and not saved.get('provider_id') and not saved.get('result')
+            and saved.get('failure_code') in CONFIRMED_FAILURES
+            and saved.get('plan_sha256') == fingerprint(saved.get('plan'))):
+        return saved
+    return None
 
 
 def profile(store,token,project,credential_ref,billing_owner):
@@ -204,6 +219,21 @@ class ScriptJobs:
             save(db,native_source_key(project,task),{'record_id':plan['native_source']['record_id']})
         return {**result,'state':'script_queued','provider_requests':0}
 
+    def repair_plan(self, db, actor, row):
+        saved = confirmed_failure(db, row)
+        if not saved:
+            raise RuntimeFault('WORKBENCH_DEFINITE_SCRIPT_FAILURE_REQUIRED')
+        old = saved['plan']
+        if (old['project'], old['task'], old['revision']) != (row['project'], row['id'], row['revision']):
+            raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+        plan = {**old, 'actor': actor, 'revision': row['revision'] + 1}
+        if old.get('native_source'):
+            source = dict(old['native_source'])
+            source.setdefault('review_status', '脚本退回' if row['revision'] > 1 else '')
+            plan['native_source'] = source
+        self._fence_prepared(db, plan)
+        return {'plan': plan, 'plan_sha256': fingerprint(plan)}
+
     def _fence_execution(self, db, plan):
         """Recheck mutable project facts at the irreversible provider boundary."""
         project = plan['project']
@@ -270,22 +300,29 @@ class ScriptJobs:
             check=db.execute('SELECT revision FROM vault WHERE alias=?',(settings['credential_ref'][7:],)).fetchone()
             if not check or check[0]!=settings['credential_revision']:raise RuntimeFault('SCRIPT_CREDENTIAL_CHANGED')
             if fingerprint(self.bridge._binding(db,project))!=plan['binding_sha256'] or job['expires_at']<time.time():raise RuntimeFault('SCRIPT_PLAN_CHANGED')
+            reserve_script_call(db,project)
             job['state']='submission_unknown';save(db,key(project,task,revision),job)
             db.execute("UPDATE tasks SET state='script_submission_unknown' WHERE project=? AND id=? AND revision=?",(project,task,revision))
             self.store.audit(db,'script-worker','script_submission_intent',project,task,revision)
         try:result=self.provider.generate(plan['sku'],plan['brief'],plan['feedback'],secret)
         except Exception as error:
-            allowed={'SCRIPT_AUTH_REJECTED','SCRIPT_BALANCE_REJECTED','SCRIPT_ACCESS_REJECTED',
-                     'SCRIPT_REQUEST_REJECTED','SCRIPT_RATE_LIMITED','SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'}
-            code=str(error) if isinstance(error,RuntimeFault) and str(error) in allowed else 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'
+            allowed = CONFIRMED_FAILURES | {'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'}
+            code = str(error) if isinstance(error, RuntimeFault) and str(error) in allowed else 'SCRIPT_SUBMISSION_UNCERTAIN_NO_RETRY'
+            # Only an explicit rejection from the fixed provider transport is
+            # definitive. An error label on its own preserves the unknown intent.
+            rejected = isinstance(error, ScriptProviderRejected) and code in REJECTION_CODES.values()
+            state = 'failed' if rejected else 'script_submission_unknown'
             with self.store.connect() as db:
                 current=meta(db,key(project,task,revision))
                 if current!=job:raise RuntimeFault('SCRIPT_INTENT_CHANGED')
                 current['submission_error']=code
+                if rejected:
+                    current.update(state='failed', failure_code=code)
+                    db.execute("UPDATE tasks SET state='failed' WHERE project=? AND id=? AND revision=?",
+                               (project,task,revision))
+                    self.store.audit(db,'script-worker','script_provider_rejected_no_retry',project,task,revision)
                 save(db,key(project,task,revision),current)
-            # Preserve the original intent and existing no-resubmit boundary.
-            # An HTTP diagnosis alone never authorizes a new paid request.
-            return {'state':'script_submission_unknown','error':code,'automatic_resubmit':False}
+            return {'state':state,'error':code,'automatic_resubmit':False}
         with self.store.connect() as db:
             # Persist provider receipt even if subsequent draft attachment fails.
             job['provider_id']=result['provider_id'];job['result']=result;job['state']='received'

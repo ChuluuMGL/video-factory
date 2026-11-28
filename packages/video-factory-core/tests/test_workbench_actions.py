@@ -115,6 +115,9 @@ class WorkbenchTests(unittest.TestCase):
 
     def test_uncertain_model_edit_is_never_resent(self):
         from unittest.mock import patch
+        from video_factory.script_budget import configure, policy
+        from video_factory.runtime_store import RuntimeStore
+        configure(self.store, self.admin, PROJECT, 2, disable_paid_video=True)
         self.task('script', 'awaiting_script_review')
         self.api.scheduler.key = self.key
         delegated = self.root / 'm5-cost-grant'
@@ -130,6 +133,8 @@ class WorkbenchTests(unittest.TestCase):
                     self.call('script/edit-generate', **self.confirmation(preview), accept_provider_charges=True)
             provider.return_value.revise.assert_called_once()
         self.assertEqual(self.call('reviews')['items'][0]['revision'], 1)
+        with RuntimeStore(self.store.root).connect() as db:
+            self.assertEqual(policy(db, PROJECT)['used_calls'], 1)
 
     def test_daily_triage_counts_actionable_tasks_and_projects_only_bound_urls(self):
         from video_factory.feishu_bridge import configuration, save, source_key, target
