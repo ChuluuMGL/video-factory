@@ -42,8 +42,8 @@ def no_cost():
     return '本次操作 ¥0，不调用付费模型。'
 
 
-def queued_cost():
-    return f'计划运行时预计调用 1 次 {model_name("video")}，费用按供应商费率结算。'
+def queued_cost(kind="video"):
+    return f'计划运行时预计调用 1 次 {model_name(kind)}，费用按供应商费率结算。'
 
 
 def details(db, project, row, diagnosis, change, cost):

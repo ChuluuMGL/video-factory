@@ -11,6 +11,8 @@ from .feishu_bridge import meta, save
 from .runtime_store import RuntimeFault, canonical, fingerprint, identifier
 from .worker import job_key
 from .script_provider import MODEL, ScriptProvider
+from .script_jobs import ScriptJobs, confirmed_failure as confirmed_script_failure
+from .script_budget import require_paid_video, require_script_slot, reserve_script_call
 from .workbench_details import details, model_name, no_cost, queued_cost, record_url
 from .workbench_views import (SHA, SENSITIVE, STAGES, STATUS, brief, definite_video_failure, envelope,
                               iso, text, notes_for, stage_status, version)
@@ -181,7 +183,7 @@ class WorkbenchActions:
         expected = version(row)
         binding = fingerprint(meta(db, 'feishu:binding:' + self.project))
         native = fingerprint(meta(db, 'native:config:' + self.project))
-        profile = self._confirmation_profile(db, kind) if paid else None
+        profile = self._confirmation_profile(db, kind, payload) if paid else None
         proposal = digest or fingerprint([kind, self.project, principal, expected, payload, binding, native, profile])
         value = {'kind': kind, 'principal': principal, 'task': row['id'], 'revision': row['revision'],
                  'expected': expected, 'digest': proposal, 'expires_at': expiry, 'payload': payload,
@@ -191,8 +193,9 @@ class WorkbenchActions:
                 'expected_digest': proposal, 'expected_version': expected, 'expires_at': iso(expiry),
                 'summary': summary, 'cost_gate': cost_gate(paid)}
 
-    def _confirmation_profile(self, db, kind):
-        prefix = 'script:profile:' if kind == 'edit_generate' else 'video:profile:'
+    def _confirmation_profile(self, db, kind, payload):
+        use_script = kind == 'edit_generate' or kind == 'repair' and 'script_plan_sha256' in payload
+        prefix = 'script:profile:' if use_script else 'video:profile:'
         return fingerprint(meta(db, prefix + self.project))
 
     def _open(self, db, kind, principal, body):
@@ -219,7 +222,7 @@ class WorkbenchActions:
             row = row_for(self.store, db, self.project, saved['task'], saved['expected'])
         require(saved['binding'] == fingerprint(meta(db, 'feishu:binding:' + self.project))
                 and saved['native'] == fingerprint(meta(db, 'native:config:' + self.project))
-                and (not saved['paid'] or saved['profile'] == self._confirmation_profile(db, kind)),
+                and (not saved['paid'] or saved['profile'] == self._confirmation_profile(db, kind, payload)),
                 'WORKBENCH_CONFIRMATION_CHANGED')
         return key, saved, row
 
@@ -350,6 +353,8 @@ class WorkbenchActions:
             alias = self._script_settings(db)
             require(alias and sha(facts) == payload['facts_digest'], 'WORKBENCH_CONFIRMATION_CHANGED')
             secret = TransactionStore(self.store, db).resolve_secret(alias, self.script_edit_key)
+            require(secret and not any(char.isspace() for char in secret), 'SCRIPT_KEY_INVALID')
+            reserve_script_call(db, self.project)
             reserved = {**saved, 'generation_signature': signature}
             save(db, key, reserved)
             self.store.audit(db, actor, 'workbench_edit_generation_reserved', self.project, row['id'], row['revision'])
@@ -382,20 +387,36 @@ class WorkbenchActions:
         require(row['state'] not in ('submission_unknown', 'script_submission_unknown'),
                 'WORKBENCH_SUBMISSION_UNKNOWN_RECONCILE_FIRST')
         schedule = boolean(body, 'reschedule')
-        require(not schedule or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
         require(row['state'] == 'failed' and body.get('repair_action') == 'requeue_failed_task',
                 'WORKBENCH_REPAIR_STATE_DENIED')
-        require(definite_video_failure(db, row), 'WORKBENCH_DEFINITE_VIDEO_FAILURE_REQUIRED')
-        diagnosis = self._failure_summary(db, row)
+        stage = stage_status(db, row)[0]
+        payload = {'schedule': schedule}
+        if stage == 'script':
+            require(schedule, 'WORKBENCH_SCRIPT_REPAIR_REQUIRES_QUEUE')
+            require_script_slot(db, self.project)
+            plan = ScriptJobs(self.store).repair_plan(db, actor, row)
+            payload['script_plan_sha256'] = plan['plan_sha256']
+            failure = confirmed_script_failure(db, row)['failure_code']
+            cause = ('已确认在提交前中断' if failure == 'SCRIPT_INTERRUPTED_BEFORE_SUBMISSION'
+                     else '供应商明确拒绝了生成请求')
+            diagnosis = f'脚本生成失败：{cause}（{failure}）。'
+            new_state, queue = 'script_queued', '脚本生成队列'
+        else:
+            require(not schedule or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
+            if schedule:
+                require_paid_video(db, self.project)
+            require(definite_video_failure(db, row), 'WORKBENCH_DEFINITE_VIDEO_FAILURE_REQUIRED')
+            diagnosis = self._failure_summary(db, row)
+            new_state, queue = ('ready (approved queue)' if schedule else 'ready'), '本地队列'
         return self._envelope(db, 'repair_and_schedule', self.project, self.clock(), {
             'phase': 'preview', 'brief': brief('已准备修复预览。', '核对新版本及费用。'),
             'diff': {'format': 'unified', 'summary': '保留旧失败版本，创建新版本',
-                     'patch': '- state: failed\n+ state: ' + ('ready (approved queue)' if schedule else 'ready')},
-            'confirmation': self._preview(db, 'repair', actor, row, {'schedule': schedule}, schedule, '确认修复任务'),
+                     'patch': '- state: failed\n+ state: ' + new_state},
+            'confirmation': self._preview(db, 'repair', actor, row, payload, schedule, '确认修复任务'),
             **details(db, self.project, row, diagnosis,
                       f'保留失败 v{row["revision"]}，创建 v{row["revision"] + 1}。' +
-                      ('新版本进入本地队列。' if schedule else '新版本等待排产。'),
-                      queued_cost() if schedule else no_cost()),
+                      (f'新版本进入{queue}。' if schedule else '新版本等待排产。'),
+                      queued_cost(stage) if schedule else no_cost()),
         })
 
     def _failure_summary(self, db, row):
@@ -439,6 +460,8 @@ class WorkbenchActions:
             require(not annotations and remaining + delta == 0, 'WORKBENCH_REVIEW_NOTES_UNRESOLVED')
         advance = boolean(body, 'advance_next_stage')
         require(not advance or decision == 'accept' and stage in ('script', 'storyboard'), 'WORKBENCH_ADVANCE_INVALID')
+        if advance:
+            require_paid_video(db, project)
         value = {'stage': stage, 'decision': decision, 'feedback': feedback, 'advance': advance,
                  'notes': {**known, **prepared}, 'annotations': annotations, 'notes_digest': fingerprint(known)}
         return self._envelope(db, 'submit_review_decision', project, self.clock(), {
@@ -455,6 +478,8 @@ class WorkbenchActions:
                 'WORKBENCH_FIELDS_INVALID')
         kind, plan_id, plan_sha = body.get('plan_type'), body.get('plan_id'), body.get('plan_sha256')
         require(kind != 'video' or self.video_plans_enabled, 'AGENT_PLANS_DISABLED')
+        if kind == 'video':
+            require_paid_video(db, self.project)
         plan = plan_for(db, self.project, kind, plan_id)
         require(plan.get('plan_sha256') == plan_sha and not plan.get('submitted') and not plan.get('revoked')
                 and plan['expires_at'] > self.clock(), 'WORKBENCH_PLAN_CHANGED')
@@ -550,6 +575,15 @@ class WorkbenchActions:
             plan.setdefault('approved_by', actor)
             save(db, 'agent:' + plan_type + ':plan:' + plan_id, plan)
             result.update(approved=True, plan_id=plan_id, plan_sha256=plan['plan_sha256'], enqueued=False)
+        elif kind == 'repair' and 'script_plan_sha256' in payload:
+            require_script_slot(db, project)
+            jobs = ScriptJobs(self.store)
+            prepared = jobs.repair_plan(db, actor, row)
+            require(prepared['plan_sha256'] == payload['script_plan_sha256'], 'WORKBENCH_CONFIRMATION_CHANGED')
+            jobs._enqueue(db, prepared, expires_at=self.clock() + 3600)
+            newer = self.store._current(db, project, task, revision + 1)
+            result.update(applied=True, new_version=version(newer), new_revision=revision + 1, scheduled=True,
+                          next_stage_plan={'enqueued': True, 'video_spending_approved': False})
         elif kind == 'edit':
             current = json.loads(row['input'])
             require(body.get('draft_sha256') == sha(payload['draft']), 'WORKBENCH_CONFIRMATION_CHANGED')
@@ -568,6 +602,8 @@ class WorkbenchActions:
                           board_writeback=enqueue(db, project, ref, row, newer, 'edit', ''),
                           video_spending_approved=False)
         elif kind == 'review':
+            if payload['advance']:
+                require_paid_video(db, project)
             prior_notes = notes_for(db, project, task, revision)
             require(fingerprint(prior_notes) == payload['notes_digest'], 'WORKBENCH_REVIEW_NOTES_CHANGED')
             feedback = payload['feedback']
@@ -611,13 +647,18 @@ class WorkbenchActions:
             'review': ('人工审核结论已确认。', '已记录通过结论。' if payload.get('decision') == 'accept' else '已记录退回和审核意见。'),
             'approve': ('费用审批对象已核对。', '已登记一次计划审批，计划等待独立提交。'),
         }[kind]
+        script_repair = kind == 'repair' and 'script_plan_sha256' in payload
+        if script_repair:
+            diagnosis = '上一版脚本生成失败已确认。'
+            change = f'保留失败 v{revision}，v{revision + 1} 已进入脚本生成队列。'
         if result.get('board_writeback') == 'reconciliation_required':
             change += ' 飞书回写等待回读确认。'
         queue = result.get('next_stage_plan') or {}
         result = self._envelope(db, skill, project, self.clock(), {
             **result, 'brief': brief('已记录已确认的操作。', '回读结果。'),
             **details(db, project, row, diagnosis, change,
-                      queued_cost() if queue.get('enqueued') or kind == 'review' and deferred else no_cost()),
+                      queued_cost('script' if script_repair else 'video')
+                      if queue.get('enqueued') or kind == 'review' and deferred else no_cost()),
         })
         self.store.audit(db, actor, 'workbench_' + kind, project, task, revision)
         save(db, key, {**saved, 'signature': fingerprint(body), 'receipt': result})

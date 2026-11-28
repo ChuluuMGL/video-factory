@@ -7,7 +7,7 @@ import re
 from .feishu_bridge import meta
 from .h3_provider import REJECTION_CODES
 from .runtime_store import RuntimeFault, fingerprint, identifier
-from .script_jobs import key as script_key
+from .script_jobs import confirmed_failure as confirmed_script_failure, key as script_key
 from .worker import job_key
 from .workbench_details import record_url
 
@@ -119,6 +119,12 @@ def definite_video_failure(db, row):
         (row['project'], row['id'], row['revision'])).fetchone())
 
 
+def repairable_failure(db, row, stage):
+    if row['state'] != 'failed':
+        return False
+    return bool(confirmed_script_failure(db, row)) if stage == 'script' else definite_video_failure(db, row)
+
+
 def daily_triage(db, project, now, board):
     groups = [
         {'kind': 'submission_unknown', 'count': 0, 'summary': '先核对供应商回执，禁止自动重排。', 'items': []},
@@ -129,7 +135,7 @@ def daily_triage(db, project, now, board):
         stage, status = stage_status(db, row)
         if status == 'submission_unknown':
             group = groups[0]
-        elif status == 'failed' and stage == 'video' and definite_video_failure(db, row):
+        elif status == 'failed' and repairable_failure(db, row, stage):
             group = groups[1]
         elif status == 'awaiting_review':
             group = groups[2]
@@ -235,13 +241,20 @@ def projection(db, project, endpoint, body, now, *, media_preview=None):
                     'stuck': 'TASK_STUCK'}[kind]
             script = meta(db, script_key(project, row['id'], row['revision'])) or {}
             video = meta(db, job_key(project, row['id'], row['revision'])) or {}
-            if script.get('submission_error') in SCRIPT_ERRORS:
+            confirmed = confirmed_script_failure(db, row) if kind == 'failed' and stage == 'script' else None
+            if confirmed:
+                code = confirmed['failure_code']
+            elif kind == 'failed' and script.get('state') == 'budget_blocked':
+                code = 'SCRIPT_BUDGET_EXHAUSTED'
+            elif script.get('submission_error') in SCRIPT_ERRORS:
                 code = script['submission_error']
             elif video.get('failure_code') in REJECTION_CODES.values():
                 code = video['failure_code']
-            repairable = kind == 'failed' and stage == 'video' and definite_video_failure(db, row)
+            repairable = bool(confirmed) if stage == 'script' else kind == 'failed' and definite_video_failure(db, row)
             common.update(raw_status=row['state'], failure_kind=kind, error_code=code,
-                          diagnosis='请核对供应商回执。' if kind == 'submission_unknown' else '请核对任务状态与已保存回执。',
+                          diagnosis=('请核对供应商回执。' if kind == 'submission_unknown'
+                                     else '脚本模型额度已用尽，未发送请求。' if code == 'SCRIPT_BUDGET_EXHAUSTED'
+                                     else '请核对任务状态与已保存回执。'),
                           reconciliation_required=kind == 'submission_unknown', automatic_resubmit=False,
                           repairable=repairable,
                           suggested_repair_type='task_retry_from_stage' if repairable else None)

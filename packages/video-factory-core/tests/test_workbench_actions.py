@@ -115,6 +115,9 @@ class WorkbenchTests(unittest.TestCase):
 
     def test_uncertain_model_edit_is_never_resent(self):
         from unittest.mock import patch
+        from video_factory.script_budget import configure, policy
+        from video_factory.runtime_store import RuntimeStore
+        configure(self.store, self.admin, PROJECT, 2, disable_paid_video=True)
         self.task('script', 'awaiting_script_review')
         self.api.scheduler.key = self.key
         delegated = self.root / 'm5-cost-grant'
@@ -130,6 +133,8 @@ class WorkbenchTests(unittest.TestCase):
                     self.call('script/edit-generate', **self.confirmation(preview), accept_provider_charges=True)
             provider.return_value.revise.assert_called_once()
         self.assertEqual(self.call('reviews')['items'][0]['revision'], 1)
+        with RuntimeStore(self.store.root).connect() as db:
+            self.assertEqual(policy(db, PROJECT)['used_calls'], 1)
 
     def test_daily_triage_counts_actionable_tasks_and_projects_only_bound_urls(self):
         from video_factory.feishu_bridge import configuration, save, source_key, target
@@ -155,6 +160,21 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn('feishu_record_url', result['triage'][1]['items'][0])
         with self.assertRaisesRegex(RuntimeFault, 'FEISHU_WEB_HOST_INVALID'):
             configuration({**binding, 'web_host': 'tenant.feishu.cn.evil.test'})
+
+    def test_script_only_policy_blocks_advance_but_keeps_review_available(self):
+        from video_factory.script_budget import configure
+        self.task('script', 'awaiting_script_review')
+        row = self.call('reviews')['items'][0]
+        args = dict(task_key=row['task_key'], expected_version=row['version_token'],
+                    stage='script', decision='accept')
+        advanced = self.call('review/prepare', **args, advance_next_stage=True)
+        configure(self.store, self.admin, PROJECT, 2, disable_paid_video=True)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_PAID_VIDEO_DISABLED'):
+            self.call('review/prepare', **args, advance_next_stage=True)
+        with self.assertRaisesRegex(RuntimeFault, 'SCRIPT_BUDGET_PAID_VIDEO_DISABLED'):
+            self.call('review/commit', **self.confirmation(advanced), accept_provider_charges=True)
+        review = self.call('review/prepare', **args)
+        self.assertTrue(self.call('review/commit', **self.confirmation(review))['review_recorded'])
 
     def test_review_does_not_approve_paid_stage_without_role(self):
         self.task('story', 'awaiting_storyboard_review')
