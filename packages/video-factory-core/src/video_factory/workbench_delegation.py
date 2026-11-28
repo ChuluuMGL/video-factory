@@ -10,7 +10,7 @@ from .runtime_cli import secret_input
 from .runtime_store import RuntimeFault, RuntimeStore, exclusive_write, identifier, private_directory
 from .workbench_actions import PRINCIPAL, pattern
 
-ROLES = ('repair', 'edit', 'review', 'cost')
+ROLES = ('repair', 'edit', 'review', 'cost', 'video_admin')
 
 
 def delegation(store, admin, project, principal, roles=None, ttl_hours=24, output=None):

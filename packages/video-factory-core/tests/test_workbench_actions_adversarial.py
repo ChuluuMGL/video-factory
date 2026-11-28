@@ -1540,9 +1540,9 @@ class LiveV03AgentAPIAdversarialTests(unittest.TestCase):
         with self.store.connect() as db:
             grant = meta(db, "automation:key:" + key_id)
             grant["workbench_principal"] = self.principal
-            grant["workbench_roles"] = ["repair", "review", "edit", "cost"]
+            grant["workbench_roles"] = ["repair", "review", "edit", "cost", "video_admin"]
             save(db, "automation:key:" + key_id, grant)
-            save(db, "workbench:delegation:brand_alpha", {self.principal: ["repair", "review", "edit", "cost"]})
+            save(db, "workbench:delegation:brand_alpha", {self.principal: ["repair", "review", "edit", "cost", "video_admin"]})
             cfg_digest = db.execute("SELECT digest FROM projects WHERE id='brand_alpha'").fetchone()[0]
             for tid, state, script in (
                 ("VID_UNK_V", "submission_unknown", "未知视频提交脚本"),

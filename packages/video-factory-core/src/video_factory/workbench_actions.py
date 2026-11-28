@@ -246,6 +246,8 @@ class WorkbenchActions:
                 _, saved, row = self._open(db, 'approve', principal, body)
                 payload = saved['payload']
                 if row is not None:
+                    if payload['plan_type']=='video':
+                        authorize_role(db, token, self.project, principal, 'video_admin')
                     require(body.get('accept_provider_charges') is True, 'WORKBENCH_COST_CONSENT_REQUIRED')
                     require(all(body.get(k) == payload[k] for k in ('plan_type', 'plan_id', 'plan_sha256')),
                             'WORKBENCH_PLAN_CHANGED')
@@ -258,6 +260,13 @@ class WorkbenchActions:
                 fresh = self.script_plans._fresh(plan['request'], plan)
         with self.store.connect() as db:
             actor = authorize_role(db, token, self.project, principal, role)
+            if route=='plan/approve' and body.get('plan_type')=='video':
+                authorize_role(db, token, self.project, principal, 'video_admin')
+            if route=='repair/preview' and body.get('reschedule') is True:
+                row = row_for(self.store, db, self.project, task_id(self.project, body.get('target_id')),
+                              body.get('expected_version'))
+                if row['state']=='failed' and stage_status(db,row)[0]!='script':
+                    authorize_role(db, token, self.project, principal, 'video_admin')
             if route.endswith('/preview') or route == 'script/edit-preview':
                 return (self._script(db, route, actor, body) if role == 'edit'
                         else self._repair_preview(db, actor, body))
@@ -409,7 +418,7 @@ class WorkbenchActions:
             diagnosis = self._failure_summary(db, row)
             new_state, queue = ('ready (approved queue)' if schedule else 'ready'), '本地队列'
         return self._envelope(db, 'repair_and_schedule', self.project, self.clock(), {
-            'phase': 'preview', 'brief': brief('已准备修复预览。', '核对新版本及费用。'),
+            'phase': 'preview', 'task_key': self.project + ':' + row['id'], 'brief': brief('已准备修复预览。', '核对新版本及费用。'),
             'diff': {'format': 'unified', 'summary': '保留旧失败版本，创建新版本',
                      'patch': '- state: failed\n+ state: ' + new_state},
             'confirmation': self._preview(db, 'repair', actor, row, payload, schedule, '确认修复任务'),
@@ -547,6 +556,9 @@ class WorkbenchActions:
         if saved['paid'] and consent:
             try:
                 authorize_role(db, token, self.project, actor, 'cost')
+                if ((kind == 'approve' and payload.get('plan_type') == 'video') or
+                    (kind == 'repair' and 'script_plan_sha256' not in payload) or kind == 'review'):
+                    authorize_role(db, token, self.project, actor, 'video_admin')
                 paid = True
             except RuntimeFault:
                 if kind != 'review':
@@ -629,6 +641,8 @@ class WorkbenchActions:
                 next_plan = video_queue(self.store, db, project, actor, newer, ref)
             result.update(review_recorded=True, new_canonical_status=STATUS[receipt['state']][1],
                           board_writeback=writeback, next_stage_plan=next_plan)
+            if deferred:
+                result.update(new_revision=revision, schedule_pending=not next_plan['enqueued'])
         else:
             payload_data = json.loads(row['input'])
             self.store._create_task(db, actor, project, task, payload_data, revision)
@@ -636,7 +650,7 @@ class WorkbenchActions:
                        (project, task, revision + 1))
             newer = self.store._current(db, project, task, revision + 1)
             next_plan = video_queue(self.store, db, project, actor, newer, ref) if paid else None
-            result.update(applied=True, new_version=version(newer), scheduled=next_plan is not None,
+            result.update(applied=True, new_version=version(newer), new_revision=revision + 1, scheduled=next_plan is not None,
                           next_stage_plan=next_plan)
         skill = {'repair': 'repair_and_schedule', 'edit': 'review_or_edit_script',
                  'review': 'submit_review_decision', 'approve': 'submit_review_decision'}[kind]
@@ -655,7 +669,7 @@ class WorkbenchActions:
             change += ' 飞书回写等待回读确认。'
         queue = result.get('next_stage_plan') or {}
         result = self._envelope(db, skill, project, self.clock(), {
-            **result, 'brief': brief('已记录已确认的操作。', '回读结果。'),
+            **result, 'task_key': project + ':' + task, 'brief': brief('已记录已确认的操作。', '回读结果。'),
             **details(db, project, row, diagnosis, change,
                       queued_cost('script' if script_repair else 'video')
                       if queue.get('enqueued') or kind == 'review' and deferred else no_cost()),
