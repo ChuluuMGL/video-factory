@@ -47,6 +47,42 @@ class WorkbenchTests(unittest.TestCase):
         receipt = result['confirmation']
         return {key: receipt[key] for key in ('confirmation_id', 'expected_digest', 'expected_version')}
 
+    def test_m6_diagnostics_project_scope_and_evidence_only(self):
+        from video_factory.feishu_bridge import save
+        from video_factory.script_budget import configure
+        from video_factory.script_jobs import key
+
+        self.task('script', 'failed')
+        with self.store.connect() as db:
+            save(db, key(PROJECT, 'script', 1), {'state': 'failed', 'provider_id': 'SECRET_PROVIDER',
+                  'failure_code': 'SCRIPT_INTERRUPTED_BEFORE_SUBMISSION', 'raw': '/fixture/private.log'})
+            self.store.audit(db, 'SECRET_ACTOR', 'script_submission_intent', PROJECT, 'script', 1)
+            self.store.audit(db, 'SECRET_ACTOR', '/fixture/unsafe-text', PROJECT, 'script', 1)
+        configure(self.store, self.admin, PROJECT, 2, disable_paid_video=True)
+        task = self.call('task_logs', task_key=PROJECT + ':script', revision=1)
+        self.assertEqual(task['task_status']['error_code'], 'SCRIPT_INTERRUPTED_BEFORE_SUBMISSION')
+        self.assertEqual(task['task_status']['stage'], 'script')
+        self.assertTrue(task['model_receipt']['receipt_recorded'])
+        self.assertEqual([entry['event'] for entry in task['history']], ['created', 'script_request_reserved'])
+        for forbidden in ('SECRET_', '/fixture/', 'Bearer', '普通测试正文'):
+            self.assertNotIn(forbidden, str(task))
+        self.assertEqual(self.call('workflow_health')['health']['remaining_calls'], 2)
+        with self.assertRaisesRegex(RuntimeFault, 'AUTH_AGENT_PROJECT_DENIED'):
+            self.api.call('/v1/agent/workflow_health', self.token, {'project': 'other'})
+        with self.assertRaises(RuntimeFault):
+            self.call('task_logs', task_key='other:script')
+        with self.assertRaisesRegex(RuntimeFault, 'TASK_MISSING'):
+            self.call('task_logs', task_key=PROJECT + ':script', revision=2)
+        with self.assertRaisesRegex(RuntimeFault, 'AUTH_'):
+            configure(self.store, self.token, PROJECT, 1)
+
+    def test_employee_cost_role_cannot_approve_paid_video(self):
+        employee = self.root / 'employee-cost-key'
+        delegation(self.store, self.admin, PROJECT, PRINCIPAL, ['cost','repair'], output=employee)
+        self.token = employee.read_text()
+        with self.assertRaisesRegex(RuntimeFault, 'AUTH_WORKBENCH_ROLE_DENIED'):
+            self.call('plan/approve', phase='prepare', plan_type='video')
+
     def test_read_projections_are_scoped_and_redacted(self):
         self.task('script', 'awaiting_script_review')
         self.task('storyboard', 'awaiting_storyboard_review')

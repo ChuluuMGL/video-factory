@@ -181,7 +181,8 @@ def _advance(store, project, key, synced, authorization):
             grant = meta(db, 'automation:key:' + request['grant_key']) or {}
             if (request['expires_at'] <= time.time() or grant.get('expires_at', 0) <= time.time()
                     or grant.get('project') != project or grant.get('workbench_principal') != principal
-                    or 'cost' not in grant.get('workbench_roles', []) or 'cost' not in policy.get(principal, [])
+                    or not {'cost', 'video_admin'}.issubset(grant.get('workbench_roles', []))
+                    or not {'cost', 'video_admin'}.issubset(policy.get(principal, []))
                     or request['profile_sha256'] != fingerprint(meta(db, 'video:profile:' + project))
                     or synced['native_sha256'] != fingerprint(meta(db, 'native:config:' + project))):
                 return

@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import TCPServer
 import io
 import shutil
+import time
 
 from .onboarding import read_json
 from .feishu_bridge import meta
@@ -42,6 +43,18 @@ class AgentAPI:
                                 'boardStatus': 'feishu' if native.get('enabled') else 'local'}
                     return actions.read(db, op, params, self.media.issue)
             return actions.action(op, token, principal, params)
+        if route in ('/v1/agent/task_logs', '/v1/agent/workflow_health'):
+            from .workbench_diagnostics import task_logs, workflow_health
+            with self.store.connect() as db:
+                authorize(db, token, self.project, workbench=True)
+                if op == 'task_logs':
+                    if set(body) - {'project', 'task_key', 'revision'}:
+                        raise RuntimeFault('AGENT_FIELDS_INVALID')
+                    return task_logs(db, self.project, task_id(self.project, body.get('task_key')),
+                                     body.get('revision'), time.time())
+                if set(body) != {'project'}:
+                    raise RuntimeFault('AGENT_FIELDS_INVALID')
+                return workflow_health(db, self.project, self.scheduler.status(), time.time())
         fields = {
             '/v1/agent/capabilities': {'project'},
             '/v1/agent/media/preview-token': {'project', 'task_key', 'expected_version'},
@@ -111,7 +124,8 @@ class AgentAPI:
                 scripts = self.script_plans is not None and value['scope'] == 'agent_plan'
                 return {'schema': 'vf-agent-read-v1', 'project': self.project,
                         'available': ['task_metadata', 'task_list', 'runtime_status', 'video_plan_receipt', 'script_plan_receipt',
-                                      'project_stats', 'list_failures', 'list_reviews', 'daily_triage', 'review_or_edit_script'] + abilities
+                                      'project_stats', 'list_failures', 'list_reviews', 'daily_triage', 'review_or_edit_script',
+                                      'inspect_task_logs', 'inspect_workflow_health'] + abilities
                                      + (['prepare_video_plan', 'submit_approved_video_plan'] if enabled else [])
                                      + (['prepare_script_plan', 'prepare_script_record_plan', 'submit_approved_script_plan',
                                          'script_catalog', 'script_plan_list', 'script_content'] if scripts else []),
